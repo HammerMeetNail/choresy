@@ -66,6 +66,10 @@ func (s *Service) SetAuditLogger(logger audit.Logger) {
 	}
 }
 
+func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int64) error {
+	return s.store.SetUserHousehold(ctx, userID, householdID)
+}
+
 func (s *Service) Register(ctx context.Context, email, password string) (User, Session, error) {
 	normalizedEmail, err := normalizeAndValidateEmail(email)
 	if err != nil {

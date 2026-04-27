@@ -138,6 +138,20 @@ func (s *PostgresStore) UpdatePassword(ctx context.Context, userID int64, passwo
 	return nil
 }
 
+func (s *PostgresStore) SetUserHousehold(ctx context.Context, userID, householdID int64) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE users SET household_id = $1 WHERE id = $2
+	`, householdID, userID)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStore) CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) (Session, error) {
 	sessionID := randomToken(32)
 	now := time.Now().UTC()

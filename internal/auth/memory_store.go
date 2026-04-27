@@ -113,6 +113,21 @@ func (s *MemoryStore) UpdatePassword(_ context.Context, userID int64, passwordHa
 	return nil
 }
 
+func (s *MemoryStore) SetUserHousehold(_ context.Context, userID, householdID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, ok := s.usersByID[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	user.HouseholdID = &householdID
+	user.Role = "owner"
+	s.usersByID[userID] = user
+	s.usersByEmail[user.Email] = user
+	return nil
+}
+
 func (s *MemoryStore) CreateSession(_ context.Context, userID int64, tokenHash string, expiresAt time.Time) (Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

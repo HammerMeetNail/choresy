@@ -40,6 +40,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.SetSessionCookie(w, session.ID)
 	writeJSON(w, http.StatusCreated, h.authResponse(user, session))
 }
 
@@ -59,6 +60,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.SetSessionCookie(w, session.ID)
 	writeJSON(w, http.StatusOK, h.authResponse(user, session))
 }
 
@@ -150,6 +152,7 @@ func (h *AuthHandler) ConsumeMagicLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.SetSessionCookie(w, session.ID)
 	writeJSON(w, http.StatusOK, h.authResponse(user, session))
 }
 
@@ -189,6 +192,7 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.SetSessionCookie(w, session.ID)
 	writeJSON(w, http.StatusOK, h.authResponse(user, session))
 }
 
@@ -231,6 +235,7 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.SetSessionCookie(w, session.ID)
 	writeJSON(w, http.StatusOK, h.authResponse(user, session))
 }
 

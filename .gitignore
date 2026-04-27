@@ -2,4 +2,6 @@
 coverage.out
 node_modules/
 output/playwright/
+test-results/
+.cache/
 .env

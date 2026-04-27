@@ -18,7 +18,7 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
-import { loadToday, logChore, undoLog, loadChores, renderTodayView, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, logChore, undoLog, loadChores, renderTodayView as renderTodayViewImpl, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadLeaderboard, loadStreaks, loadBreakdown, loadRecap } from "./stats.js";
 
 let state;
@@ -121,7 +121,7 @@ function renderTodayView() {
     <div class="empty-state-title">No chores set up yet</div>
     <p>Add chores via settings or the chores tab.</p></div></div>`;
   }
-  return renderTodayView(state);
+  return renderTodayViewImpl(state);
 }
 
 function renderSettingsView() {
@@ -311,6 +311,8 @@ export async function init() {
   const app = document.querySelector("#app");
   if (!app) return;
 
+  state.currentRoute = window.location.pathname || "/";
+
   document.addEventListener("click", (e) => {
     const actionEl = e.target.closest("[data-action]");
     const action = actionEl?.dataset?.action;
@@ -484,3 +486,5 @@ async function doJoinHousehold(form) {
     render(document.querySelector("#app"));
   }
 }
+
+init();

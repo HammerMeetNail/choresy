@@ -9,7 +9,7 @@ function apiFetch(path, options = {}) {
   return fetch(path, { ...options, headers }).then(r => r.json());
 }
 
-function todayISO(offset) {
+export function todayISO(offset) {
   const d = new Date();
   d.setDate(d.getDate() + (offset || 0));
   return d.toISOString().split("T")[0];

@@ -36,7 +36,7 @@ func NewServer(cfg config.Config) http.Handler {
 	authHandler := handlers.NewAuthHandler(authService, "choresy_session")
 	householdStore := household.NewMemoryStore()
 	householdService := household.NewService(householdStore)
-	householdHandler := handlers.NewHouseholdHandler(householdService)
+	householdHandler := handlers.NewHouseholdHandler(householdService, authService)
 	choreStore := chore.NewMemoryStore()
 	choreService := chore.NewService(choreStore)
 	choreHandler := handlers.NewChoreHandler(choreService)
