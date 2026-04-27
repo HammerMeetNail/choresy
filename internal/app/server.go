@@ -20,6 +20,7 @@ import (
 	logsvc "github.com/dave/choresy/internal/log"
 	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
+	"github.com/dave/choresy/internal/stats"
 	webassets "github.com/dave/choresy/web"
 )
 
@@ -42,6 +43,8 @@ func NewServer(cfg config.Config) http.Handler {
 	logStore := logsvc.NewMemoryStore()
 	logService := logsvc.NewService(logStore)
 	logHandler := handlers.NewLogHandler(logService)
+	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
+	statsHandler := handlers.NewStatsHandler(statsService)
 	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
 
 	mux.HandleFunc("/health", handlers.Health)
@@ -131,6 +134,12 @@ func NewServer(cfg config.Config) http.Handler {
 	mux.HandleFunc("/api/logs/today", method(http.MethodGet, logHandler.Today))
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, logHandler.Week))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, logHandler.Month))
+
+	mux.HandleFunc("/api/stats/leaderboard", method(http.MethodGet, statsHandler.Leaderboard))
+	mux.HandleFunc("/api/stats/streaks", method(http.MethodGet, statsHandler.Streaks))
+	mux.HandleFunc("/api/stats/heatmap", method(http.MethodGet, statsHandler.Heatmap))
+	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, statsHandler.Breakdown))
+	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, statsHandler.Recap))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {
@@ -224,4 +233,28 @@ func newOIDCProvider(cfg config.Config) auth.OIDCProvider {
 		TokenURL:     "https://oauth2.googleapis.com/token",
 		Issuer:       "https://accounts.google.com",
 	}
+}
+
+type choreStatsAdapter struct {
+	store *chore.MemoryStore
+}
+
+func (a *choreStatsAdapter) GetChore(ctx context.Context, id int64) (stats.ChoreInfo, error) {
+	c, err := a.store.GetChore(ctx, id)
+	if err != nil {
+		return stats.ChoreInfo{}, err
+	}
+	return stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}, nil
+}
+
+func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) ([]stats.ChoreInfo, error) {
+	chores, err := a.store.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]stats.ChoreInfo, len(chores))
+	for i, c := range chores {
+		result[i] = stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}
+	}
+	return result, nil
 }
