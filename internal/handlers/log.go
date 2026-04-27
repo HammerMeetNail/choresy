@@ -1,0 +1,154 @@
+package handlers
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/dave/choresy/internal/log"
+	"github.com/dave/choresy/internal/middleware"
+)
+
+type LogHandler struct {
+	service *log.Service
+}
+
+func NewLogHandler(service *log.Service) *LogHandler {
+	return &LogHandler{service: service}
+}
+
+func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var req struct {
+		ChoreID int64  `json:"choreId"`
+		Note    string `json:"note"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"log": entry})
+}
+
+func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid log id")
+		return
+	}
+
+	if err := h.service.UndoLog(r.Context(), user.ID, id); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	dateStr := r.URL.Query().Get("date")
+	date := today()
+	if dateStr != "" {
+		parsed, err := time.Parse("2006-01-02", dateStr)
+		if err == nil {
+			date = parsed
+		}
+	}
+
+	logs, err := h.service.GetDayLogs(r.Context(), *user.HouseholdID, date)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	summary, _ := h.service.GetDailySummary(r.Context(), *user.HouseholdID, date)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"logs":    logs,
+		"summary": summary,
+		"date":    date.Format("2006-01-02"),
+	})
+}
+
+func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	startStr := r.URL.Query().Get("start")
+	start := today()
+	if startStr != "" {
+		parsed, err := time.Parse("2006-01-02", startStr)
+		if err == nil {
+			start = parsed
+		}
+	}
+
+	logs, err := h.service.GetWeekLogs(r.Context(), *user.HouseholdID, start)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+}
+
+func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	yearStr := r.URL.Query().Get("year")
+	monthStr := r.URL.Query().Get("month")
+	year := today().Year()
+	month := 1
+
+	if y, err := strconv.Atoi(yearStr); err == nil {
+		year = y
+	}
+	if m, err := strconv.Atoi(monthStr); err == nil {
+		month = m
+	}
+
+	logs, err := h.service.GetMonthLogs(r.Context(), *user.HouseholdID, year, time.Month(month))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+}
+
+func today() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}

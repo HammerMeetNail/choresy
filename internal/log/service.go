@@ -1,0 +1,90 @@
+package log
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+var ErrNotFound = errors.New("log entry not found")
+
+type Service struct {
+	store Store
+	now   func() time.Time
+}
+
+func NewService(store Store) *Service {
+	return &Service{
+		store: store,
+		now:   func() time.Time { return time.Now().UTC() },
+	}
+}
+
+func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string) (ChoreLog, error) {
+	today := s.today()
+	existing, _ := s.store.FindLog(ctx, householdID, choreID, today)
+	if existing != nil {
+		return *existing, nil
+	}
+
+	return s.store.CreateLog(ctx, ChoreLog{
+		HouseholdID: householdID,
+		UserID:      userID,
+		ChoreID:     choreID,
+		CompletedAt: s.now(),
+		Note:        note,
+	})
+}
+
+func (s *Service) UndoLog(ctx context.Context, userID, logID int64) error {
+	log, err := s.store.GetLog(ctx, logID)
+	if err != nil {
+		return err
+	}
+	if log.UserID != userID {
+		return errors.New("can only undo your own logs")
+	}
+	return s.store.DeleteLog(ctx, logID)
+}
+
+func (s *Service) GetTodayLogs(ctx context.Context, householdID int64) ([]ChoreLog, error) {
+	return s.store.ListLogs(ctx, householdID, s.today())
+}
+
+func (s *Service) GetDayLogs(ctx context.Context, householdID int64, date time.Time) ([]ChoreLog, error) {
+	return s.store.ListLogs(ctx, householdID, date)
+}
+
+func (s *Service) GetWeekLogs(ctx context.Context, householdID int64, start time.Time) ([]ChoreLog, error) {
+	end := start.AddDate(0, 0, 7)
+	return s.store.ListLogsRange(ctx, householdID, start, end)
+}
+
+func (s *Service) GetMonthLogs(ctx context.Context, householdID int64, year int, month time.Month) ([]ChoreLog, error) {
+	start := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+	return s.store.ListLogsRange(ctx, householdID, start, end)
+}
+
+func (s *Service) GetDailySummary(ctx context.Context, householdID int64, date time.Time) (DailySummary, error) {
+	logs, err := s.store.ListLogs(ctx, householdID, date)
+	if err != nil {
+		return DailySummary{}, err
+	}
+	summary := DailySummary{
+		Date:        date.Format("2006-01-02"),
+		TotalChores: len(logs),
+		ChoresDone:  len(logs),
+		ByUser:      map[int64]int{},
+		ByCategory:  map[string]int{},
+	}
+	for _, l := range logs {
+		summary.ByUser[l.UserID]++
+	}
+	return summary, nil
+}
+
+func (s *Service) today() time.Time {
+	now := s.now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}

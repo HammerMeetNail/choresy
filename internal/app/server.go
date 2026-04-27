@@ -17,6 +17,7 @@ import (
 	"github.com/dave/choresy/internal/database"
 	"github.com/dave/choresy/internal/handlers"
 	"github.com/dave/choresy/internal/household"
+	logsvc "github.com/dave/choresy/internal/log"
 	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
 	webassets "github.com/dave/choresy/web"
@@ -38,6 +39,9 @@ func NewServer(cfg config.Config) http.Handler {
 	choreStore := chore.NewMemoryStore()
 	choreService := chore.NewService(choreStore)
 	choreHandler := handlers.NewChoreHandler(choreService)
+	logStore := logsvc.NewMemoryStore()
+	logService := logsvc.NewService(logStore)
+	logHandler := handlers.NewLogHandler(logService)
 	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
 
 	mux.HandleFunc("/health", handlers.Health)
@@ -121,6 +125,12 @@ func NewServer(cfg config.Config) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	mux.HandleFunc("/api/logs", method(http.MethodPost, logHandler.Create))
+	mux.HandleFunc("/api/logs/{id}", method(http.MethodDelete, logHandler.Delete))
+	mux.HandleFunc("/api/logs/today", method(http.MethodGet, logHandler.Today))
+	mux.HandleFunc("/api/logs/week", method(http.MethodGet, logHandler.Week))
+	mux.HandleFunc("/api/logs/month", method(http.MethodGet, logHandler.Month))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {
