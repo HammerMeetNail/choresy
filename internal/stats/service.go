@@ -40,6 +40,13 @@ type WeeklyRecap struct {
 	ByCategory    []CategoryBreakdown `json:"byCategory"`
 }
 
+type WeeklyOverview struct {
+	Leaderboard []LeaderboardEntry  `json:"leaderboard"`
+	Streaks     StreakInfo          `json:"streaks"`
+	Breakdown   []CategoryBreakdown `json:"breakdown"`
+	Recap       WeeklyRecap         `json:"recap"`
+}
+
 type Service struct {
 	logStore   log.Store
 	choreStore choreStore
@@ -270,4 +277,90 @@ func wkStart(t time.Time) time.Time {
 	}
 	start := t.AddDate(0, 0, -int(wd)+1)
 	return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int64) (WeeklyOverview, error) {
+	now := time.Now().UTC()
+	weekStart := wkStart(now)
+	weekEnd := weekStart.AddDate(0, 0, 7)
+
+	logs, err := s.logStore.ListLogsRange(ctx, householdID, weekStart, weekEnd)
+	if err != nil {
+		return WeeklyOverview{}, err
+	}
+
+	chores, err := s.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return WeeklyOverview{}, err
+	}
+
+	overview := WeeklyOverview{}
+
+	// Leaderboard
+	counts := map[int64]int{}
+	for _, l := range logs {
+		counts[l.UserID]++
+	}
+	overview.Leaderboard = []LeaderboardEntry{}
+	for uid, c := range counts {
+		overview.Leaderboard = append(overview.Leaderboard, LeaderboardEntry{UserID: uid, Count: c})
+	}
+	sort.Slice(overview.Leaderboard, func(i, j int) bool {
+		return overview.Leaderboard[i].Count > overview.Leaderboard[j].Count
+	})
+
+	// Streaks (for the requesting user)
+	overview.Streaks, _ = s.GetUserStreaks(ctx, householdID, userID)
+
+	// Breakdown
+	choreCat := map[int64]string{}
+	for _, c := range chores {
+		choreCat[c.ID] = c.Category
+	}
+	catCount := map[string]int{}
+	for _, l := range logs {
+		cat := choreCat[l.ChoreID]
+		if cat == "" {
+			cat = "custom"
+		}
+		catCount[cat]++
+	}
+	overview.Breakdown = []CategoryBreakdown{}
+	for cat, c := range catCount {
+		overview.Breakdown = append(overview.Breakdown, CategoryBreakdown{Category: cat, Count: c})
+	}
+	sort.Slice(overview.Breakdown, func(i, j int) bool {
+		return overview.Breakdown[i].Count > overview.Breakdown[j].Count
+	})
+
+	// Recap
+	overview.Recap.TotalChores = len(logs)
+
+	var top *LeaderboardEntry
+	for uid, c := range counts {
+		if top == nil || c > top.Count {
+			top = &LeaderboardEntry{UserID: uid, Count: c}
+		}
+	}
+	overview.Recap.TopPerformer = top
+
+	dayCounts := map[string]int{}
+	for _, l := range logs {
+		dayCounts[l.CompletedAt.UTC().Weekday().String()]++
+	}
+	var bestDay string
+	bestCount := 0
+	for d, c := range dayCounts {
+		if c > bestCount {
+			bestDay = d
+			bestCount = c
+		}
+	}
+	overview.Recap.MostActiveDay = bestDay
+
+	for cat, c := range catCount {
+		overview.Recap.ByCategory = append(overview.Recap.ByCategory, CategoryBreakdown{Category: cat, Count: c})
+	}
+
+	return overview, nil
 }

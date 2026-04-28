@@ -22,8 +22,8 @@ export async function loadBreakdown() {
   return data;
 }
 
-export async function loadRecap() {
-  const { data } = await apiFetch("/api/stats/recap");
+export async function loadOverview() {
+  const { data } = await apiFetch("/api/stats/overview");
   return data;
 }
 

@@ -5,18 +5,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dave/choresy/internal/auth"
 	"github.com/dave/choresy/internal/household"
 	"github.com/dave/choresy/internal/middleware"
 )
 
 type HouseholdHandler struct {
-	service     *household.Service
-	authService *auth.Service
+	service *household.Service
 }
 
-func NewHouseholdHandler(service *household.Service, authService *auth.Service) *HouseholdHandler {
-	return &HouseholdHandler{service: service, authService: authService}
+func NewHouseholdHandler(service *household.Service) *HouseholdHandler {
+	return &HouseholdHandler{service: service}
 }
 
 func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -61,8 +59,6 @@ func (h *HouseholdHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
-
-	_ = h.authService.SetUserHousehold(r.Context(), user.ID, hh.ID)
 
 	writeJSON(w, http.StatusCreated, map[string]any{"household": hh})
 }
@@ -164,8 +160,6 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	_ = h.authService.SetUserHousehold(r.Context(), user.ID, hh.ID)
 
 	writeJSON(w, http.StatusOK, map[string]any{"household": hh})
 }

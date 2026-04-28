@@ -20,7 +20,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
 import { loadToday, logChore, undoLog, loadChores, loadHistory, renderTodayView as renderTodayViewImpl, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, loadLeaderboard, loadStreaks, loadBreakdown, loadRecap } from "./stats.js";
+import { renderStatsView, loadOverview } from "./stats.js";
 
 let state;
 
@@ -151,18 +151,15 @@ function renderSettingsView() {
 
 async function loadStatsData() {
   try {
-    const [lb, st, br, rp] = await Promise.all([
-      loadLeaderboard("week"),
-      loadStreaks(),
-      loadBreakdown(),
-      loadRecap(),
-    ]);
-    state.stats = {
-      leaderboard: lb.leaderboard || [],
-      streaks: st.streaks || {},
-      breakdown: br.breakdown || [],
-      recap: rp.recap || {},
-    };
+    const data = await loadOverview();
+    if (data && data.overview) {
+      state.stats = {
+        leaderboard: data.overview.leaderboard || [],
+        streaks: data.overview.streaks || {},
+        breakdown: data.overview.breakdown || [],
+        recap: data.overview.recap || {},
+      };
+    }
   } catch {}
 }
 

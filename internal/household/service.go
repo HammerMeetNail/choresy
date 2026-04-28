@@ -6,11 +6,16 @@ import (
 )
 
 type Service struct {
-	store Store
+	store     Store
+	authStore AuthStore
 }
 
-func NewService(store Store) *Service {
-	return &Service{store: store}
+type AuthStore interface {
+	SetUserHousehold(ctx context.Context, userID, householdID int64) error
+}
+
+func NewService(store Store, authStore AuthStore) *Service {
+	return &Service{store: store, authStore: authStore}
 }
 
 func (s *Service) CreateHousehold(ctx context.Context, name string, ownerID int64) (Household, error) {
@@ -21,7 +26,14 @@ func (s *Service) CreateHousehold(ctx context.Context, name string, ownerID int6
 	if err == nil {
 		return Household{}, fmt.Errorf("user already belongs to a household")
 	}
-	return s.store.CreateHousehold(ctx, name, ownerID)
+	hh, err := s.store.CreateHousehold(ctx, name, ownerID)
+	if err != nil {
+		return Household{}, err
+	}
+	if s.authStore != nil {
+		_ = s.authStore.SetUserHousehold(ctx, ownerID, hh.ID)
+	}
+	return hh, nil
 }
 
 func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []Member, error) {
@@ -115,7 +127,14 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		return Household{}, err
 	}
 
-	return s.store.GetHousehold(ctx, invite.HouseholdID)
+	hh, err := s.store.GetHousehold(ctx, invite.HouseholdID)
+	if err != nil {
+		return Household{}, err
+	}
+	if s.authStore != nil {
+		_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID)
+	}
+	return hh, nil
 }
 
 func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserID int64, newRole string) error {

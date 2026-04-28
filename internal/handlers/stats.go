@@ -148,6 +148,22 @@ func (h *StatsHandler) Recap(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"recap": recap})
 }
 
+func (h *StatsHandler) Overview(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	overview, err := h.service.GetWeeklyOverview(r.Context(), *user.HouseholdID, user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"overview": overview})
+}
+
 func parseIntQuery(r *http.Request, key string) int {
 	v, _ := strconv.Atoi(r.URL.Query().Get(key))
 	return v

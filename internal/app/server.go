@@ -57,8 +57,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authHandler := handlers.NewAuthHandler(authService, "choresy_session", cfg.ServerSecure)
-	householdService := household.NewService(householdStore)
-	householdHandler := handlers.NewHouseholdHandler(householdService, authService)
+	householdService := household.NewService(householdStore, authService)
+	householdHandler := handlers.NewHouseholdHandler(householdService)
 	choreService := chore.NewService(choreStore)
 	choreHandler := handlers.NewChoreHandler(choreService)
 	logService := logsvc.NewService(logStore)
@@ -161,6 +161,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/stats/heatmap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Heatmap)))
 	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, middleware.RequireAuth(statsHandler.Breakdown)))
 	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Recap)))
+	mux.HandleFunc("/api/stats/overview", method(http.MethodGet, middleware.RequireAuth(statsHandler.Overview)))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {
