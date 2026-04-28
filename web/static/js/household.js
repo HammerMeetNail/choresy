@@ -88,11 +88,13 @@ export function renderHouseholdView(household, members, invites) {
     </div>`;
   }
 
-  const memberList = (members || []).map(m => `<li class="member-item">
-    <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${(m.displayName || m.email)[0].toUpperCase()}</span>
-    <span>${m.email}</span>
+  const memberList = (members || []).map(m => {
+    const initial = (m.displayName || m.email || '?')[0].toUpperCase();
+    return `<li class="member-item">
+    <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
+    <span>${m.email || m.displayName || 'Unknown'}</span>
     <span class="role-badge">${m.role}</span>
-  </li>`).join("");
+  </li>`;}).join("");
 
   const inviteList = (invites || []).map(inv => `<li class="member-item">
     <code>${inv.code}</code>
@@ -106,7 +108,7 @@ export function renderHouseholdView(household, members, invites) {
     <div class="mt-2">
       <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">Create Invite Link</button>
     </div>
-    ${invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="member-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}
+    ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="member-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}
     <h4 class="mt-3">Members</h4>
     <ul class="member-list">${memberList}</ul>
     <div class="mt-3">

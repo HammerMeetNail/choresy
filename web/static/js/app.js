@@ -183,6 +183,16 @@ function updateTopBar() {
       avatar.textContent = state.user.email.charAt(0).toUpperCase();
       avatar.title = state.user.email;
     }
+    const bell = document.querySelector("#notifications-bell");
+    const badge = document.querySelector("#notification-badge");
+    if (bell) {
+      bell.hidden = false;
+      bell.title = "Notifications";
+    }
+    if (badge && state.unreadNotifications > 0) {
+      badge.hidden = false;
+      badge.textContent = String(state.unreadNotifications);
+    }
   } else {
     topBar.hidden = true;
     tabs.hidden = true;

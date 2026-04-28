@@ -81,6 +81,10 @@ input:focus, select:focus, textarea:focus {
   flex-direction: column;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .top-bar {
   position: sticky;
   top: 0;

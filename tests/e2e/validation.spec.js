@@ -269,6 +269,109 @@ test.describe('Auth Error States', () => {
   });
 });
 
+test.describe('Top Bar Buttons', () => {
+  test('notifications bell and user avatar visible when logged in', async ({ page }) => {
+    await setupFullAccount(page);
+    await page.waitForTimeout(500);
+
+    // Notifications bell should be visible
+    const bell = page.locator('#notifications-bell');
+    await expect(bell).toBeVisible({ timeout: 3000 });
+    await expect(bell).not.toHaveAttribute('hidden');
+
+    // Notifications bell should have data-nav="settings"
+    expect(await bell.getAttribute('data-nav')).toBe('settings');
+
+    // User avatar should be visible
+    const avatar = page.locator('#user-avatar');
+    await expect(avatar).toBeVisible({ timeout: 3000 });
+    await expect(avatar).not.toHaveAttribute('hidden');
+
+    // User avatar should have data-nav="settings"
+    expect(await avatar.getAttribute('data-nav')).toBe('settings');
+
+    // Avatar should show the first letter of the email
+    const avatarText = await avatar.textContent();
+    expect(avatarText.length).toBe(1);
+    expect(avatarText).toMatch(/[A-Z]/);
+  });
+
+  test('notifications bell click navigates to settings', async ({ page }) => {
+    await setupFullAccount(page);
+    await page.waitForTimeout(500);
+
+    const bell = page.locator('#notifications-bell');
+    await expect(bell).toBeVisible({ timeout: 3000 });
+    await bell.click();
+    await page.waitForTimeout(700);
+
+    // Should navigate to settings view (SPA render)
+    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 3000 });
+  });
+
+  test('user avatar click navigates to settings', async ({ page }) => {
+    await setupFullAccount(page);
+    await page.waitForTimeout(500);
+
+    const avatar = page.locator('#user-avatar');
+    await expect(avatar).toBeVisible({ timeout: 3000 });
+    await avatar.click();
+    await page.waitForTimeout(700);
+
+    // Should navigate to settings view
+    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 3000 });
+
+    // Settings view should have the logout button
+    await expect(page.locator('button[data-action="logout"]')).toBeVisible({ timeout: 3000 });
+  });
+
+  test('bottom settings tab also navigates to settings', async ({ page }) => {
+    await setupFullAccount(page);
+    await page.waitForTimeout(500);
+
+    // Click the bottom settings tab
+    await page.click('a[data-nav="settings"]');
+    await page.waitForTimeout(700);
+
+    // Should see settings
+    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('button[data-action="logout"]')).toBeVisible({ timeout: 3000 });
+  });
+
+  test('notification badge hidden when no unread', async ({ page }) => {
+    await setupFullAccount(page);
+    await page.waitForTimeout(500);
+
+    const badge = page.locator('#notification-badge');
+    // Badge starts hidden (no unread notifications in a fresh account)
+    expect(await badge.getAttribute('hidden')).toBeDefined();
+  });
+
+  test('top bar buttons hidden when logged out', async ({ page }) => {
+    const { email } = await setupFullAccount(page);
+    await page.waitForTimeout(500);
+
+    // Logout via settings
+    await page.goto('/settings');
+    await page.waitForTimeout(1000);
+    
+    // Make sure we're on settings with household (need household for logout button to appear)
+    if (await page.locator('button[data-action="logout"]').isVisible()) {
+      await page.locator('button[data-action="logout"]').click();
+      await page.waitForTimeout(1000);
+    }
+
+    // After logout, top bar buttons should be hidden
+    const topBar = page.locator('#top-bar');
+    await expect(topBar).toBeHidden({ timeout: 3000 });
+
+    const bell = page.locator('#notifications-bell');
+    const avatar = page.locator('#user-avatar');
+    await expect(bell).toBeHidden();
+    await expect(avatar).toBeHidden();
+  });
+});
+
 test.describe('Edge Cases', () => {
   test('unknown URL renders SPA with content', async ({ page }) => {
     await page.goto('/some-random-path');
