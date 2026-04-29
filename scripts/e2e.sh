@@ -3,10 +3,17 @@
 set -e
 
 echo "=== E2E: Starting stack ==="
-if command -v podman > /dev/null 2>&1; then
-  podman compose up -d --build
+if [ "${CI}" = "true" ]; then
+  # CI: run app with in-memory stores (no Docker needed)
+  go run ./cmd/server &
+  APP_PID=$!
+  trap "kill ${APP_PID} 2>/dev/null" EXIT
 else
-  docker compose up -d --build
+  if command -v podman > /dev/null 2>&1; then
+    podman compose up -d --build
+  else
+    docker compose up -d --build
+  fi
 fi
 ./scripts/wait-for-stack.sh
 

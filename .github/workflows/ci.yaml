@@ -63,6 +63,8 @@ jobs:
         run: corepack enable pnpm
       - name: Install dependencies
         run: pnpm install
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install chromium
       - name: Run E2E tests
         run: ./scripts/e2e.sh
 
