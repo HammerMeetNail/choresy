@@ -123,62 +123,16 @@ describe("Auth Views", () => {
 
 // ─── Schedule helpers ─────────────────────────────────────────────────────────
 
-describe("Schedule: hourToPeriod", () => {
-  it("maps early morning hours to morning", async () => {
-    const { hourToPeriod } = await import("../schedule.js");
-    assert.equal(hourToPeriod(5),  "morning");
-    assert.equal(hourToPeriod(11), "morning");
-  });
-
-  it("maps afternoon hours", async () => {
-    const { hourToPeriod } = await import("../schedule.js");
-    assert.equal(hourToPeriod(12), "afternoon");
-    assert.equal(hourToPeriod(16), "afternoon");
-  });
-
-  it("maps evening hours", async () => {
-    const { hourToPeriod } = await import("../schedule.js");
-    assert.equal(hourToPeriod(17), "evening");
-    assert.equal(hourToPeriod(20), "evening");
-  });
-
-  it("maps night hours (wraps midnight)", async () => {
-    const { hourToPeriod } = await import("../schedule.js");
-    assert.equal(hourToPeriod(21), "night");
-    assert.equal(hourToPeriod(23), "night");
-    assert.equal(hourToPeriod(0),  "night");
-    assert.equal(hourToPeriod(4),  "night");
-  });
-});
-
-describe("Schedule: timeToPeriod", () => {
-  it("converts HH:MM strings to period", async () => {
-    const { timeToPeriod } = await import("../schedule.js");
-    assert.equal(timeToPeriod("08:30"), "morning");
-    assert.equal(timeToPeriod("14:00"), "afternoon");
-    assert.equal(timeToPeriod("18:45"), "evening");
-    assert.equal(timeToPeriod("22:00"), "night");
-  });
-
-  it("falls back to anytime for empty/null", async () => {
-    const { timeToPeriod } = await import("../schedule.js");
-    assert.equal(timeToPeriod(""),    "anytime");
-    assert.equal(timeToPeriod(null),  "anytime");
-    assert.equal(timeToPeriod(undefined), "anytime");
-  });
-});
-
 describe("Schedule: recurrenceSummary", () => {
   it("returns not-scheduled for null", async () => {
     const { recurrenceSummary } = await import("../schedule.js");
     assert.equal(recurrenceSummary(null), "Not scheduled");
   });
 
-  it("daily with period", async () => {
+  it("daily returns every day label", async () => {
     const { recurrenceSummary } = await import("../schedule.js");
-    const s = recurrenceSummary({ frequencyType: "daily", timePeriod: "morning" });
+    const s = recurrenceSummary({ frequencyType: "daily" });
     assert.ok(s.includes("Every day"));
-    assert.ok(s.includes("Morning"));
   });
 
   it("weekly with specific days", async () => {
@@ -217,7 +171,7 @@ describe("Schedule: renderPickChoreSheet", () => {
       { id: 1, icon: "🐱", name: "Feed cats", category: "Pets" },
       { id: 2, icon: "🌿", name: "Water plants", category: "Garden" },
     ];
-    const html = renderPickChoreSheet(chores, { date: "2026-04-28", timePeriod: "morning" }, []);
+    const html = renderPickChoreSheet(chores, { date: "2026-04-28", hour: 8 }, []);
     assert.ok(html.includes("Feed cats"));
     assert.ok(html.includes("Water plants"));
     assert.ok(html.includes("schedule-chore-here"));
@@ -232,7 +186,7 @@ describe("Schedule: renderPickChoreSheet", () => {
       { id: 2, icon: "🌿", name: "Water plants", category: "Garden" },
     ];
     const existing = [{ choreId: 1 }];
-    const html = renderPickChoreSheet(chores, { timePeriod: "morning" }, existing);
+    const html = renderPickChoreSheet(chores, { date: "2026-04-28", hour: 8 }, existing);
     // Both chores must still be present — scheduling one does not remove it
     assert.ok(html.includes("Feed cats"));
     assert.ok(html.includes("Water plants"));
@@ -243,7 +197,7 @@ describe("Schedule: renderPickChoreSheet", () => {
     // The "empty" state only appears when the household has zero chores at all.
     const { renderPickChoreSheet } = await import("../schedule.js");
     // With an empty chores array the empty message should appear
-    const html = renderPickChoreSheet([], { timePeriod: "morning" }, [{ choreId: 1 }]);
+    const html = renderPickChoreSheet([], { date: "2026-04-28", hour: 8 }, [{ choreId: 1 }]);
     assert.ok(html.includes("sheet-empty"));
   });
 });
@@ -339,16 +293,16 @@ describe("Calendar: isActiveForDayJS", () => {
 });
 
 describe("Calendar: renderDayView", () => {
-  it("renders period sections", async () => {
+  it("renders hourly grid", async () => {
     const { renderDayView } = await import("../calendar.js");
     const state = {
       calendarDate: "2026-04-28",
       chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
-      schedules: [{ id: 1, choreId: 1, timePeriod: "morning", isActive: true, frequencyType: "daily" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", isActive: true, frequencyType: "daily" }],
       todayLogs: [],
     };
     const html = renderDayView(state);
-    assert.ok(html.includes("Morning"));
+    assert.ok(html.includes("day-hour-row"));
     assert.ok(html.includes("Feed cats"));
     assert.ok(html.includes("data-view=\"day\""));
   });
@@ -358,7 +312,7 @@ describe("Calendar: renderDayView", () => {
     const state = {
       calendarDate: "2026-04-28",
       chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
-      schedules: [{ id: 1, choreId: 1, timePeriod: "morning", isActive: true, frequencyType: "daily" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", isActive: true, frequencyType: "daily" }],
       todayLogs: [{ id: 99, choreId: 1, completedAt: "2026-04-28T09:00:00Z" }],
     };
     const html = renderDayView(state);
