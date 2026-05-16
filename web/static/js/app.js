@@ -141,6 +141,13 @@ export function render(root) {
     }
   }
 
+  // Preserve the day-hour-grid-wrapper scroll position across re-renders.
+  // morph.js reuses DOM nodes by position, but template whitespace differences
+  // (e.g. when a sheet opens/closes) can cause it to destroy and recreate the
+  // wrapper element, resetting scrollTop to 0 and triggering the auto-scroll.
+  const prevWrapper = root.querySelector(".day-hour-grid-wrapper");
+  const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
+
   morphInnerHTML(root, html);
   updateTabs(route);
   updateTopBar();
@@ -150,13 +157,19 @@ export function render(root) {
   // starting at midnight — an hour that is rarely relevant — and ensures that
   // cards in the 9 AM–3 PM range are visible without manual scrolling.
   const wrapper = root.querySelector(".day-hour-grid-wrapper");
-  if (wrapper && wrapper.scrollTop === 0) {
-    const h = new Date().getHours();
-    const ROW_HEIGHT = 48; // must match CSS .day-hour-row height
-    // Show 2 rows before the current hour; clamp between 7 AM and 11 AM so
-    // that mid-morning and noon chores are always in the visible area without
-    // requiring the user to scroll.
-    wrapper.scrollTop = Math.min(Math.max(7, h - 2), 11) * ROW_HEIGHT;
+  if (wrapper) {
+    if (savedScroll > 0) {
+      // Restore the position the user was at before this re-render.
+      wrapper.scrollTop = savedScroll;
+    } else if (savedScroll === -1 || wrapper.scrollTop === 0) {
+      // First render (no prior wrapper): scroll to current hour.
+      const h = new Date().getHours();
+      const ROW_HEIGHT = 48; // must match CSS .day-hour-row height
+      // Show 2 rows before the current hour; clamp between 7 AM and 11 AM so
+      // that mid-morning and noon chores are always in the visible area without
+      // requiring the user to scroll.
+      wrapper.scrollTop = Math.min(Math.max(7, h - 2), 11) * ROW_HEIGHT;
+    }
   }
 }
 
