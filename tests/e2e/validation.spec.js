@@ -240,8 +240,19 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.fill('#hh-name', 'Exhaustive Test Home');
     await page.locator('#create-household-form button[type="submit"]').click();
 
-    // Should redirect to today view with chores
-    await page.waitForTimeout(3000);
+    // Wait for redirect to today view (household creation auto-seeds default chores)
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // Schedule the first chore at 08:00 so a card is visible in the day view
+    const csrf2 = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const { chores: seededChores } = await (await page.request.get('/api/chores')).json();
+    await page.request.post('/api/schedules', {
+      data: { choreId: seededChores[0].id, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf2 },
+    });
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
     await expect(page.locator('.chore-card').first()).toBeVisible({ timeout: 8000 });
 
     // === Day View Elements ===

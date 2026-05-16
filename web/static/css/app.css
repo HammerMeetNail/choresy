@@ -1027,12 +1027,15 @@ input:focus, select:focus, textarea:focus {
 }
 
 .log-chip {
-  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 18px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;

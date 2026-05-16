@@ -61,6 +61,23 @@ async function htmlDragDrop(page, sourceLocator, targetLocator) {
   }, [srcHandle, tgtHandle]);
 }
 
+/**
+ * Extends setupWithChores by also scheduling the first chore at 08:00 daily,
+ * then reloading so a chore card is visible in the day view.
+ * Use this in tests that need an existing .chore-card in the day view.
+ */
+async function setupWithScheduledChore(page) {
+  const { email, csrf } = await setupWithChores(page);
+  const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+  await page.request.post('/api/schedules', {
+    data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
+    headers: { 'X-CSRF-Token': csrf },
+  });
+  await page.reload();
+  await page.waitForSelector('.cal-date', { timeout: 15000 });
+  return { email, csrf };
+}
+
 // ─── Day View: Structure ──────────────────────────────────────────────────────
 
 test.describe('Day View: Structure', () => {
@@ -122,7 +139,7 @@ test.describe('Day View: Structure', () => {
   });
 
   test('chore cards are draggable', async ({ page }) => {
-    await setupWithChores(page);
+    await setupWithScheduledChore(page);
 
     const cards = page.locator('[data-drag-chore-id]');
     const count  = await cards.count();
@@ -323,7 +340,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
-    await expect(page.locator('.sheet-chore-item')).toHaveCount(11);
+    await expect(page.locator('.sheet-chore-item')).toHaveCount(17);
     await expect(page.locator('.sheet-chore-item').first()).toContainText('Feed Cats');
   });
 
@@ -417,8 +434,8 @@ test.describe('Pick-chore Bottom Sheet', () => {
 
     const items = page.locator('.sheet-chore-item');
     const count = await items.count();
-    // All 11 chores remain (repeatable chores are never removed)
-    expect(count).toBe(11);
+    // All 17 chores remain (repeatable chores are never removed)
+    expect(count).toBe(17);
     // The scheduled chore is still present
     const names = await page.locator('.sheet-chore-item .chore-name').allInnerTexts();
     expect(names).toContain(firstName);
@@ -483,7 +500,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
 
 test.describe('Chore Logging: Day View', () => {
   test('clicking an unlogged chore card marks it as done', async ({ page }) => {
-    await setupWithChores(page);
+    await setupWithScheduledChore(page);
 
     const card = page.locator('.chore-card').first();
     await expect(card).toHaveAttribute('data-action', 'log-chore');
@@ -495,7 +512,7 @@ test.describe('Chore Logging: Day View', () => {
   });
 
   test('progress label updates after logging a chore', async ({ page }) => {
-    await setupWithChores(page);
+    await setupWithScheduledChore(page);
 
     const label = page.locator('.progress-label');
     await expect(label).toContainText(/0 of \d+ done/);
@@ -507,7 +524,7 @@ test.describe('Chore Logging: Day View', () => {
   });
 
   test('clicking a done chore undoes it', async ({ page }) => {
-    await setupWithChores(page);
+    await setupWithScheduledChore(page);
 
     const card = page.locator('.chore-card').first();
     await card.click();
@@ -525,7 +542,7 @@ test.describe('Chore Logging: Day View', () => {
   });
 
   test('progress label decrements after undoing a chore', async ({ page }) => {
-    await setupWithChores(page);
+    await setupWithScheduledChore(page);
 
     const card  = page.locator('.chore-card').first();
     const label = page.locator('.progress-label');
@@ -543,7 +560,7 @@ test.describe('Chore Logging: Day View', () => {
   });
 
   test('done chore shows check-overlay in day view', async ({ page }) => {
-    await setupWithChores(page);
+    await setupWithScheduledChore(page);
 
     const card = page.locator('.chore-card').first();
     await card.click();
@@ -562,7 +579,7 @@ test.describe('Chore Logging: Week View', () => {
     // Create a daily schedule so it appears in any week.
     const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
     await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
 
@@ -590,7 +607,7 @@ test.describe('Chore Logging: Week View', () => {
 
     const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
     await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
 
@@ -1093,28 +1110,37 @@ test.describe('Day View: Multiple chores per hour row', () => {
 
     const choreResp = await page.request.get('/api/chores');
     const chores    = (await choreResp.json()).chores;
-    const [choreA]  = chores;
+    const [choreA, choreB] = chores;
 
-    // Pre-schedule choreA at 8 AM so the row already has a card.
-    await page.request.post('/api/schedules', {
-      data: { choreId: choreA.id, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
+    // Pre-schedule choreA at 8 AM and choreB at 9 AM.
+    await Promise.all([
+      page.request.post('/api/schedules', {
+        data: { choreId: choreA.id, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
+        headers: { 'X-CSRF-Token': csrf },
+      }),
+      page.request.post('/api/schedules', {
+        data: { choreId: choreB.id, timePeriod: 'anytime', specificTime: '09:00', frequencyType: 'daily', isActive: true },
+        headers: { 'X-CSRF-Token': csrf },
+      }),
+    ]);
 
     await page.reload();
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
+    await expect(page.locator('[data-drop-hour="9"] .chore-card')).toHaveCount(1);
 
-    // Drag a second chore (from the anytime section) into the 8 AM cell.
-    const anytimeCard = page.locator('.day-anytime-section [data-drag-chore-id]').first();
-    const hourCell    = page.locator('[data-drop-hour="8"]');
+    // Drag choreB from the 9 AM row into the occupied 8 AM row.
+    const sourceCard = page.locator('[data-drop-hour="9"] [data-drag-chore-id]').first();
+    const hourCell   = page.locator('[data-drop-hour="8"]');
 
-    await htmlDragDrop(page, anytimeCard, hourCell);
+    await htmlDragDrop(page, sourceCard, hourCell);
     await page.waitForTimeout(1500);
 
     // Both cards should now be in the 8 AM row.
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(2);
+    // They should use the compact chip style.
+    await expect(page.locator('[data-drop-hour="8"] .chore-card--compact')).toHaveCount(2);
   });
 
   test('hour-label button is always accessible even with multiple cards in the row', async ({ page }) => {
@@ -1458,7 +1484,7 @@ test.describe('Frequency selector: edit-schedule sheet', () => {
 // ─── Drag-and-drop creates "once" schedule ────────────────────────────────────
 
 test.describe('Drag-and-drop: default "once" frequency', () => {
-  test('dragging an unscheduled chore into an hour row creates a "once" schedule', async ({ page }) => {
+  test('dragging a "once" scheduled card between hour rows preserves the "once" frequency', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     // Derive today's ISO date.
@@ -1468,23 +1494,34 @@ test.describe('Drag-and-drop: default "once" frequency', () => {
     const todayDate = new Date(y, m - 1, d - 1);
     const todayISO = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
 
-    // All chores start in the Anytime section (no schedules).
-    const anytimeCard = page.locator('.day-anytime-section .chore-card').first();
-    await expect(anytimeCard).toBeVisible();
-
-    const dropTarget = page.locator('[data-drop-hour="7"]');
-    await htmlDragDrop(page, anytimeCard, dropTarget);
+    // Schedule a chore at 8 AM via pick-chore sheet (defaults to "once" frequency).
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
-    // Card should have moved into the 7 AM row.
-    await expect(page.locator('.day-hour-row[data-hour="7"] .chore-card')).toHaveCount(1);
-
-    // The API schedule must be "once" with startDate = today.
-    const { schedules } = await (await page.request.get('/api/schedules')).json();
-    const sch = schedules.find(s => s.specificTime === '07:00');
+    // Verify the schedule is "once" with startDate = today.
+    const { schedules: before } = await (await page.request.get('/api/schedules')).json();
+    const sch = before.find(s => s.specificTime === '08:00');
     expect(sch).toBeDefined();
     expect(sch.frequencyType).toBe('once');
     expect(sch.startDate).toBe(todayISO);
+
+    // Now drag the card from 8 AM to 7 AM.
+    const sourceCard = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
+    const dropTarget = page.locator('[data-drop-hour="7"]');
+    await htmlDragDrop(page, sourceCard, dropTarget);
+    await page.waitForTimeout(1500);
+
+    // Card should now be in the 7 AM row.
+    await expect(page.locator('.day-hour-row[data-hour="7"] .chore-card')).toHaveCount(1);
+
+    // The schedule must still be "once" with the new specificTime.
+    const { schedules: after } = await (await page.request.get('/api/schedules')).json();
+    const updated = after.find(s => s.specificTime === '07:00');
+    expect(updated).toBeDefined();
+    expect(updated.frequencyType).toBe('once');
+    expect(updated.startDate).toBe(todayISO);
   });
 });
 

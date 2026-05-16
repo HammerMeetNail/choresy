@@ -86,11 +86,11 @@ test.describe('Default chores: action-specific names', () => {
     expect(feedCats).toHaveLength(1);
   });
 
-  test('seeded default chores list has 11 items', async ({ page }) => {
+  test('seeded default chores list has 17 items', async ({ page }) => {
     await setupWithChores(page);
 
     const { chores } = await (await page.request.get('/api/chores')).json();
-    expect(chores).toHaveLength(11);
+    expect(chores).toHaveLength(17);
   });
 });
 

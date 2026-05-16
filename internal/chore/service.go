@@ -109,7 +109,7 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 var PredefinedChores = []Chore{
 	{Name: "Feed Cats",        Icon: "🐱",   Color: "#F59E0B", Category: "feeding",  SortOrder: 0},
 	{Name: "Feed Baby",        Icon: "🍼",   Color: "#EC4899", Category: "feeding",  SortOrder: 1},
-	{Name: "Change Baby",      Icon: "👶",   Color: "#8B5CF6", Category: "care",     SortOrder: 2},
+	{Name: "Change Baby",      Icon: "👶",   Color: "#8B5CF6", Category: "care",     SortOrder: 2, IndicatorLabels: []string{"💩 poo", "💛 pee"}},
 	{Name: "Water Plants",     Icon: "🌱",   Color: "#10B981", Category: "plants",   SortOrder: 3},
 	{Name: "Clean Litter Box", Icon: "🧹",   Color: "#6366F1", Category: "cleaning", SortOrder: 4},
 	{Name: "Take Out Trash",   Icon: "🗑️",  Color: "#6B7280", Category: "cleaning", SortOrder: 5},

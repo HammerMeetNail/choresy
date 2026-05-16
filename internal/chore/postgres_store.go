@@ -83,8 +83,9 @@ func (s *PostgresStore) ReorderChores(ctx context.Context, householdID int64, ch
 
 func (s *PostgresStore) SeedPredefinedChores(ctx context.Context, householdID int64) error {
 	for _, pc := range PredefinedChores {
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined) VALUES ($1,$2,$3,$4,$5,$6,TRUE) ON CONFLICT (household_id, name) DO NOTHING`,
-			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category); err != nil {
+		labels, _ := json.Marshal(nilToEmpty(pc.IndicatorLabels))
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, indicator_labels) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7) ON CONFLICT (household_id, name) DO NOTHING`,
+			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category, string(labels)); err != nil {
 			return err
 		}
 	}
