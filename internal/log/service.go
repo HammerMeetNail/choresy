@@ -20,7 +20,7 @@ func NewService(store Store) *Service {
 	}
 }
 
-func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, date *time.Time) (ChoreLog, error) {
+func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, indicators []string, date *time.Time, slotHour *int) (ChoreLog, error) {
 	var day time.Time
 	var completedAt time.Time
 	if date != nil {
@@ -36,13 +36,31 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		return *existing, nil
 	}
 
+	if indicators == nil {
+		indicators = []string{}
+	}
 	return s.store.CreateLog(ctx, ChoreLog{
 		HouseholdID: householdID,
 		UserID:      userID,
 		ChoreID:     choreID,
 		CompletedAt: completedAt,
 		Note:        note,
+		Indicators:  indicators,
+		SlotHour:    slotHour,
 	})
+}
+
+func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indicators []string) error {
+	log, err := s.store.GetLog(ctx, logID)
+	if err != nil {
+		return err
+	}
+	log.Note = note
+	if indicators == nil {
+		indicators = []string{}
+	}
+	log.Indicators = indicators
+	return s.store.UpdateLog(ctx, log)
 }
 
 func (s *Service) UndoLog(ctx context.Context, userID, logID int64) error {

@@ -19,10 +19,10 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
-import { loadToday, loadWeek, logChore, undoLog, loadChores, loadHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadOverview } from "./stats.js";
-import { renderDayView, renderWeekView } from "./calendar.js";
-import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet } from "./schedule.js";
+import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
+import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -196,6 +196,8 @@ function renderTodayView() {
     ? renderWeekView(state)
     : renderDayView(state);
 
+  const fab = `<button type="button" class="fab" data-action="open-quick-log" aria-label="Log a chore">+</button>`;
+
   if (state.activeSheet === "pick-chore") {
     const sheetHTML = renderPickChoreSheet(
       state.chores,
@@ -204,6 +206,7 @@ function renderTodayView() {
     );
     return `<div class="sheet-overlay-wrapper">
       ${mainView}
+      ${fab}
       <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
       ${sheetHTML}
     </div>`;
@@ -216,12 +219,40 @@ function renderTodayView() {
       const sheetHTML = renderEditScheduleSheet(chore, sch, state.calendarDate);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
+        ${fab}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
       </div>`;
     }
   }
-  return mainView;
+  if (state.activeSheet === "log") {
+    const { choreId, logId, date } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const allLogs = state.calendarView === "week"
+        ? (state.weekLogs || [])
+        : (state.todayLogs || []);
+      const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
+      const sheetHTML = renderLogSheet(chore, log, date || "");
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        ${fab}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  if (state.activeSheet === "quick-log") {
+    const date = state.activeSheetData?.date || "";
+    const sheetHTML = renderQuickLogSheet(state.chores || [], date);
+    return `<div class="sheet-overlay-wrapper">
+      ${mainView}
+      ${fab}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${sheetHTML}
+    </div>`;
+  }
+  return `<div class="sheet-overlay-wrapper">${mainView}${fab}</div>`;
 }
 
 function renderSettingsView() {
@@ -483,6 +514,14 @@ export async function init() {
       return;
     }
 
+    // ── Indicator chip: toggle on/off (log sheet) ───────────────────────────
+    if (action === "toggle-indicator") {
+      actionEl.classList.toggle("log-chip--on");
+      actionEl.setAttribute("aria-pressed",
+        String(actionEl.classList.contains("log-chip--on")));
+      return;
+    }
+
     switch (action) {
       case "show-login":
       case "show-register":
@@ -530,7 +569,7 @@ export async function init() {
         break;
       case "log-chore":
         e.preventDefault();
-        logChore(parseInt(actionEl.dataset.choreId), "", actionEl.dataset.date || "").then(async () => {
+        logChore(parseInt(actionEl.dataset.choreId), "", actionEl.dataset.date || "", []).then(async () => {
           await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
           render(app);
         });
@@ -538,6 +577,8 @@ export async function init() {
       case "undo-chore":
         e.preventDefault();
         undoLog(parseInt(actionEl.dataset.logId)).then(async () => {
+          state.activeSheet     = null;
+          state.activeSheetData = {};
           await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
           render(app);
         }).catch((err) => {
@@ -545,6 +586,73 @@ export async function init() {
           (state.calendarView === "week" ? loadWeekData() : loadTodayData()).then(() => render(app));
         });
         break;
+      case "view-log": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const logId   = actionEl.dataset.logId ? parseInt(actionEl.dataset.logId, 10) : null;
+        const date    = actionEl.dataset.date || "";
+        const chore   = (state.chores || []).find(c => c.id === choreId);
+        if (chore) {
+          state.activeSheet     = "log";
+          state.activeSheetData = { choreId, logId, date };
+          render(app);
+        }
+        break;
+      }
+
+      case "edit-schedule": {
+        e.preventDefault();
+        const choreId    = parseInt(actionEl.dataset.choreId, 10);
+        const scheduleId = parseInt(actionEl.dataset.scheduleId, 10);
+        state.activeSheet     = "edit-schedule";
+        state.activeSheetData = { choreId, scheduleId };
+        render(app);
+        break;
+      }
+
+      case "save-log": {
+        e.preventDefault();
+        const logId   = actionEl.dataset.logId;
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const date    = actionEl.dataset.date || "";
+        const note    = (document.querySelector('#log-note')?.value || "").trim();
+        const indicators = [...document.querySelectorAll('.log-chip--on')]
+          .map(el => el.dataset.label);
+        const slotHour = state.activeSheetData?.slotHour ?? null;
+        const doLog = logId
+          ? updateLog(parseInt(logId, 10), note, indicators)
+          : logChore(choreId, note, date, indicators, slotHour);
+        doLog.then(async () => {
+          state.activeSheet     = null;
+          state.activeSheetData = {};
+          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+          render(app);
+        }).catch(() => showToast("Failed to save log", "error"));
+        break;
+      }
+
+      case "open-quick-log": {
+        e.preventDefault();
+        state.activeSheet     = "quick-log";
+        state.activeSheetData = { date: state.calendarDate || todayISO(0) };
+        render(app);
+        break;
+      }
+
+      case "quick-log-chore": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const date    = actionEl.dataset.date || "";
+        const note    = (document.querySelector('#quick-log-note')?.value || "").trim();
+        logChore(choreId, note, date, []).then(async () => {
+          state.activeSheet     = null;
+          state.activeSheetData = {};
+          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+          render(app);
+        }).catch(() => showToast("Failed to log chore", "error"));
+        break;
+      }
+
       case "navigate-day":
         e.preventDefault();
         state.calendarDate = actionEl.dataset.date;
@@ -779,13 +887,25 @@ export async function init() {
     } catch { showToast("Failed to schedule chore", "error"); }
   });
 
-  // ── Long-press to edit a scheduled chore ──────────────────────────────────
-  function openEditSheet(card) {
-    const choreId    = parseInt(card.dataset.dragChoreId, 10);
-    const scheduleId = card.dataset.dragScheduleId;
-    if (!scheduleId) return;
-    state.activeSheet     = "edit-schedule";
-    state.activeSheetData = { choreId, scheduleId: parseInt(scheduleId, 10) };
+  // ── Long-press to log a chore (with indicators/note sheet) ──────────────
+  function openLogSheet(card) {
+    const choreId = parseInt(card.dataset.dragChoreId, 10);
+    const logId   = card.dataset.logId ? parseInt(card.dataset.logId, 10) : null;
+    const date    = card.dataset.date || state.calendarDate || "";
+    state.activeSheet     = "log";
+    state.activeSheetData = { choreId, logId, date };
+    render(app);
+  }
+
+  // Long-press on a chore item inside a bottom sheet (pick-chore / quick-log)
+  // opens the log detail sheet so the user can add notes and indicator chips
+  // before saving — without scheduling the chore.
+  function openLogSheetFromItem(item) {
+    const choreId  = parseInt(item.dataset.choreId, 10);
+    const date     = item.dataset.date || state.calendarDate || "";
+    const slotHour = state.activeSheetData?.hour ?? null;
+    state.activeSheet     = "log";
+    state.activeSheetData = { choreId, logId: null, date, slotHour };
     render(app);
   }
 
@@ -794,18 +914,22 @@ export async function init() {
     longPressTimer = null;
     document.querySelectorAll(".chore-card--pressing")
       .forEach(el => el.classList.remove("chore-card--pressing"));
+    document.querySelectorAll(".sheet-chore-item--pressing")
+      .forEach(el => el.classList.remove("sheet-chore-item--pressing"));
   }
 
   document.addEventListener("mousedown", e => {
     const card = e.target.closest("[data-drag-chore-id]");
-    if (!card) return;
+    const item = !card && e.target.closest(".sheet-chore-item");
+    if (!card && !item) return;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
-    card.classList.add("chore-card--pressing");
+    if (card) card.classList.add("chore-card--pressing");
+    if (item) item.classList.add("sheet-chore-item--pressing");
     longPressTimer = setTimeout(() => {
       longPressJustFired = true;
-      card.classList.remove("chore-card--pressing");
-      openEditSheet(card);
+      if (card) { card.classList.remove("chore-card--pressing"); openLogSheet(card); }
+      if (item) { item.classList.remove("sheet-chore-item--pressing"); openLogSheetFromItem(item); }
     }, 500);
   });
   // Cancel on actual cursor movement (>8px) — but NOT on DOM-triggered mouseleave
@@ -832,15 +956,17 @@ export async function init() {
 
   document.addEventListener("touchstart", e => {
     const card = e.target.closest("[data-drag-chore-id]");
-    if (!card) return;
+    const item = !card && e.target.closest(".sheet-chore-item");
+    if (!card && !item) return;
     const t = e.touches[0];
     pressStartX = t.clientX;
     pressStartY = t.clientY;
-    card.classList.add("chore-card--pressing");
+    if (card) card.classList.add("chore-card--pressing");
+    if (item) item.classList.add("sheet-chore-item--pressing");
     longPressTimer = setTimeout(() => {
       longPressJustFired = true;
-      card.classList.remove("chore-card--pressing");
-      openEditSheet(card);
+      if (card) { card.classList.remove("chore-card--pressing"); openLogSheet(card); }
+      if (item) { item.classList.remove("sheet-chore-item--pressing"); openLogSheetFromItem(item); }
     }, 500);
   }, { passive: true });
   document.addEventListener("touchend", e => {

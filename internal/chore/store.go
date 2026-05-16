@@ -6,16 +6,17 @@ import (
 )
 
 type Chore struct {
-	ID           int64     `json:"id"`
-	HouseholdID  int64     `json:"householdId"`
-	Name         string    `json:"name"`
-	Icon         string    `json:"icon"`
-	Color        string    `json:"color"`
-	SortOrder    int       `json:"sortOrder"`
-	Category     string    `json:"category"`
-	IsPredefined bool      `json:"isPredefined"`
-	CreatedBy    *int64    `json:"createdBy"`
-	CreatedAt    time.Time `json:"createdAt"`
+	ID              int64     `json:"id"`
+	HouseholdID     int64     `json:"householdId"`
+	Name            string    `json:"name"`
+	Icon            string    `json:"icon"`
+	Color           string    `json:"color"`
+	SortOrder       int       `json:"sortOrder"`
+	Category        string    `json:"category"`
+	IsPredefined    bool      `json:"isPredefined"`
+	CreatedBy       *int64    `json:"createdBy"`
+	CreatedAt       time.Time `json:"createdAt"`
+	IndicatorLabels []string  `json:"indicatorLabels"`
 }
 
 type Store interface {

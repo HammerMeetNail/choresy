@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,9 +26,11 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ChoreID int64  `json:"choreId"`
-		Note    string `json:"note"`
-		Date    string `json:"date"` // optional ISO date "YYYY-MM-DD"; defaults to today
+		ChoreID    int64    `json:"choreId"`
+		Note       string   `json:"note"`
+		Indicators []string `json:"indicators"`
+		Date       string   `json:"date"` // optional ISO date "YYYY-MM-DD"; defaults to today
+		Hour       *int     `json:"hour"` // optional calendar slot hour (0-23)
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -44,13 +47,45 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logDate = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, logDate)
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"log": entry})
+}
+
+func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	_ = user
+
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid log id")
+		return
+	}
+
+	var req struct {
+		Note       string   `json:"note"`
+		Indicators []string `json:"indicators"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators); err != nil {
+		if errors.Is(err, log.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "log not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {

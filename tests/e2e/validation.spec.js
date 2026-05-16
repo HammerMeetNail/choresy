@@ -289,15 +289,19 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // Chore should now show as done (new class is chore-card--done)
     const doneCards = page.locator('.chore-card.chore-card--done');
     expect(await doneCards.count()).toBeGreaterThan(0);
-    // The done card should have undo-chore action
-    await expect(doneCards.first()).toHaveAttribute('data-action', 'undo-chore');
+    // Done card opens the log detail sheet (view-log), not direct undo.
+    await expect(doneCards.first()).toHaveAttribute('data-action', 'view-log');
 
     // Check progress label updates (format: "1 of N done")
     const progressText = await page.locator('.progress-label').innerText();
     expect(progressText).toMatch(/1 of \d+ done/);
 
     // === Undo the Chore ===
+    // Tapping a done card opens the log sheet; the undo button lives inside.
     await doneCards.first().click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await page.locator('[data-action="undo-chore"]').click();
     await page.waitForTimeout(1500);
 
     // Done count should decrease

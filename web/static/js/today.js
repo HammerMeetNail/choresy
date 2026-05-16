@@ -40,9 +40,10 @@ export async function loadHistory() {
   return data;
 }
 
-export async function logChore(choreId, note, date = "") {
-  const body = { choreId, note };
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null) {
+  const body = { choreId, note, indicators };
   if (date) body.date = date;
+  if (slotHour !== null) body.hour = slotHour;
   const { data } = await apiFetch("/api/logs", {
     method: "POST",
     body: JSON.stringify(body),
@@ -52,6 +53,14 @@ export async function logChore(choreId, note, date = "") {
 
 export async function undoLog(logId) {
   const { data } = await apiFetch(`/api/logs/${logId}`, { method: "DELETE" });
+  return data;
+}
+
+export async function updateLog(logId, note, indicators = []) {
+  const { data } = await apiFetch(`/api/logs/${logId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ note, indicators }),
+  });
   return data;
 }
 

@@ -504,7 +504,7 @@ test.describe('Chore Logging: Day View', () => {
     await page.waitForTimeout(1000);
 
     await expect(card).toHaveClass(/chore-card--done/);
-    await expect(card).toHaveAttribute('data-action', 'undo-chore');
+    await expect(card).toHaveAttribute('data-action', 'view-log');
   });
 
   test('progress label updates after logging a chore', async ({ page }) => {
@@ -527,7 +527,11 @@ test.describe('Chore Logging: Day View', () => {
     await page.waitForTimeout(1000);
     await expect(card).toHaveClass(/chore-card--done/);
 
+    // Done card now opens a log sheet; undo lives inside the sheet.
     await card.click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await page.locator('[data-action="undo-chore"]').click();
     await page.waitForTimeout(1000);
     await expect(card).not.toHaveClass(/chore-card--done/);
     await expect(card).toHaveAttribute('data-action', 'log-chore');
@@ -543,7 +547,10 @@ test.describe('Chore Logging: Day View', () => {
     await page.waitForTimeout(1000);
     await expect(label).toContainText(/1 of \d+ done/);
 
+    // Open log sheet, then undo from inside it.
     await card.click();
+    await page.waitForTimeout(500);
+    await page.locator('[data-action="undo-chore"]').click();
     await page.waitForTimeout(1000);
     await expect(label).toContainText(/0 of \d+ done/);
   });
@@ -588,7 +595,7 @@ test.describe('Chore Logging: Week View', () => {
 
     // Card must now show as done without requiring a view switch.
     await expect(card).toHaveClass(/chore-card--done/);
-    await expect(card).toHaveAttribute('data-action', 'undo-chore');
+    await expect(card).toHaveAttribute('data-action', 'view-log');
   });
 
   test('clicking a done week-view card undoes it', async ({ page }) => {
@@ -611,8 +618,11 @@ test.describe('Chore Logging: Week View', () => {
     await page.waitForTimeout(1000);
     await expect(card).toHaveClass(/chore-card--done/);
 
-    // Undo.
+    // Done card opens log sheet; undo lives inside it.
     await card.click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await page.locator('[data-action="undo-chore"]').click();
     await page.waitForTimeout(1000);
     await expect(card).not.toHaveClass(/chore-card--done/);
     await expect(card).toHaveAttribute('data-action', 'log-chore');
@@ -1033,15 +1043,18 @@ test.describe('Long-press edit sheet', () => {
     await page.waitForTimeout(650); // slightly over the 500 ms threshold
     await page.mouse.up();
     // Consume the longPressJustFired guard with a synthetic click so subsequent
-    // clicks on sheet buttons are not suppressed.
+    // clicks on sheet buttons are not suppressed.  Skip if the element at that
+    // position is the sheet backdrop — that would close the just-opened sheet.
     await page.evaluate(([cx, cy]) => {
       const el = document.elementFromPoint(cx, cy);
-      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      if (el && el.dataset.action !== 'close-sheet') {
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
     }, [x, y]);
     await page.waitForTimeout(50);
   }
 
-  test('long-pressing a scheduled chore card opens the edit sheet', async ({ page }) => {
+  test('long-pressing a scheduled chore card opens the log sheet', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
@@ -1061,10 +1074,9 @@ test.describe('Long-press edit sheet', () => {
 
     await longPress(page, card);
 
-    // Edit sheet should appear
-    await expect(page.locator('[data-action="save-schedule-edit"]')).toBeVisible();
-    await expect(page.locator('[data-action="delete-schedule"]')).toBeVisible();
-    await expect(page.locator('#edit-sheet-time')).toHaveValue('09:00');
+    // Log sheet should appear (not edit sheet)
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
+    await expect(page.locator('#log-note')).toBeVisible();
   });
 
   test('saving a new time from the edit sheet updates the card position', async ({ page }) => {
@@ -1080,10 +1092,12 @@ test.describe('Long-press edit sheet', () => {
     await page.reload();
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    const card = page.locator('.day-hour-row[data-hour="8"] .chore-card').first();
-    await expect(card).toBeVisible();
+    const wrap = page.locator('.day-hour-row[data-hour="8"] .chore-card-wrap').first();
+    await expect(wrap).toBeVisible();
 
-    await longPress(page, card);
+    // Hover to reveal the pencil button, then click it to open the edit sheet.
+    await wrap.hover();
+    await wrap.locator('.chore-card-edit-btn').click();
     await expect(page.locator('#edit-sheet-time')).toBeVisible();
 
     // Change the time to 14:00
@@ -1111,10 +1125,12 @@ test.describe('Long-press edit sheet', () => {
     await page.reload();
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    const card = page.locator('.day-hour-row[data-hour="10"] .chore-card').first();
-    await expect(card).toBeVisible();
+    const wrap = page.locator('.day-hour-row[data-hour="10"] .chore-card-wrap').first();
+    await expect(wrap).toBeVisible();
 
-    await longPress(page, card);
+    // Open edit sheet via pencil button.
+    await wrap.hover();
+    await wrap.locator('.chore-card-edit-btn').click();
     await expect(page.locator('[data-action="delete-schedule"]')).toBeVisible();
 
     await page.locator('[data-action="delete-schedule"]').click();
@@ -1465,13 +1481,10 @@ test.describe('Frequency selector: edit-schedule sheet', () => {
     await expect(card).toBeVisible({ timeout: 5000 });
     await card.scrollIntoViewIfNeeded();
 
-    // Long-press to open edit sheet.
-    const box = await card.boundingBox();
-    if (!box) throw new Error('card has no bounding box');
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(600);
-    await page.mouse.up();
+    // Open edit sheet via pencil button.
+    const wrap11 = page.locator('.day-hour-row[data-hour="11"] .chore-card-wrap').first();
+    await wrap11.hover();
+    await wrap11.locator('.chore-card-edit-btn').click();
     await page.waitForTimeout(300);
 
     await expect(page.locator('#edit-sheet-freq')).toBeVisible();
@@ -1503,12 +1516,10 @@ test.describe('Frequency selector: edit-schedule sheet', () => {
     await expect(card).toBeVisible();
     await card.scrollIntoViewIfNeeded();
 
-    // Long-press.
-    const box = await card.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(600);
-    await page.mouse.up();
+    // Open edit sheet via pencil button.
+    const wrap12 = page.locator('.day-hour-row[data-hour="12"] .chore-card-wrap').first();
+    await wrap12.hover();
+    await wrap12.locator('.chore-card-edit-btn').click();
     await page.waitForTimeout(300);
 
     await expect(page.locator('#edit-sheet-freq')).toBeVisible();
@@ -1665,12 +1676,10 @@ test.describe('Frequency selector: every_n_days', () => {
     await expect(card).toBeVisible();
     await card.scrollIntoViewIfNeeded();
 
-    // Long-press to open edit sheet.
-    const box = await card.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(600);
-    await page.mouse.up();
+    // Open edit sheet via pencil button (long-press now opens the log sheet).
+    const wrap12b = page.locator('.day-hour-row[data-hour="12"] .chore-card-wrap').first();
+    await wrap12b.hover();
+    await wrap12b.locator('.chore-card-edit-btn').click();
     await page.waitForTimeout(300);
 
     await expect(page.locator('#edit-sheet-freq')).toBeVisible();
@@ -1688,5 +1697,132 @@ test.describe('Frequency selector: every_n_days', () => {
     expect(updated).toBeDefined();
     expect(updated.frequencyType).toBe('every_n_days');
     expect(updated.intervalDays).toBe(5);
+  });
+});
+
+// ─── Long-press on sheet chore items ─────────────────────────────────────────
+
+test.describe('Long-press on sheet chore items', () => {
+  /**
+   * Simulates a 500 ms long-press on any element, then consumes the
+   * longPressJustFired guard with a synthetic click so subsequent interactions
+   * with the opened sheet are not blocked.
+   */
+  async function longPressItem(page, locator) {
+    await locator.scrollIntoViewIfNeeded();
+    const box = await locator.boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
+    await page.evaluate(([cx, cy]) => {
+      const el = document.elementFromPoint(cx, cy);
+      if (el && el.dataset.action !== 'close-sheet') {
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
+    }, [x, y]);
+    await page.waitForTimeout(50);
+  }
+
+  test('long-pressing a chore item in the quick-log sheet opens the log detail sheet', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Open quick-log sheet via the FAB.
+    await page.locator('.fab').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await expect(page.locator('.sheet-title')).toContainText('Log a chore');
+
+    // Long-press the first chore item.
+    const item = page.locator('.sheet-chore-item').first();
+    await longPressItem(page, item);
+
+    // The log detail sheet should replace the quick-log sheet.
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
+    await expect(page.locator('#log-note')).toBeVisible();
+  });
+
+  test('long-pressing a chore item in the pick-chore sheet opens the log detail sheet', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Open pick-chore sheet by clicking an hour cell.
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await expect(page.locator('.sheet-title')).toContainText('8 AM');
+
+    // Long-press the first chore item.
+    const item = page.locator('.sheet-chore-item').first();
+    await longPressItem(page, item);
+
+    // The log detail sheet should appear (not the pick-chore sheet).
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
+    await expect(page.locator('#log-note')).toBeVisible();
+    // The schedule-chore-here action must no longer be visible.
+    await expect(page.locator('[data-action="schedule-chore-here"]')).toHaveCount(0);
+  });
+
+  test('single tap on a quick-log item still logs instantly without opening log sheet', async ({ page }) => {
+    await setupWithChores(page);
+
+    const label = page.locator('.progress-label');
+    await expect(label).toContainText(/0 of \d+ done/);
+
+    // Open quick-log sheet via the FAB.
+    await page.locator('.fab').click();
+    await page.waitForTimeout(400);
+
+    // Short tap on the first chore item — should log instantly.
+    await page.locator('.sheet-chore-item').first().click();
+    await page.waitForTimeout(1200);
+
+    // Sheet closes and progress counter increments by one.
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0);
+    await expect(label).toContainText(/1 of \d+ done/);
+  });
+
+  test('log sheet opened from quick-log item shows save-log button and closes on save', async ({ page }) => {
+    await setupWithChores(page);
+
+    const label = page.locator('.progress-label');
+    await expect(label).toContainText(/0 of \d+ done/);
+
+    // Open quick-log sheet via FAB.
+    await page.locator('.fab').click();
+    await page.waitForTimeout(400);
+
+    // Long-press first item to open log detail sheet.
+    const item = page.locator('.sheet-chore-item').first();
+    await longPressItem(page, item);
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
+
+    // Optionally fill in a note then save.
+    await page.fill('#log-note', 'test note from long-press');
+    await page.locator('[data-action="save-log"]').click();
+    await page.waitForTimeout(1200);
+
+    // Sheet closes and progress counter increments.
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0);
+    await expect(label).toContainText(/1 of \d+ done/);
+  });
+
+  test('pick-chore sheet shows the discoverability hint text', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+
+    await expect(page.locator('.sheet-hint')).toContainText('Hold to log');
+  });
+
+  test('quick-log sheet shows the discoverability hint text', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('.fab').click();
+    await page.waitForTimeout(400);
+
+    await expect(page.locator('.sheet-hint')).toContainText('Hold to add notes');
   });
 });

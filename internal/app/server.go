@@ -162,7 +162,17 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	}))
 
 	mux.HandleFunc("/api/logs", method(http.MethodPost, middleware.RequireAuth(logHandler.Create)))
-	mux.HandleFunc("/api/logs/{id}", method(http.MethodDelete, middleware.RequireAuth(logHandler.Delete)))
+	mux.HandleFunc("/api/logs/{id}", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodDelete:
+			logHandler.Delete(w, r)
+		case http.MethodPatch:
+			logHandler.Update(w, r)
+		default:
+			w.Header().Set("Allow", "DELETE, PATCH")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 	mux.HandleFunc("/api/logs/today", method(http.MethodGet, middleware.RequireAuth(logHandler.Today)))
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))

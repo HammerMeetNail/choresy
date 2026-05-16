@@ -20,10 +20,10 @@ func TestPostgresChoreStore_GetChore(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at FROM chores WHERE id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at, indicator_labels FROM chores WHERE id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "created_by", "created_at"}).
-			AddRow(1, 1, "Test", "🧹", "#FF0000", 0, "cleaning", false, nil, testTime))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "created_by", "created_at", "indicator_labels"}).
+			AddRow(1, 1, "Test", "🧹", "#FF0000", 0, "cleaning", false, nil, testTime, "[]"))
 
 	c, err := store.GetChore(context.Background(), 1)
 	if err != nil {
@@ -58,11 +58,11 @@ func TestPostgresChoreStore_ListChores(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at FROM chores WHERE household_id = $1 ORDER BY sort_order`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at, indicator_labels FROM chores WHERE household_id = $1 ORDER BY sort_order`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "created_by", "created_at"}).
-			AddRow(1, 1, "A", "🧹", "#F00", 0, "cleaning", false, nil, testTime).
-			AddRow(2, 1, "B", "🧹", "#0F0", 1, "care", false, nil, testTime))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "created_by", "created_at", "indicator_labels"}).
+			AddRow(1, 1, "A", "🧹", "#F00", 0, "cleaning", false, nil, testTime, "[]").
+			AddRow(2, 1, "B", "🧹", "#0F0", 1, "care", false, nil, testTime, "[]"))
 
 	chores, err := store.ListChores(context.Background(), 1)
 	if err != nil {
@@ -81,8 +81,8 @@ func TestPostgresChoreStore_UpdateChore(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE chores SET name=$1, icon=$2, color=$3, category=$4 WHERE id=$5`)).
-		WithArgs("Updated", "🧹", "#F00", "cleaning", int64(1)).
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE chores SET name=$1, icon=$2, color=$3, category=$4, indicator_labels=$5 WHERE id=$6`)).
+		WithArgs("Updated", "🧹", "#F00", "cleaning", "[]", int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	err = store.UpdateChore(context.Background(), Chore{ID: 1, Name: "Updated", Icon: "🧹", Color: "#F00", Category: "cleaning"})
@@ -123,8 +123,8 @@ func TestPostgresChoreStore_CreateChore(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, created_by)`)).
-		WithArgs(int64(1), "New", "🧹", "#F00", 0, "cleaning", false, (*int64)(nil)).
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, created_by, indicator_labels)`)).
+		WithArgs(int64(1), "New", "🧹", "#F00", 0, "cleaning", false, (*int64)(nil), "[]").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(3, testTime))
 
 	c, err := store.CreateChore(context.Background(), Chore{HouseholdID: 1, Name: "New", Icon: "🧹", Color: "#F00", Category: "cleaning"})

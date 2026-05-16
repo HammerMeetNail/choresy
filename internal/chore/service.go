@@ -13,7 +13,7 @@ func NewService(store Store) *Service {
 	return &Service{store: store}
 }
 
-func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string) (Chore, error) {
+func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels []string) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -26,14 +26,18 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if category == "" {
 		category = "custom"
 	}
+	if indicatorLabels == nil {
+		indicatorLabels = []string{}
+	}
 	return s.store.CreateChore(ctx, Chore{
-		HouseholdID:  householdID,
-		Name:         name,
-		Icon:         icon,
-		Color:        color,
-		Category:     category,
-		IsPredefined: false,
-		CreatedBy:    &userID,
+		HouseholdID:     householdID,
+		Name:            name,
+		Icon:            icon,
+		Color:           color,
+		Category:        category,
+		IsPredefined:    false,
+		CreatedBy:       &userID,
+		IndicatorLabels: indicatorLabels,
 	})
 }
 
@@ -45,7 +49,7 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 	return s.store.GetChore(ctx, choreID)
 }
 
-func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, color, category string) error {
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, color, category string, indicatorLabels []string) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
@@ -61,6 +65,9 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, co
 	}
 	if category != "" {
 		existing.Category = category
+	}
+	if indicatorLabels != nil {
+		existing.IndicatorLabels = indicatorLabels
 	}
 	return s.store.UpdateChore(ctx, existing)
 }

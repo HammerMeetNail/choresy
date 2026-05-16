@@ -3,6 +3,7 @@ package chore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 )
 
 type PostgresStore struct {
@@ -14,24 +15,32 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 }
 
 func (s *PostgresStore) CreateChore(ctx context.Context, chore Chore) (Chore, error) {
+	labels, _ := json.Marshal(nilToEmpty(chore.IndicatorLabels))
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, created_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at
-	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, chore.CreatedBy).Scan(&chore.ID, &chore.CreatedAt)
+		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, created_by, indicator_labels)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at
+	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, chore.CreatedBy, string(labels)).Scan(&chore.ID, &chore.CreatedAt)
 	return chore, err
 }
 
 func (s *PostgresStore) GetChore(ctx context.Context, id int64) (Chore, error) {
 	var c Chore
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at FROM chores WHERE id = $1`, id).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.CreatedBy, &c.CreatedAt)
+	var labelsJSON string
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at, indicator_labels FROM chores WHERE id = $1`, id).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.CreatedBy, &c.CreatedAt, &labelsJSON)
 	if err == sql.ErrNoRows {
 		return Chore{}, ErrNotFound
+	}
+	if err == nil {
+		_ = json.Unmarshal([]byte(labelsJSON), &c.IndicatorLabels)
+		if c.IndicatorLabels == nil {
+			c.IndicatorLabels = []string{}
+		}
 	}
 	return c, err
 }
 
 func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at, indicator_labels FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -39,8 +48,13 @@ func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Ch
 	var chores []Chore
 	for rows.Next() {
 		var c Chore
-		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.CreatedBy, &c.CreatedAt); err != nil {
+		var labelsJSON string
+		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.CreatedBy, &c.CreatedAt, &labelsJSON); err != nil {
 			return nil, err
+		}
+		_ = json.Unmarshal([]byte(labelsJSON), &c.IndicatorLabels)
+		if c.IndicatorLabels == nil {
+			c.IndicatorLabels = []string{}
 		}
 		chores = append(chores, c)
 	}
@@ -48,7 +62,8 @@ func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Ch
 }
 
 func (s *PostgresStore) UpdateChore(ctx context.Context, chore Chore) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE chores SET name=$1, icon=$2, color=$3, category=$4 WHERE id=$5`, chore.Name, chore.Icon, chore.Color, chore.Category, chore.ID)
+	labels, _ := json.Marshal(nilToEmpty(chore.IndicatorLabels))
+	_, err := s.db.ExecContext(ctx, `UPDATE chores SET name=$1, icon=$2, color=$3, category=$4, indicator_labels=$5 WHERE id=$6`, chore.Name, chore.Icon, chore.Color, chore.Category, string(labels), chore.ID)
 	return err
 }
 
@@ -74,4 +89,11 @@ func (s *PostgresStore) SeedPredefinedChores(ctx context.Context, householdID in
 		}
 	}
 	return nil
+}
+
+func nilToEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }

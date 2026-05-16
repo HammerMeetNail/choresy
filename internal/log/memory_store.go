@@ -37,7 +37,27 @@ func (s *MemoryStore) GetLog(_ context.Context, id int64) (ChoreLog, error) {
 	if !ok {
 		return ChoreLog{}, ErrNotFound
 	}
+	if l.Indicators == nil {
+		l.Indicators = []string{}
+	}
 	return l, nil
+}
+
+func (s *MemoryStore) UpdateLog(_ context.Context, log ChoreLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.logs[log.ID]
+	if !ok {
+		return ErrNotFound
+	}
+	existing.Note = log.Note
+	if log.Indicators == nil {
+		existing.Indicators = []string{}
+	} else {
+		existing.Indicators = log.Indicators
+	}
+	s.logs[log.ID] = existing
+	return nil
 }
 
 func (s *MemoryStore) DeleteLog(_ context.Context, id int64) error {

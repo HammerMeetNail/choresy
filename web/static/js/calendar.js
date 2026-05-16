@@ -41,18 +41,36 @@ export function renderDayView(state) {
   const logMap = {};
   logs.forEach(l => { logMap[l.choreId] = l; });
 
+  // Chores that were logged from a specific time slot (slotHour set).
+  // These are displayed in their slot row rather than the Anytime section.
+  const slotLoggedChoreIds = new Set(
+    logs.filter(l => l.slotHour != null).map(l => l.choreId)
+  );
+
   // Filter to schedules active on the viewed date (respects "once", "weekly", etc.)
   const activeSchedules = schedules.filter(sch => isActiveForDayJS(sch, date));
 
   // Build rows: one per hour 0-23.
-  // Only schedules with a specificTime appear in the hourly grid.
+  // Schedules with a specificTime matching the hour appear here, as do any
+  // ad-hoc logs (no matching timed schedule) whose slotHour matches.
   const rows = GRID_HOURS.map(hour => {
-    const choreCells = activeSchedules
-      .filter(sch => {
-        if (!sch.specificTime) return false;
-        const schHour = parseInt(sch.specificTime.split(":")[0], 10);
-        return schHour === hour;
-      })
+    const scheduledAtHour = activeSchedules.filter(sch => {
+      if (!sch.specificTime) return false;
+      return parseInt(sch.specificTime.split(":")[0], 10) === hour;
+    });
+    const scheduledChoreIdsAtHour = new Set(scheduledAtHour.map(s => s.choreId));
+
+    // Ad-hoc logged chores at this hour: logged with slotHour === hour but not
+    // already shown via a timed schedule in this same row.
+    const adHocCells = logs
+      .filter(l => l.slotHour === hour && !scheduledChoreIdsAtHour.has(l.choreId))
+      .map(l => {
+        const chore = chores.find(c => c.id === l.choreId);
+        if (!chore) return "";
+        return renderChoreCard(chore, null, l, date, true);
+      }).join("");
+
+    const scheduledCells = scheduledAtHour
       .map(sch => {
         const chore = chores.find(c => c.id === sch.choreId);
         if (!chore) return "";
@@ -70,13 +88,13 @@ export function renderDayView(state) {
         data-action="open-pick-chore-sheet"
         data-date="${date}"
         data-hour="${hour}">
-        ${choreCells}
+        ${scheduledCells}${adHocCells}
       </div>
     </div>`;
   }).join("");
 
-  // "Anytime" section: active schedules without a specificTime + wholly unscheduled chores.
-  // Use activeSchedules so "once" chores for other days don't appear here.
+  // "Anytime" section: active schedules without a specificTime + wholly unscheduled
+  // chores — but exclude any chore already shown in a timed slot via a slot log.
   const timeScheduledChoreIds = new Set();
   activeSchedules.forEach(sch => {
     if (sch.specificTime) timeScheduledChoreIds.add(sch.choreId);
@@ -90,11 +108,15 @@ export function renderDayView(state) {
   const unscheduledChores = chores.filter(c => !allScheduledChoreIds.has(c.id));
 
   const anytimeItems = [
-    ...noTimeSchedules.map(sch => {
-      const chore = chores.find(c => c.id === sch.choreId);
-      return chore ? { chore, sch } : null;
-    }).filter(Boolean),
-    ...unscheduledChores.map(chore => ({ chore, sch: null })),
+    ...noTimeSchedules
+      .filter(s => !slotLoggedChoreIds.has(s.choreId))
+      .map(sch => {
+        const chore = chores.find(c => c.id === sch.choreId);
+        return chore ? { chore, sch } : null;
+      }).filter(Boolean),
+    ...unscheduledChores
+      .filter(c => !slotLoggedChoreIds.has(c.id))
+      .map(chore => ({ chore, sch: null })),
   ];
 
   const anytimeSection = anytimeItems.length > 0 ? `
@@ -144,7 +166,7 @@ function renderChoreCard(chore, sch, log, date, compact = false) {
   const done        = !!log;
   const doneClass   = done ? "chore-card--done" : "";
   const compactClass = compact ? "chore-card--compact" : "";
-  const action      = done ? "undo-chore" : "log-chore";
+  const action      = done ? "view-log" : "log-chore";
   const logId       = log ? log.id : "";
   // Time label only shown in full-size (anytime) cards — the hour row itself
   // already indicates the time, so showing it again in compact chips is noise.
@@ -154,24 +176,35 @@ function renderChoreCard(chore, sch, log, date, compact = false) {
   const assignee  = sch?.assignedUserId
     ? `<span class="chore-assignee" aria-label="Assigned">👤</span>`
     : "";
+  const pencil = sch?.id
+    ? `<button type="button" class="chore-card-edit-btn"
+        data-action="edit-schedule"
+        data-chore-id="${chore.id}"
+        data-schedule-id="${sch.id}"
+        aria-label="Edit schedule"
+        title="Edit schedule">✎</button>`
+    : "";
 
   return `
-    <button type="button"
-      class="chore-card ${compactClass} ${doneClass}"
-      style="border-left: 4px solid ${escapeHTML(chore.color)}"
-      data-action="${action}"
-      data-chore-id="${chore.id}"
-      data-log-id="${logId}"
-      data-date="${date}"
-      draggable="true"
-      data-drag-chore-id="${chore.id}"
-      data-drag-schedule-id="${sch?.id || ""}"
-      aria-pressed="${done}">
-      <span class="chore-icon" aria-hidden="true">${chore.icon}</span>
-      <span class="chore-name">${escapeHTML(chore.name)}</span>
-      ${timeLabel}${assignee}
-      ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
-    </button>`;
+    <div class="chore-card-wrap">
+      <button type="button"
+        class="chore-card ${compactClass} ${doneClass}"
+        style="border-left: 4px solid ${escapeHTML(chore.color)}"
+        data-action="${action}"
+        data-chore-id="${chore.id}"
+        data-log-id="${logId}"
+        data-date="${date}"
+        draggable="true"
+        data-drag-chore-id="${chore.id}"
+        data-drag-schedule-id="${sch?.id || ""}"
+        aria-pressed="${done}">
+        <span class="chore-icon" aria-hidden="true">${chore.icon}</span>
+        <span class="chore-name">${escapeHTML(chore.name)}</span>
+        ${timeLabel}${assignee}
+        ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
+      </button>
+      ${pencil}
+    </div>`;
 }
 
 // ─── Week View ────────────────────────────────────────────────────────────────
@@ -274,23 +307,34 @@ export function renderWeekView(state) {
 
 function renderWeekChoreCard(chore, sch, log, iso) {
   const done   = !!log;
-  const action = done ? "undo-chore" : "log-chore";
-  return `<button type="button"
-    class="week-chore-card ${done ? "chore-card--done" : ""}"
-    style="background:${escapeHTML(chore.color)}22; border-left: 3px solid ${escapeHTML(chore.color)}"
-    data-action="${action}"
-    data-chore-id="${chore.id}"
-    data-log-id="${log?.id || ""}"
-    data-date="${iso}"
-    draggable="true"
-    data-drag-chore-id="${chore.id}"
-    data-drag-schedule-id="${sch?.id || ""}"
-    aria-label="${escapeHTML(chore.name)}${done ? " (done)" : ""}"
-    title="${escapeHTML(chore.name)}">
-    <span class="chore-icon" aria-hidden="true">${chore.icon}</span>
-    <span class="chore-name">${escapeHTML(chore.name)}</span>
-    ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
-  </button>`;
+  const action = done ? "view-log" : "log-chore";
+  const pencil = sch?.id
+    ? `<button type="button" class="chore-card-edit-btn"
+        data-action="edit-schedule"
+        data-chore-id="${chore.id}"
+        data-schedule-id="${sch.id}"
+        aria-label="Edit schedule"
+        title="Edit schedule">✎</button>`
+    : "";
+  return `<div class="chore-card-wrap">
+    <button type="button"
+      class="week-chore-card ${done ? "chore-card--done" : ""}"
+      style="background:${escapeHTML(chore.color)}22; border-left: 3px solid ${escapeHTML(chore.color)}"
+      data-action="${action}"
+      data-chore-id="${chore.id}"
+      data-log-id="${log?.id || ""}"
+      data-date="${iso}"
+      draggable="true"
+      data-drag-chore-id="${chore.id}"
+      data-drag-schedule-id="${sch?.id || ""}"
+      aria-label="${escapeHTML(chore.name)}${done ? " (done)" : ""}"
+      title="${escapeHTML(chore.name)}">
+      <span class="chore-icon" aria-hidden="true">${chore.icon}</span>
+      <span class="chore-name">${escapeHTML(chore.name)}</span>
+      ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
+    </button>
+    ${pencil}
+  </div>`;
 }
 
 function renderAnytimeWeekSection(anytimeSchedules, chores, days, logMap) {

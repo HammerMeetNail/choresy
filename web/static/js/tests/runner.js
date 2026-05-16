@@ -331,7 +331,7 @@ describe("Calendar: renderDayView", () => {
     };
     const html = renderDayView(state);
     assert.ok(html.includes("chore-card--done"));
-    assert.ok(html.includes("undo-chore"));
+    assert.ok(html.includes("view-log"));
   });
 
   it("places unscheduled chores in anytime", async () => {

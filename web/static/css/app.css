@@ -960,6 +960,155 @@ input:focus, select:focus, textarea:focus {
   border-bottom: none;
 }
 
+/* ─── Chore card wrapper (calendar views only) ─────────────────────────────── */
+
+/* The wrapper is the grid/flex item in hour rows and week cells.
+   The .chore-card inside fills its width; the pencil button sits top-right. */
+.chore-card-wrap {
+  position: relative;
+  display: contents; /* let the card itself be the grid/flex item by default */
+}
+
+/* In hour rows and anytime sections the wrapper becomes the grid item. */
+.day-hour-row .chore-card-wrap,
+.day-anytime-cards .chore-card-wrap,
+.week-cell .chore-card-wrap,
+.anytime-row .chore-card-wrap {
+  display: block;
+  position: relative;
+}
+
+/* Hide pencil in week-view cells — cells are ~35–55 px wide, too narrow for
+   the 24 px button without overlapping the card and intercepting taps. */
+.week-cell .chore-card-edit-btn,
+.anytime-row .chore-card-edit-btn {
+  display: none;
+}
+
+.day-hour-row .chore-card-wrap .chore-card,
+.day-anytime-cards .chore-card-wrap .chore-card {
+  width: 100%;
+}
+
+.week-cell .chore-card-wrap .week-chore-card {
+  width: 100%;
+}
+
+/* ─── Pencil (edit-schedule) button ────────────────────────────────────────── */
+
+.chore-card-edit-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none; /* invisible → must not intercept clicks */
+  transition: opacity 0.15s;
+  z-index: 10;
+  padding: 0;
+  color: var(--text-secondary);
+}
+
+/* Show pencil on hover (pointer devices). */
+.chore-card-wrap:hover .chore-card-edit-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Always show on touch devices where hover doesn't exist — only in day-view
+   contexts where cells are wide enough. Week-view cells (~55 px) are too
+   narrow; the pencil would overlap the card centre and intercept taps. */
+@media (hover: none) {
+  .day-hour-row .chore-card-edit-btn,
+  .day-anytime-cards .chore-card-edit-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ─── FAB (floating action button) ─────────────────────────────────────────── */
+
+.fab {
+  position: fixed;
+  bottom: calc(72px + var(--safe-bottom));
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  z-index: 150;
+  border: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.fab:active {
+  transform: scale(0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* ─── Log sheet: indicator chips ────────────────────────────────────────────── */
+
+.sheet-chip-row {
+  margin-bottom: 14px;
+}
+
+.sheet-chip-row .field-label {
+  margin-bottom: 8px;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.log-chip {
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.log-chip--on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ─── Log sheet: note row ───────────────────────────────────────────────────── */
+
+.sheet-note-row {
+  margin-bottom: 14px;
+}
+
+.sheet-note-row .field-label {
+  display: block;
+  margin-bottom: 6px;
+}
+
 /* ─── Bottom Sheet ─────────────────────────────────────────────────────────── */
 
 .sheet-overlay-wrapper {
@@ -1115,6 +1264,19 @@ input:focus, select:focus, textarea:focus {
 .sheet-chore-item:hover,
 .sheet-chore-item:active {
   background: var(--border);
+}
+
+.sheet-chore-item--pressing {
+  transform: scale(0.97);
+  opacity: 0.7;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.sheet-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0 0 8px;
 }
 
 .sheet-chore-item .chore-icon { font-size: 24px; }

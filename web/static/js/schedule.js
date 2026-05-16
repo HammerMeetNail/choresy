@@ -258,6 +258,7 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="sheet-handle" aria-hidden="true"></div>
       <h2 class="sheet-title">${title}</h2>
+      <p class="sheet-hint">Tap to schedule · Hold to log with notes</p>
       <div class="sheet-time-row">
         <label for="sheet-time" class="field-label">Time</label>
         <input type="time" id="sheet-time" class="text-input sheet-time-input"
@@ -316,6 +317,114 @@ export function renderEditScheduleSheet(chore, sch, date) {
         data-schedule-id="${scheduleId}">
         Remove from schedule
       </button>
+      <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
+        Cancel
+      </button>
+    </div>`;
+}
+
+// ─── Render: log-with-indicators bottom sheet ────────────────────────────────
+
+/**
+ * Renders the log sheet for both "log" mode (log=null) and "edit log" mode.
+ *
+ * @param {object}      chore  { id, icon, name, color, indicatorLabels[] }
+ * @param {object|null} log    Existing log entry, or null for new log
+ * @param {string}      date   ISO date "YYYY-MM-DD"
+ */
+export function renderLogSheet(chore, log, date) {
+  const title = `${chore.icon} ${escapeHTML(chore.name)}`;
+  const noteVal = log ? escapeHTML(log.note || "") : "";
+  const activeIndicators = new Set(log?.indicators || []);
+
+  const chips = (chore.indicatorLabels || []).map(label => {
+    const on = activeIndicators.has(label);
+    return `<button type="button"
+      class="log-chip${on ? " log-chip--on" : ""}"
+      data-action="toggle-indicator"
+      data-label="${escapeHTML(label)}"
+      aria-pressed="${on}">
+      ${escapeHTML(label)}
+    </button>`;
+  }).join("");
+
+  const chipsSection = chips ? `
+    <div class="sheet-chip-row">
+      <p class="field-label">Indicators</p>
+      <div class="chip-list">${chips}</div>
+    </div>` : "";
+
+  const noteSection = `
+    <div class="sheet-note-row">
+      <label for="log-note" class="field-label">Note (optional)</label>
+      <textarea id="log-note" class="text-input" rows="2" placeholder="Add a note…">${noteVal}</textarea>
+    </div>`;
+
+  const actions = log
+    ? `<button type="button" class="btn btn-primary btn-full"
+        data-action="save-log"
+        data-log-id="${log.id}"
+        data-chore-id="${chore.id}"
+        data-date="${escapeHTML(date)}">
+        Update
+      </button>
+      <button type="button" class="btn btn-danger btn-full mt-2"
+        data-action="undo-chore"
+        data-log-id="${log.id}">
+        Remove log
+      </button>`
+    : `<button type="button" class="btn btn-primary btn-full"
+        data-action="save-log"
+        data-log-id=""
+        data-chore-id="${chore.id}"
+        data-date="${escapeHTML(date)}">
+        Log
+      </button>`;
+
+  return `
+    <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="${log ? "Edit log" : "Log chore"}">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <h2 class="sheet-title">${title}</h2>
+      ${chipsSection}
+      ${noteSection}
+      ${actions}
+      <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
+        Cancel
+      </button>
+    </div>`;
+}
+
+// ─── Render: quick-log bottom sheet (FAB) ─────────────────────────────────────
+
+/**
+ * Renders the quick-log sheet: pick a chore and add an optional note.
+ *
+ * @param {object[]} chores  All household chores
+ * @param {string}   date    ISO date "YYYY-MM-DD"
+ */
+export function renderQuickLogSheet(chores, date) {
+  const items = chores.length === 0
+    ? `<p class="sheet-empty">No chores set up yet.</p>`
+    : chores.map(c => `
+        <button type="button"
+          class="sheet-chore-item"
+          data-action="quick-log-chore"
+          data-chore-id="${c.id}"
+          data-date="${escapeHTML(date)}">
+          <span class="chore-icon">${c.icon}</span>
+          <span class="chore-name">${escapeHTML(c.name)}</span>
+        </button>`).join("");
+
+  return `
+    <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="Quick Log">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <h2 class="sheet-title">Log a chore</h2>
+      <p class="sheet-hint">Tap to log instantly · Hold to add notes</p>
+      <div class="sheet-note-row">
+        <label for="quick-log-note" class="field-label">Note (optional)</label>
+        <textarea id="quick-log-note" class="text-input" rows="2" placeholder="Add a note…"></textarea>
+      </div>
+      <div class="sheet-chore-list">${items}</div>
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
         Cancel
       </button>
