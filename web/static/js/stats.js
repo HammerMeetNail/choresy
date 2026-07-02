@@ -936,6 +936,23 @@ function widgetMetricUnit(widget, src) {
   }
 }
 
+// renderWidgetPeriodToggle renders a day/week/month segmented control on a
+// widget card (matching the other stats sections). last-done has no period.
+function renderWidgetPeriodToggle(widget) {
+  const active = widget.period || "week";
+  const periods = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+  ];
+  return `<div class="period-toggle" role="group" aria-label="Widget period">
+    ${periods.map(p => {
+      const on = p.value === active ? " period-toggle--active" : "";
+      return `<button class="period-toggle-btn${on}" data-action="widget-period" data-widget-id="${escapeHTML(widget.id)}" data-period="${p.value}" aria-pressed="${p.value === active}">${p.label}</button>`;
+    }).join("")}
+  </div>`;
+}
+
 // renderWidgetSection renders one user-defined widget. Data comes from
 // state.stats.widgetData[widget.id] (an array of per-chore time-series loaded by
 // app.js) plus state.latestLogs for the last-done type. The widget title is
@@ -994,11 +1011,15 @@ export function renderWidgetSection(widget, state) {
     bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
   }
 
+  // Period toggle for the period-scoped types (last-done has no period).
+  const periodToggle = widget.type === "last-done" ? "" : renderWidgetPeriodToggle(widget);
+
   return `<div class="card mb-3 widget-card">
     <div class="widget-card-header">
       <h3>${title}</h3>
       <button class="widget-remove-btn" data-action="widget-remove" data-widget-id="${escapeHTML(widget.id)}" aria-label="Remove widget">×</button>
     </div>
+    ${periodToggle}
     ${bodyHTML}
   </div>`;
 }
@@ -1011,7 +1032,8 @@ export function renderWidgetWizard(state, draft) {
   const selChores = new Set(d.choreIds || []);
   const type = d.type || "total";
   const metric = d.metric || "count";
-  const period = d.period || "week";
+  // Period is not chosen at create time — new widgets default to "week" and
+  // expose a day/week/month toggle on the rendered card (like other sections).
 
   const presentations = [
     { value: "total", label: "Big number" },
@@ -1023,12 +1045,6 @@ export function renderWidgetWizard(state, draft) {
     { value: "count", label: "Count" },
     { value: "amount", label: "Amount" },
     { value: "duration", label: "Duration" },
-  ];
-  const periods = [
-    { value: "day", label: "Day" },
-    { value: "week", label: "Week" },
-    { value: "month", label: "Month" },
-    { value: "all", label: "All" },
   ];
 
   const choreChecks = chores.map(c =>
@@ -1062,11 +1078,6 @@ export function renderWidgetWizard(state, draft) {
     <div class="chore-edit-field">
       <label class="chore-edit-label" for="widget-metric">Value</label>
       <select id="widget-metric" class="input" data-action="widget-draft-field" data-field="metric">${opt(metrics, metric)}</select>
-    </div>
-
-    <div class="chore-edit-field">
-      <label class="chore-edit-label" for="widget-period">Period</label>
-      <select id="widget-period" class="input" data-action="widget-draft-field" data-field="period">${opt(periods, period)}</select>
     </div>
 
     <div class="chore-sheet-footer">

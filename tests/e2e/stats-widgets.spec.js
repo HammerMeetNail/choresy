@@ -106,6 +106,60 @@ test.describe('Stats widgets (Phase 4)', () => {
     await expect(all.locator('.widget-big-number')).toHaveText('2');  // today + 40d ago
   });
 
+  test('the wizard lists pickable chores (checkbox next to its name) and has no period field', async ({ page }) => {
+    const { csrf } = await setupWithChore(page); // creates a "Bottle" chore
+    await page.request.post('/api/chores', { data: { name: 'Nap', icon: '😴', color: '#60A5FA' }, headers: { 'X-CSRF-Token': csrf } });
+    await page.reload();
+    await page.click('a[data-nav="stats"]');
+    await page.waitForSelector('.stats-page');
+    await page.click('button[data-action="toggle-customize-stats"]');
+    await page.click('[data-action="widget-add"]');
+    await page.waitForSelector('.widget-wizard-sheet');
+
+    // Each chore is a labelled, checkable row.
+    const rows = page.locator('.widget-chore-check');
+    await expect(rows).toHaveCount(2);
+    await expect(page.locator('.widget-chore-check', { hasText: 'Bottle' })).toBeVisible();
+    await expect(page.locator('.widget-chore-check', { hasText: 'Nap' })).toBeVisible();
+    // The checkbox sits immediately left of its label (not shoved to the far
+    // right): the checkbox's right edge is within a few px of the label's left.
+    const box = page.locator('.widget-chore-check', { hasText: 'Bottle' });
+    const cb = await box.locator('input[type="checkbox"]').boundingBox();
+    const sp = await box.locator('span').boundingBox();
+    expect(sp.x - (cb.x + cb.width)).toBeLessThan(16);
+    // Checking a chore works.
+    await box.locator('input[type="checkbox"]').check();
+    await expect(box.locator('input[type="checkbox"]')).toBeChecked();
+
+    // Period is no longer chosen at create time.
+    await expect(page.locator('#widget-period')).toHaveCount(0);
+    await expect(page.locator('#widget-presentation')).toBeVisible();
+    await expect(page.locator('#widget-metric')).toBeVisible();
+  });
+
+  test('a widget card has a day/week/month period toggle that persists', async ({ page }) => {
+    const { csrf, chore } = await setupWithChore(page);
+    await page.request.patch('/api/preferences', {
+      data: { statsWidgets: [{ type: 'total', metric: 'count', period: 'week', choreIds: [chore.id], title: 'Counter' }] },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.reload();
+    await page.click('a[data-nav="stats"]');
+    const card = page.locator('.widget-card', { hasText: 'Counter' });
+    await card.waitFor();
+
+    await expect(card.locator('.period-toggle-btn', { hasText: 'Week' })).toHaveClass(/period-toggle--active/);
+    await expect(card.locator('.period-toggle-btn', { hasText: 'All' })).toHaveCount(0); // day/week/month only
+    await card.locator('.period-toggle-btn', { hasText: 'Day' }).click();
+    await expect(card.locator('.period-toggle-btn', { hasText: 'Day' })).toHaveClass(/period-toggle--active/);
+
+    // Persists across reload.
+    await page.reload();
+    await page.click('a[data-nav="stats"]');
+    const card2 = page.locator('.widget-card', { hasText: 'Counter' });
+    await expect(card2.locator('.period-toggle-btn', { hasText: 'Day' })).toHaveClass(/period-toggle--active/);
+  });
+
   test('remove a widget', async ({ page }) => {
     const { csrf, chore } = await setupWithChore(page);
     await page.request.patch('/api/preferences', {

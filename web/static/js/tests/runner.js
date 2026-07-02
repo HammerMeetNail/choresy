@@ -736,6 +736,28 @@ describe("Stats: user-defined widgets (Phase 4)", () => {
     assert.ok(html.includes("&lt;img"));
   });
 
+  it("wizard has no period dropdown; widget card shows a day/week/month toggle", async () => {
+    const { renderWidgetWizard, renderWidgetSection } = await import("../stats.js");
+    const wiz = renderWidgetWizard({ chores: [] }, {});
+    assert.ok(!wiz.includes('id="widget-period"'));
+
+    const state = {
+      chores: [{ id: 1, name: "C", icon: "x", color: "#000" }],
+      members: [], latestLogs: {},
+      stats: { widgetData: { w: [{ summary: { count: 1 } }] } },
+    };
+    const total = renderWidgetSection({ id: "w", type: "total", metric: "count", period: "week", choreIds: [1], title: "T" }, state);
+    assert.ok(total.includes('data-action="widget-period"'));
+    assert.ok(total.includes('data-period="day"'));
+    assert.ok(total.includes('data-period="month"'));
+    assert.ok(!total.includes('data-period="all"'));
+    // The active button reflects the widget's stored period.
+    assert.match(total, /period-toggle--active[^>]*data-period="week"|data-period="week"[^>]*period-toggle--active/);
+    // last-done widgets have no period.
+    const ld = renderWidgetSection({ id: "ld", type: "last-done", choreIds: [1], title: "L" }, { ...state, stats: { widgetData: { ld: [] } } });
+    assert.ok(!ld.includes('data-action="widget-period"'));
+  });
+
   it("widget wizard lists chores and presentation options", async () => {
     const { renderWidgetWizard } = await import("../stats.js");
     const state = baseState();

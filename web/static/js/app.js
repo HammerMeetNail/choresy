@@ -2694,7 +2694,8 @@ export async function init() {
         const title = (document.querySelector("#widget-title")?.value || "").trim();
         const type = document.querySelector("#widget-presentation")?.value || "total";
         const metric = document.querySelector("#widget-metric")?.value || "count";
-        const period = document.querySelector("#widget-period")?.value || "week";
+        // Period is chosen on the widget card (day/week/month toggle), not here.
+        const period = "week";
         const choreIds = [...document.querySelectorAll("[data-action='widget-draft-chore']:checked")]
           .map(el => parseInt(el.dataset.choreId, 10))
           .filter(n => !isNaN(n));
@@ -2721,6 +2722,23 @@ export async function init() {
         const widgets = (state.stats?.widgets || []).filter(w => w.id !== id);
         saveStatsWidgets(state, widgets).then((saved) => {
           if (!saved) { showToast("Failed to remove widget", "error"); return; }
+          render(app);
+        });
+        break;
+      }
+
+      case "widget-period": {
+        e.preventDefault();
+        const id = actionEl.dataset.widgetId;
+        const period = actionEl.dataset.period;
+        if (!id || !period) break;
+        const current = (state.stats?.widgets || []).find(w => w.id === id);
+        if (!current || current.period === period) break;
+        const widgets = (state.stats.widgets || []).map(w => w.id === id ? { ...w, period } : w);
+        // Persist the new period and refetch the affected widget's data.
+        saveStatsWidgets(state, widgets).then(async (saved) => {
+          if (!saved) { showToast("Failed to update widget", "error"); return; }
+          await loadWidgetData();
           render(app);
         });
         break;
