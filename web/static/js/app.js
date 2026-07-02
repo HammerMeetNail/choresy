@@ -22,7 +22,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit } from "./preferences.js";
@@ -851,7 +851,26 @@ async function loadAllStatsData() {
       }
     })(),
     loadBabyTimeSeries(),
+    loadChoreAnalyticsData(),
   ]);
+}
+
+// loadChoreAnalyticsData fetches daily time-series for every chore that has a
+// generalized analytics section (a metric or indicators), powering the
+// per-chore `chore:<id>` stats sections (Phase 3).
+async function loadChoreAnalyticsData() {
+  const chores = (state.chores || []).filter(choreHasAnalytics);
+  if (chores.length === 0) return;
+  state.stats = state.stats || {};
+  state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
+  await Promise.allSettled(chores.map(async (c) => {
+    try {
+      const data = await loadChoreTimeSeries(c.id, "daily");
+      if (data && data.timeSeries) {
+        state.stats.choreTimeSeries[c.id] = data.timeSeries;
+      }
+    } catch {}
+  }));
 }
 
 async function loadBabyTimeSeries() {
@@ -2269,11 +2288,17 @@ export async function init() {
           }
         });
 
+        // Metric config (Phase 3): type + optional amount unit.
+        const metricType = document.querySelector("#chore-metric-type")?.value || "none";
+        const metricUnit = metricType === "amount"
+          ? ((document.querySelector("#chore-metric-unit")?.value || "").trim() || "mL")
+          : "";
+
         if (isNew) {
           const followUpEnabled = document.querySelector("[data-action='toggle-followup-enabled']")?.checked ?? true;
           apiFetch("/api/chores", {
             method: "POST",
-            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled }),
+            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit }),
           }).then(async ({ data }) => {
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }
@@ -2293,7 +2318,7 @@ export async function init() {
           const followUpEnabled = followUpEnabledEl?.checked;
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled }),
+            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit }),
           }).then(async () => {
             state.activeSheet = null;
             state.activeSheetData = {};
@@ -2908,6 +2933,11 @@ export async function init() {
           }).catch(() => {}).then(() => render(app));
         }
       }
+    if (actionEl?.dataset?.action === "pick-metric-type") {
+      const sheet = actionEl.closest(".bottom-sheet");
+      const unitRow = sheet?.querySelector(".chore-metric-unit-row");
+      if (unitRow) unitRow.classList.toggle("hidden", actionEl.value !== "amount");
+    }
     if (actionEl?.dataset?.action === "toggle-stats-section") {
       const section = actionEl.dataset.section;
       if (!section) return;

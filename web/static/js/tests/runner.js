@@ -491,6 +491,68 @@ describe("Stats: colorForIndicator", () => {
   });
 });
 
+describe("Stats: generalized per-chore sections (Phase 3)", () => {
+  it("choreHasAnalytics: true for metric or indicators, false for plain/baby", async () => {
+    const { choreHasAnalytics } = await import("../stats.js");
+    assert.equal(choreHasAnalytics({ id: 1, name: "Naps", metricType: "duration" }), true);
+    assert.equal(choreHasAnalytics({ id: 2, name: "Meds", metricType: "none", indicatorLabels: ["am"] }), true);
+    assert.equal(choreHasAnalytics({ id: 3, name: "Vacuum", metricType: "none", indicatorLabels: [] }), false);
+    // Baby chores are covered by the dedicated baby section.
+    assert.equal(choreHasAnalytics({ id: 4, name: "Feed Baby", metricType: "amount" }), false);
+    assert.equal(choreHasAnalytics({ id: 5, name: "Change Baby", indicatorLabels: ["poo"] }), false);
+  });
+
+  it("eligibleChoreSectionKeys maps eligible chores to chore:<id> keys", async () => {
+    const { eligibleChoreSectionKeys } = await import("../stats.js");
+    const keys = eligibleChoreSectionKeys([
+      { id: 7, name: "Naps", metricType: "duration" },
+      { id: 8, name: "Vacuum", metricType: "none", indicatorLabels: [] },
+      { id: 9, name: "Meds", indicatorLabels: ["am", "pm"] },
+    ]);
+    assert.deepEqual(keys, ["chore:7", "chore:9"]);
+  });
+
+  it("resolveStatsLayout keeps valid dynamic keys and drops stale ones", async () => {
+    const { resolveStatsLayout } = await import("../stats.js");
+    const order = resolveStatsLayout(
+      ["overview", "chore:7", "chore:999"], // 999 no longer eligible
+      [],
+      ["chore:7", "chore:9"],
+    );
+    assert.ok(order.includes("chore:7"));
+    assert.ok(!order.includes("chore:999")); // dropped: not a valid dynamic key
+    assert.ok(order.includes("chore:9"));     // auto-appended eligible key
+    assert.ok(order.includes("overview"));
+  });
+
+  it("resolveStatsLayout excludes hidden dynamic keys", async () => {
+    const { resolveStatsLayout } = await import("../stats.js");
+    const order = resolveStatsLayout([], ["chore:7"], ["chore:7", "chore:9"]);
+    assert.ok(!order.includes("chore:7"));
+    assert.ok(order.includes("chore:9"));
+  });
+
+  it("renderChoreAnalyticsSection renders a card with chore name and chart", async () => {
+    const { renderChoreAnalyticsSection } = await import("../stats.js");
+    const chore = { id: 7, name: "Naps", icon: "😴", metricType: "duration" };
+    const ts = { byMember: [{ userId: 1, count: 3 }], periods: [
+      { start: "2026-07-01", end: "2026-07-02", count: 1, totalDuration: 1800 },
+    ] };
+    const html = renderChoreAnalyticsSection(chore, ts, [{ userId: 1, displayName: "A", avatarColor: "#000" }]);
+    assert.ok(html.includes("Naps"));
+    assert.ok(html.includes("baby-chart"));
+    assert.ok(html.includes("min")); // duration axis label
+  });
+
+  it("widget/chore key type guards", async () => {
+    const { isChoreSectionKey, isWidgetSectionKey } = await import("../stats.js");
+    assert.equal(isChoreSectionKey("chore:12"), true);
+    assert.equal(isChoreSectionKey("chore:x"), false);
+    assert.equal(isWidgetSectionKey("widget:abc-123_XY"), true);
+    assert.equal(isWidgetSectionKey("widget:bad key"), false);
+  });
+});
+
 describe("Utils: volume units", () => {
   it("formatVolume renders mL and oz", async () => {
     const { formatVolume } = await import("../utils.js");

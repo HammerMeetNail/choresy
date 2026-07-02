@@ -36,7 +36,7 @@ func seedService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service, *stubC
 	ctx := context.Background()
 	for _, l := range logs {
 		d := l.CompletedAt
-		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil)
+		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil, nil)
 		if err != nil {
 			t.Fatalf("seed log: %v", err)
 		}
@@ -483,7 +483,7 @@ func TestGetTopChores_Limit(t *testing.T) {
 			// previous day, which on the 1st of the month fell into the previous
 			// month and was excluded by the "month" window, failing the test.
 			d := ref.Add(time.Duration(-j) * time.Minute)
-			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, nil, "", nil, nil, &d, nil, &d, nil, nil)
+			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, nil, "", nil, nil, &d, nil, &d, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("seed log: %v", err)
 			}
@@ -595,7 +595,7 @@ func seedFeedingService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service,
 	ctx := context.Background()
 	for _, l := range logs {
 		d := l.CompletedAt
-		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil)
+		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil, nil)
 		if err != nil {
 			t.Fatalf("seed feeding log: %v", err)
 		}
@@ -621,7 +621,7 @@ func TestGetFeedingGaps_Basic(t *testing.T) {
 	start := time.Date(2026, 6, 9, 0, 0, 0, 0, utc)
 	end := time.Date(2026, 6, 10, 0, 0, 0, 0, utc)
 
-	gaps, err := svc.GetFeedingGaps(context.Background(), 1, start, end, utc)
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, nil, start, end, utc)
 	if err != nil {
 		t.Fatalf("GetFeedingGaps: %v", err)
 	}
@@ -646,7 +646,7 @@ func TestGetFeedingGaps_EmptyWhenNoFeedChore(t *testing.T) {
 	}}
 	svc := stats.NewService(logStore, cs)
 
-	gaps, err := svc.GetFeedingGaps(context.Background(), 1, time.Date(2026, 6, 1, 0, 0, 0, 0, utc), time.Date(2026, 7, 1, 0, 0, 0, 0, utc), utc)
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, nil, time.Date(2026, 6, 1, 0, 0, 0, 0, utc), time.Date(2026, 7, 1, 0, 0, 0, 0, utc), utc)
 	if err != nil {
 		t.Fatalf("GetFeedingGaps: %v", err)
 	}
@@ -661,7 +661,7 @@ func TestGetFeedingGaps_SingleLog(t *testing.T) {
 	}
 	svc, _ := seedFeedingService(t, logs)
 
-	gaps, err := svc.GetFeedingGaps(context.Background(), 1, time.Date(2026, 6, 9, 0, 0, 0, 0, utc), time.Date(2026, 6, 10, 0, 0, 0, 0, utc), utc)
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, nil, time.Date(2026, 6, 9, 0, 0, 0, 0, utc), time.Date(2026, 6, 10, 0, 0, 0, 0, utc), utc)
 	if err != nil {
 		t.Fatalf("GetFeedingGaps: %v", err)
 	}

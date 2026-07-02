@@ -551,7 +551,7 @@ func (a *choreStatsAdapter) GetChore(ctx context.Context, id int64) (stats.Chore
 	if err != nil {
 		return stats.ChoreInfo{}, err
 	}
-	return stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}, nil
+	return stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels}, nil
 }
 
 func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) ([]stats.ChoreInfo, error) {
@@ -561,7 +561,7 @@ func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) (
 	}
 	result := make([]stats.ChoreInfo, len(chores))
 	for i, c := range chores {
-		result[i] = stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}
+		result[i] = stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels}
 	}
 	return result, nil
 }

@@ -39,8 +39,8 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
-func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int) (ChoreLog, error) {
-	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating)
+func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, durationSeconds *int) (ChoreLog, error) {
+	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating, durationSeconds)
 	created, err := s.store.CreateLog(ctx, entry)
 	if err != nil {
 		return ChoreLog{}, err
@@ -60,7 +60,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 // buildLog assembles a ChoreLog from the create-log inputs, resolving the
 // canonical completion timestamp and log date. Shared by LogChore and
 // LogChoreIdempotent.
-func (s *Service) buildLog(householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int) ChoreLog {
+func (s *Service) buildLog(householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, durationSeconds *int) ChoreLog {
 	var logCompletedAt time.Time
 	if completedAt != nil {
 		logCompletedAt = completedAt.UTC()
@@ -91,6 +91,7 @@ func (s *Service) buildLog(householdID, userID, choreID int64, title *string, no
 		LogDate:          logDate,
 		VolumeML:         volumeML,
 		Rating:           rating,
+		DurationSeconds:  durationSeconds,
 	}
 }
 
@@ -98,7 +99,7 @@ func (s *Service) buildLog(householdID, userID, choreID int64, title *string, no
 // idempotency key so offline replay is safe. Returns (log, created) where
 // created is false when an existing log with the same key was returned. When
 // key is empty it behaves exactly like LogChore (always creates).
-func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, idempotencyKey string) (ChoreLog, bool, error) {
+func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, durationSeconds *int, idempotencyKey string) (ChoreLog, bool, error) {
 	if idempotencyKey != "" {
 		if existing, err := s.store.FindLogByIdempotencyKey(ctx, householdID, idempotencyKey); err != nil {
 			return ChoreLog{}, false, err
@@ -106,7 +107,7 @@ func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, c
 			return *existing, false, nil
 		}
 	}
-	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating)
+	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating, durationSeconds)
 	entry.IdempotencyKey = idempotencyKey
 	created, err := s.store.CreateLog(ctx, entry)
 	if err != nil {
@@ -127,7 +128,7 @@ func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, c
 	return created, true, nil
 }
 
-func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int) error {
+func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int, durationSeconds *int) error {
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err
@@ -144,6 +145,7 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64,
 	log.IndicatorVolumes = indicatorVolumes
 	log.VolumeML = volumeML
 	log.Rating = rating
+	log.DurationSeconds = durationSeconds
 	if userID != nil {
 		log.UserID = *userID
 	}

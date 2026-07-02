@@ -73,6 +73,9 @@ type ChoreInfo struct {
 	Color           string
 	Category        string
 	HasVolumeML     bool
+	HasRating       bool
+	MetricType      string
+	MetricUnit      string
 	IndicatorLabels []string
 }
 
@@ -103,11 +106,13 @@ type VolumeDay struct {
 }
 
 type ChoreTimeSeries struct {
-	ChoreID   int64              `json:"choreId"`
-	ChoreName string             `json:"choreName"`
-	ChoreIcon string             `json:"choreIcon"`
-	ByMember  []LeaderboardEntry `json:"byMember"`
-	Periods   []TimeSeriesPeriod `json:"periods"`
+	ChoreID    int64              `json:"choreId"`
+	ChoreName  string             `json:"choreName"`
+	ChoreIcon  string             `json:"choreIcon"`
+	MetricType string             `json:"metricType,omitempty"`
+	MetricUnit string             `json:"metricUnit,omitempty"`
+	ByMember   []LeaderboardEntry `json:"byMember"`
+	Periods    []TimeSeriesPeriod `json:"periods"`
 }
 
 type TimeSeriesPeriod struct {
@@ -115,6 +120,7 @@ type TimeSeriesPeriod struct {
 	End               string         `json:"end"`
 	Count             int            `json:"count"`
 	TotalML           int            `json:"totalML"`
+	TotalDuration     int            `json:"totalDuration,omitempty"` // sum of duration_seconds in the bucket
 	Indicators        map[string]int `json:"indicators,omitempty"`
 	VolumeByIndicator map[string]int `json:"volumeByIndicator,omitempty"`
 }
@@ -776,6 +782,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	type bucketData struct {
 		count             int
 		totalML           int
+		totalDuration     int
 		indicators        map[string]int
 		volumeByIndicator map[string]int
 	}
@@ -788,6 +795,9 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		for i, b := range buckets {
 			if !t.Before(b.start) && t.Before(b.end) {
 				periodData[i].count++
+				if l.DurationSeconds != nil {
+					periodData[i].totalDuration += *l.DurationSeconds
+				}
 				if len(l.IndicatorVolumes) > 0 {
 					for ind, vol := range l.IndicatorVolumes {
 						if vol <= 0 {
@@ -814,18 +824,21 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	}
 
 	result := &ChoreTimeSeries{
-		ChoreID:   ch.ID,
-		ChoreName: ch.Name,
-		ChoreIcon: ch.Icon,
-		ByMember:  memberEntries,
+		ChoreID:    ch.ID,
+		ChoreName:  ch.Name,
+		ChoreIcon:  ch.Icon,
+		MetricType: ch.MetricType,
+		MetricUnit: ch.MetricUnit,
+		ByMember:   memberEntries,
 	}
 
 	for i, b := range buckets {
 		tp := TimeSeriesPeriod{
-			Start:   b.start.Format("2006-01-02"),
-			End:     b.end.Format("2006-01-02"),
-			Count:   periodData[i].count,
-			TotalML: periodData[i].totalML,
+			Start:         b.start.Format("2006-01-02"),
+			End:           b.end.Format("2006-01-02"),
+			Count:         periodData[i].count,
+			TotalML:       periodData[i].totalML,
+			TotalDuration: periodData[i].totalDuration,
 		}
 		if len(periodData[i].indicators) > 0 {
 			tp.Indicators = periodData[i].indicators
@@ -868,17 +881,31 @@ func buildMonthBuckets(start, end time.Time, loc *time.Location) []timeBucket {
 	return buckets
 }
 
-func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]FeedingGap, error) {
+// GetFeedingGaps computes inter-log interval "gaps" for a chore — the
+// generalized interval analysis (Phase 3). When choreID is nil it targets the
+// household's "Feed Baby" chore (the historical baby-care behavior). When set,
+// it must belong to the household; any chore where intervals matter (feeds,
+// medication, watering) can be analyzed.
+func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID *int64, start, end time.Time, loc *time.Location) ([]FeedingGap, error) {
 	chores, err := s.choreStore.ListChores(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
 
 	var feedBabyID int64
-	for _, ch := range chores {
-		if ch.HouseholdID == householdID && ch.Name == "Feed Baby" {
-			feedBabyID = ch.ID
-			break
+	if choreID != nil {
+		for _, ch := range chores {
+			if ch.HouseholdID == householdID && ch.ID == *choreID {
+				feedBabyID = ch.ID
+				break
+			}
+		}
+	} else {
+		for _, ch := range chores {
+			if ch.HouseholdID == householdID && ch.Name == "Feed Baby" {
+				feedBabyID = ch.ID
+				break
+			}
 		}
 	}
 	if feedBabyID == 0 {

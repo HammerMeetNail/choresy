@@ -55,20 +55,57 @@ const SECTION_LABELS = {
   recap: "Weekly recap",
 };
 
+// Dynamic per-entity section keys (Phase 3/4). A section key is either a
+// static canonical key (above), a per-chore analytics section "chore:<id>",
+// or a user-defined widget "widget:<uuid>".
+export function choreSectionKey(id) { return `chore:${id}`; }
+export function widgetSectionKey(id) { return `widget:${id}`; }
+
+export function isChoreSectionKey(k) { return /^chore:\d+$/.test(k); }
+export function isWidgetSectionKey(k) { return /^widget:[A-Za-z0-9_-]{1,64}$/.test(k); }
+export function isDynamicSectionKey(k) { return isChoreSectionKey(k) || isWidgetSectionKey(k); }
+
+// choreHasAnalytics reports whether a chore is rich enough to warrant its own
+// generalized analytics section: it tracks a metric or has indicator labels.
+// The two dedicated baby chores are excluded because the "baby" section already
+// renders them.
+export function choreHasAnalytics(c) {
+  if (!c) return false;
+  if (c.name === "Feed Baby" || c.name === "Change Baby") return false;
+  const hasMetric = c.metricType && c.metricType !== "none";
+  const hasIndicators = (c.indicatorLabels || []).length > 0;
+  return Boolean(hasMetric || hasIndicators);
+}
+
+// eligibleChoreSectionKeys returns the ordered list of per-chore section keys
+// that should be auto-available on the stats page for the given chores.
+export function eligibleChoreSectionKeys(chores) {
+  return (chores || []).filter(choreHasAnalytics).map(c => choreSectionKey(c.id));
+}
+
 // resolveStatsLayout merges the user's stored order with the canonical
-// registry. Unknown keys are dropped. Canonical keys missing from the
-// user's order (e.g. newly-shipped sections) are appended at the end.
-// Hidden sections are excluded.
-export function resolveStatsLayout(userOrder, userHidden) {
+// registry plus any dynamic keys (per-chore/widget). Static keys not present
+// in the user's order are appended; then eligible dynamic keys (passed in) are
+// appended so newly-configured chores/widgets appear automatically. Hidden
+// sections are excluded. Stored dynamic keys that are no longer eligible are
+// dropped.
+export function resolveStatsLayout(userOrder, userHidden, dynamicKeys = []) {
   const hidden = new Set(userHidden || []);
+  const dynamic = new Set(dynamicKeys || []);
+  const valid = (k) => STATS_SECTIONS.includes(k) || dynamic.has(k);
   const seen = new Set();
   const out = [];
   for (const k of userOrder || []) {
-    if (STATS_SECTIONS.includes(k) && !hidden.has(k) && !seen.has(k)) {
+    if (valid(k) && !hidden.has(k) && !seen.has(k)) {
       out.push(k); seen.add(k);
     }
   }
   for (const k of STATS_SECTIONS) {
+    if (!seen.has(k) && !hidden.has(k)) {
+      out.push(k); seen.add(k);
+    }
+  }
+  for (const k of dynamicKeys || []) {
     if (!seen.has(k) && !hidden.has(k)) {
       out.push(k); seen.add(k);
     }
@@ -226,9 +263,12 @@ export function renderStatsPage(state) {
     return "-";
   })();
 
+  const choreTimeSeries = state.stats?.choreTimeSeries || {};
+  const dynamicKeys = eligibleChoreSectionKeys(chores);
   const order = resolveStatsLayout(
     state.stats?.sectionOrder,
     state.stats?.sectionHidden,
+    dynamicKeys,
   );
 
   const sections = {
@@ -285,7 +325,16 @@ export function renderStatsPage(state) {
   };
 
   const body = order
-    .map(k => sections[k])
+    .map(k => {
+      if (sections[k] != null) return sections[k];
+      if (isChoreSectionKey(k)) {
+        const id = parseInt(k.slice("chore:".length), 10);
+        const chore = choreMap[id];
+        if (!chore) return "";
+        return renderChoreAnalyticsSection(chore, choreTimeSeries[id], members);
+      }
+      return "";
+    })
     .filter(html => html && html.trim().length > 0)
     .join("\n");
 
@@ -307,13 +356,39 @@ export function renderStatsPage(state) {
   </div>`;
 }
 
+// sectionLabel resolves the display label for a section key, including the
+// dynamic per-chore ("chore:<id>") and widget ("widget:<uuid>") keys.
+export function sectionLabel(k, chores, widgets) {
+  if (SECTION_LABELS[k]) return SECTION_LABELS[k];
+  if (isChoreSectionKey(k)) {
+    const id = parseInt(k.slice("chore:".length), 10);
+    const c = (chores || []).find(x => x.id === id);
+    return c ? `${c.icon} ${c.name}` : "Chore";
+  }
+  if (isWidgetSectionKey(k)) {
+    const w = (widgets || []).find(x => widgetSectionKey(x.id) === k);
+    return w ? (w.title || "Widget") : "Widget";
+  }
+  return k;
+}
+
 function renderCustomizePanel(state) {
+  const chores = state.chores || [];
+  const widgets = state.stats?.widgets || [];
   const hidden = new Set(state.stats?.sectionHidden || []);
-  const ordered = resolveStatsLayout(state.stats?.sectionOrder, []);
-  const allKeys = [...ordered, ...STATS_SECTIONS.filter(k => !ordered.includes(k))];
+  const dynamicKeys = [
+    ...eligibleChoreSectionKeys(chores),
+    ...widgets.map(w => widgetSectionKey(w.id)),
+  ];
+  const ordered = resolveStatsLayout(state.stats?.sectionOrder, [], dynamicKeys);
+  const allKeys = [
+    ...ordered,
+    ...STATS_SECTIONS.filter(k => !ordered.includes(k)),
+    ...dynamicKeys.filter(k => !ordered.includes(k)),
+  ];
   const rows = allKeys.map((k) => {
     const isHidden = hidden.has(k);
-    const label = SECTION_LABELS[k];
+    const label = sectionLabel(k, chores, widgets);
     return `<div class="customize-row" draggable="true" data-section="${k}">
       <span class="drag-handle" aria-hidden="true">⠿</span>
       <label class="customize-check">
@@ -768,6 +843,99 @@ export function renderBabyCareSection(state) {
       ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
     </div>
   </div>`;
+}
+
+// renderChoreAnalyticsSection renders the generalized per-chore analytics
+// (Phase 3): a member split plus a metric-appropriate chart, for any chore that
+// tracks a metric or has indicator labels. Reuses the same chart primitives as
+// the baby section. `ts` is the chore's time-series (daily) or undefined.
+export function renderChoreAnalyticsSection(chore, ts, members) {
+  const memberMap = {};
+  (members || []).forEach(m => { memberMap[m.userId] = m; });
+  const periods = ts?.periods || [];
+  const metricType = chore.metricType || "none";
+
+  let chartHTML;
+  if (metricType === "amount") {
+    const unit = chore.metricUnit || "";
+    chartHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => p.totalML || 0,
+      unitLabel: unit,
+      fmt: v => `${v}${unit ? " " + unit : ""}`,
+    });
+  } else if (metricType === "duration") {
+    chartHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => Math.round((p.totalDuration || 0) / 60),
+      unitLabel: "min",
+      fmt: v => `${v} min`,
+    });
+  } else if ((chore.indicatorLabels || []).length > 0) {
+    chartHTML = renderIndicatorChart(periods, "daily");
+  } else {
+    chartHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => p.count || 0,
+      unitLabel: "count",
+      fmt: v => `${v}`,
+    });
+  }
+
+  return `<div class="card mb-3">
+    <div class="baby-col-header">
+      <h3 class="baby-col-title">${chore.icon} ${escapeHTML(chore.name)}</h3>
+    </div>
+    ${renderMemberList(ts?.byMember, memberMap)}
+    <div class="baby-chart">${chartHTML}</div>
+  </div>`;
+}
+
+// renderSimpleMetricChart draws a single-series vertical bar chart over daily
+// period buckets. Used for generic amount/duration/count per-chore analytics.
+function renderSimpleMetricChart(periods, opts) {
+  if (!periods || periods.length === 0) {
+    return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+  }
+  const valueFn = opts.valueFn;
+  const fmt = opts.fmt || (v => String(v));
+  const values = periods.map(valueFn);
+  const maxV = Math.max(1, ...values);
+
+  const leftM = 38, rightM = 6, topM = 8, bottomM = 30, chartH = 120, colW = 22;
+  const totalW = leftM + periods.length * colW + rightM;
+  const totalH = topM + chartH + bottomM;
+
+  const step = niceAxisStep(maxV);
+  const ticks = [];
+  for (let v = 0; v <= maxV + step / 2; v += step) ticks.push(v);
+
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="${escapeHTML(opts.unitLabel || "value")} chart">`;
+  ticks.forEach(t => {
+    const y = topM + chartH - Math.round((t / maxV) * chartH);
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="var(--chart-grid)" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${t}</text>`;
+  });
+  if (opts.unitLabel) {
+    svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">${escapeHTML(opts.unitLabel)}</text>`;
+  }
+
+  periods.forEach((p, i) => {
+    const v = values[i];
+    const x = leftM + i * colW;
+    const baseY = topM + chartH;
+    const barH = v > 0 ? Math.max(Math.round((v / maxV) * chartH), 0.5) : 0;
+    const label = formatPeriodLabel(p, "daily");
+    svg += `<g data-action="chart-tap" data-bar="${i}" role="button" aria-label="${label}: ${fmt(v)}">`;
+    if (v > 0) {
+      svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="var(--chart-bar, #2E86AB)" opacity="0.85"/>`;
+    }
+    svg += `</g>`;
+    if (i % 2 === 0) {
+      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${formatXLabel(p, "daily")}</text>`;
+    }
+  });
+
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="var(--chart-axis)" stroke-width="1"/>`;
+  svg += `</svg>`;
+  return svg;
 }
 
 function renderBabyPeriodToggle(activePeriod, type) {

@@ -42,6 +42,7 @@ func (s *MemoryStore) CreateChore(_ context.Context, chore Chore) (Chore, error)
 
 	chore.ID = s.nextID()
 	chore.CreatedAt = time.Now().UTC()
+	chore.NormalizeMetric()
 	s.chores[chore.ID] = chore
 	return chore, nil
 }
@@ -85,6 +86,7 @@ func (s *MemoryStore) UpdateChore(_ context.Context, chore Chore) error {
 	chore.IsPredefined = existing.IsPredefined
 	chore.CreatedAt = existing.CreatedAt
 	chore.CreatedBy = existing.CreatedBy
+	chore.NormalizeMetric()
 	s.chores[chore.ID] = chore
 	return nil
 }
@@ -145,8 +147,11 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 				IndicatorDefaults: pc.IndicatorDefaults,
 				HasVolumeML:       pc.HasVolumeML,
 				HasRating:         pc.HasRating,
+				MetricType:        pc.MetricType,
+				MetricUnit:        pc.MetricUnit,
 				FollowUpEnabled:   true,
 			}
+			chore.NormalizeMetric()
 			s.chores[chore.ID] = chore
 		}
 	}

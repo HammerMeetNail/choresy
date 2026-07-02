@@ -515,7 +515,14 @@ func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
 		end = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
 	}
 
-	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, start, end, loc)
+	var choreID *int64
+	if cidStr := r.URL.Query().Get("choreId"); cidStr != "" {
+		if cid, err := strconv.ParseInt(cidStr, 10, 64); err == nil {
+			choreID = &cid
+		}
+	}
+
+	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, choreID, start, end, loc)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

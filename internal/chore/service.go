@@ -31,7 +31,7 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
-func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool) (Chore, error) {
+func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -54,6 +54,9 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if followUpEnabled != nil {
 		fu = *followUpEnabled
 	}
+	if !ValidMetricType(metricType) {
+		metricType = MetricNone
+	}
 	created, err := s.store.CreateChore(ctx, Chore{
 		HouseholdID:       householdID,
 		Name:              name,
@@ -65,6 +68,8 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 		IndicatorLabels:   indicatorLabels,
 		IndicatorDefaults: indicatorDefaults,
 		FollowUpEnabled:   fu,
+		MetricType:        metricType,
+		MetricUnit:        metricUnit,
 	})
 	if err != nil {
 		return Chore{}, err
@@ -85,7 +90,7 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 	return s.store.GetChore(ctx, choreID)
 }
 
-func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool) error {
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
@@ -113,6 +118,19 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 	}
 	if followUpEnabled != nil {
 		existing.FollowUpEnabled = *followUpEnabled
+	}
+	if metricType != nil {
+		mt := *metricType
+		if !ValidMetricType(mt) {
+			return fmt.Errorf("invalid metric type: %q", mt)
+		}
+		existing.MetricType = mt
+		// A change of metric type resets the unit; the caller supplies a new
+		// unit for amount metrics via metricUnit.
+		existing.MetricUnit = ""
+	}
+	if metricUnit != nil {
+		existing.MetricUnit = *metricUnit
 	}
 	if err := s.store.UpdateChore(ctx, existing); err != nil {
 		return err
@@ -177,6 +195,9 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, househ
 			existing.IndicatorDefaults = pc.IndicatorDefaults
 			existing.HasVolumeML = pc.HasVolumeML
 			existing.HasRating = pc.HasRating
+			existing.MetricType = pc.MetricType
+			existing.MetricUnit = pc.MetricUnit
+			existing.NormalizeMetric()
 			existing.FollowUpEnabled = true
 			if existing.IndicatorLabels == nil {
 				existing.IndicatorLabels = []string{}
@@ -211,6 +232,8 @@ func (s *Service) GetSystemDefaults() []Chore {
 			IndicatorDefaults: pc.IndicatorDefaults,
 			HasVolumeML:       pc.HasVolumeML,
 			HasRating:         pc.HasRating,
+			MetricType:        pc.MetricType,
+			MetricUnit:        pc.MetricUnit,
 			FollowUpEnabled:   true,
 		})
 	}
@@ -229,7 +252,7 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 
 var PredefinedChores = []Chore{
 	{Name: "Feed Cats", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
-	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true, IndicatorLabels: []string{"🍼 formula", "🤱 breast"}, IndicatorDefaults: []string{"🍼 formula"}},
+	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true, MetricType: MetricAmount, MetricUnit: "mL", IndicatorLabels: []string{"🍼 formula", "🤱 breast"}, IndicatorDefaults: []string{"🍼 formula"}},
 	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 2, IndicatorLabels: []string{"💩 poo", "💛 pee"}, IndicatorDefaults: []string{"💛 pee"}},
 	{Name: "Water Plants", Icon: "🌱", Color: "#10B981", Category: "plants", SortOrder: 3},
 	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 4},
@@ -241,6 +264,6 @@ var PredefinedChores = []Chore{
 	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 10},
 	{Name: "Baby Bath", Icon: "🛀", Color: "#60A5FA", Category: "care", SortOrder: 11},
 	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 12},
-	{Name: "Read Book", Icon: "📖", Color: "#8B5CF6", Category: "personal", SortOrder: 13, HasRating: true},
-	{Name: "Watch Movie", Icon: "🎬", Color: "#EF4444", Category: "personal", SortOrder: 14, HasRating: true},
+	{Name: "Read Book", Icon: "📖", Color: "#8B5CF6", Category: "personal", SortOrder: 13, HasRating: true, MetricType: MetricRating},
+	{Name: "Watch Movie", Icon: "🎬", Color: "#EF4444", Category: "personal", SortOrder: 14, HasRating: true, MetricType: MetricRating},
 }
