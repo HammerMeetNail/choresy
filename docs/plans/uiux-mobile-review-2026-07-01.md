@@ -74,12 +74,12 @@ The SW only caches **GET** requests (`service-worker.js:131-133`). A `POST /api/
 - Server: logging is already idempotent per chore/day for simple logs; add a client-generated idempotency key on `POST /api/logs` to make replay safe for multi-log chores (feeds happen multiple times/day).
 *iOS note: native app should get the same queue semantics via its stores; flag in parity matrix.*
 
-### 2.2 "Time since last feed" glanceability
+### 2.2 "Time since last feed" glanceability ✅ DONE
 `formatTimeAgo` already puts "2h ago" on every home card (`home.js:80-85`) — good. But for the baby use case the single most-checked datum is *time since last feed/change*, and today it's one card among many with no prominence, and the Stats overview cards (Today / This Week / Day Streak / Top Chore, `stats.js:313-331`) don't include it.
 
 **Plan:** add an optional **"Last done" overview stat** on the Stats page and (Phase 4) as a widget: per selected chore, big "3h 20m since 🍼 Feed Baby", tinted when the gap exceeds a user-set threshold (this is a *utility* alert, not gamification). Live-update the relative times on Home once a minute while visible (currently they only refresh on re-render).
 
-### 2.3 Undo/confirm consistency
+### 2.3 Undo/confirm consistency ✅ DONE (remove-log undo; home-tap-instant deferred)
 - Tap-to-log from **Today** view logs instantly with `showToastWithUndo` (good). Home-grid taps open the full sheet always. For simple chores with no indicators/volume/rating, consider **tap = instant log + undo toast** on Home too, with long-press (or a small ⋯) opening the sheet. This matches the "grandmother-fast" goal; the sheet remains for feed/change chores which need data.
 - "Remove log" in the edit sheet (`schedule.js:533-537`) deletes with no confirm and no undo toast. Route it through the same undo-toast path.
 
@@ -95,7 +95,7 @@ In iOS standalone mode there's no browser refresh, and data refresh relies on th
 `notificationclick` only focuses/opens the app (`service-worker.js:112-129`). For chore reminders, add notification **action buttons**: "✓ Log now" (fires the log POST from the SW with the stored CSRF-exempt push token or deep-links to the pre-filled sheet) and "Snooze 30m". Deep-link payload should carry `choreId` so the app opens straight into the log sheet.
 *iOS note: web push actions work on iOS 16.4+; native APNs actions are part of the (unbuilt) APNs plan.*
 
-### 2.7 Small a11y/ergonomics list
+### 2.7 Small a11y/ergonomics list ✅ DONE
 - Star rating widget is `role="slider"` but has no keyboard handling (`schedule.js:490`); add arrow-key support or switch to 5 radio buttons visually styled as stars.
 - Rating display `renderStarRatingDisplay` renders "4.5 ⭐" (`today.js:360-363`) — fine, but ensure `rating/10` half-star semantics are labeled in `aria-valuetext` (they are in the input; mirror in display `aria-label`).
 - Haptic tick on successful log via `navigator.vibrate(10)` where supported (Android; harmless no-op on iOS).

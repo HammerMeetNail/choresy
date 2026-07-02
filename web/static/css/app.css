@@ -1382,6 +1382,59 @@ details[open] .member-chevron {
   gap: 8px;
 }
 
+/* ─── Last done list (Stats) ─────────────────────────────────────────────── */
+.last-done-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.last-done-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.last-done-row:last-child {
+  border-bottom: none;
+}
+
+.last-done-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 16px;
+  background: color-mix(in srgb, var(--chore-color, var(--primary)) 18%, transparent);
+  flex-shrink: 0;
+}
+
+.last-done-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.last-done-ago {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.last-done-ago--never {
+  opacity: 0.6;
+  font-weight: 500;
+}
+
 .overview-card {
   background: var(--surface);
   border-radius: var(--radius-card);
@@ -1682,6 +1735,31 @@ details[open] .member-chevron {
 
 .feeding-gaps-explainer p:last-child {
   margin-bottom: 0;
+}
+
+.feeding-gaps-legend {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.feeding-gaps-legend td {
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.feeding-gaps-legend td:nth-child(2) {
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.fg-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 2px;
 }
 
 /* Heatmap */

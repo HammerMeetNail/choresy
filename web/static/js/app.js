@@ -25,7 +25,7 @@ import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChor
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit } from "./preferences.js";
-import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
+import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
@@ -869,6 +869,9 @@ function getChoreReminderPref(choreId) {
 }
 
 function showToastWithUndo(message, logId) {
+  // Haptic tick on a successful log where supported (Android; harmless no-op
+  // on iOS). This is the shared success path for logging a chore.
+  if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
   const container = document.querySelector("#toast-container");
   if (!container) return;
   const toast = document.createElement("div");
@@ -891,6 +894,68 @@ function showToastWithUndo(message, logId) {
   toast.appendChild(undoBtn);
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);
+}
+
+// Find a full log record by id across the loaded view collections, so a
+// removed log can be faithfully re-created if the user taps Undo.
+function findLogById(id) {
+  for (const pool of [state.historyLogs, state.todayLogs, state.weekLogs]) {
+    const found = (pool || []).find(l => l.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Toast shown after removing a log, whose Undo re-creates the log from its
+// captured data (a new id, but identical fields/timing). Mirrors the
+// create-then-undo affordance so removals are equally reversible.
+function showToastWithRestore(message, log) {
+  const container = document.querySelector("#toast-container");
+  if (!container || !log) { showToast(message, "success"); return; }
+  const toast = document.createElement("div");
+  toast.className = "toast toast-success";
+  toast.style.cssText = "display:flex;align-items:center;gap:8px;";
+  const label = document.createElement("span");
+  label.textContent = message;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Undo";
+  btn.style.cssText = "background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-left:auto;min-height:32px;";
+  btn.addEventListener("click", () => {
+    toast.remove();
+    const d = new Date(log.completedAt);
+    const pad = n => String(n).padStart(2, "0");
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    logChore(
+      log.choreId, log.note || "", dateStr, log.indicators || [],
+      (log.slotHour ?? null), log.completedAt,
+      (log.volumeML ?? null), log.userId ?? state.user?.id,
+      log.indicatorVolumes || {}, 0, null,
+      (log.rating ?? null), log.title ?? null,
+    ).then(async () => {
+      await Promise.all([reloadViewData(), loadLatestLogsData()]);
+      render(document.querySelector("#app"));
+    }).catch(() => showToast("Failed to restore log", "error"));
+  });
+  toast.appendChild(label);
+  toast.appendChild(btn);
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
+// setStarRatingValue applies a rating (0–50, in half-star increments of 5)
+// to a `.star-rating` slider widget, updating its fill and ARIA state. Shared
+// by the pointer (click) and keyboard (arrow-key) paths.
+function setStarRatingValue(container, starTenths) {
+  starTenths = Math.max(0, Math.min(50, Math.round(starTenths / 5) * 5));
+  const fg = container.querySelector(".star-rating-fg");
+  if (fg) fg.style.width = (starTenths * 2) + "%";
+  container.dataset.rating = starTenths;
+  const stars = starTenths / 10;
+  container.setAttribute("aria-valuenow", starTenths);
+  container.setAttribute("aria-valuetext", stars + " stars");
+  const clearBtn = container.parentElement?.querySelector(".star-clear-btn");
+  if (clearBtn) clearBtn.style.display = starTenths > 0 ? "" : "none";
 }
 
 function updateTabs(route) {
@@ -1334,13 +1399,7 @@ export async function init() {
       const x = e.clientX - rect.left;
       const pct = x / rect.width;
       const starTenths = Math.round(pct * 50 / 5) * 5;
-      container.querySelector(".star-rating-fg").style.width = (starTenths * 2) + "%";
-      container.dataset.rating = starTenths;
-      const stars = starTenths / 10;
-      container.setAttribute("aria-valuenow", starTenths);
-      container.setAttribute("aria-valuetext", stars + " stars");
-      const clearBtn = container.parentElement?.querySelector(".star-clear-btn");
-      if (clearBtn) clearBtn.style.display = starTenths > 0 ? "" : "none";
+      setStarRatingValue(container, starTenths);
       return;
     }
 
@@ -1617,12 +1676,15 @@ export async function init() {
       case "undo-chore": {
         e.preventDefault();
         const uLogId = parseInt(actionEl.dataset.logId);
+        // Capture the log before deleting so removal is undoable (2.3).
+        const removedLog = findLogById(uLogId);
         undoLog(uLogId).then(async () => {
           state.activeSheet     = null;
           state.activeSheetData = {};
           state.historyLogs = (state.historyLogs || []).filter(l => l.id !== uLogId);
           await reloadViewData();
           render(app);
+          showToastWithRestore("Log removed", removedLog);
         }).catch((err) => {
           console.error('undo-chore failed:', err);
           state.activeSheet     = null;
@@ -2603,6 +2665,27 @@ export async function init() {
     }
   }, { capture: true });
 
+  // ── Star rating keyboard support (a11y) ────────────────────────────────────
+  // The rating widget is role="slider"; support arrow keys / Home / End so it
+  // is operable without a pointer. Increments are half-stars (5 tenths).
+  document.addEventListener("keydown", (e) => {
+    const container = e.target.closest?.(".star-rating");
+    if (!container) return;
+    const cur = parseInt(container.dataset.rating || "0", 10) || 0;
+    let next = cur;
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowUp":   next = cur + 5; break;
+      case "ArrowLeft":
+      case "ArrowDown": next = cur - 5; break;
+      case "Home":      next = 0; break;
+      case "End":       next = 50; break;
+      default: return;
+    }
+    e.preventDefault();
+    setStarRatingValue(container, next);
+  });
+
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
   // Uses "change" (not "click") because <select> fires "change" on selection.
   document.addEventListener("change", (e) => {
@@ -3331,6 +3414,14 @@ export async function init() {
     }
   });
   if (state.user) startNotifPoll();
+
+  // Tick the home grid's "X ago" labels once a minute while the home tab is
+  // visible, so relative times stay fresh without a navigation/re-render.
+  setInterval(() => {
+    if (document.hidden || !state.user) return;
+    const route = state.currentRoute || window.location.pathname || "/";
+    if (route === "/" || route === "/today") refreshHomeCardTimes(state);
+  }, 60000);
 
   render(app);
 }

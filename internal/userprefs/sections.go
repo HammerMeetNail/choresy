@@ -8,6 +8,7 @@ package userprefs
 // below their existing sections, per the layout-resolution algorithm.
 var StatsSections = []string{
 	"overview",
+	"last-done",
 	"baby",
 	"activity",
 	"busy-hours",

@@ -1,5 +1,6 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML, localDateStr, formatVolume, mlToOz } from "./utils.js";
+import { formatTimeAgo } from "./home.js";
 
 // The stats page renders volumes in the user's preferred unit. Volumes are
 // stored canonically in mL; `currentVolumeUnit` is set once at the top of
@@ -30,6 +31,7 @@ function volUnitLabel() {
 // append it to the END of this list.
 export const STATS_SECTIONS = [
   "overview",
+  "last-done",
   "baby",
   "activity",
   "busy-hours",
@@ -42,6 +44,7 @@ export const STATS_SECTIONS = [
 
 const SECTION_LABELS = {
   overview: "Overview cards",
+  "last-done": "Last done",
   baby: "Baby care",
   activity: "Activity (heatmap)",
   "busy-hours": "Busy hours",
@@ -230,6 +233,7 @@ export function renderStatsPage(state) {
 
   const sections = {
     overview: `<div class="chart-period-toggle mt-2 mb-3">${renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, state.user?.id)}</div>`,
+    "last-done": renderLastDoneSection(chores, state.latestLogs || {}),
     baby: renderBabyCareSection(state),
     activity: `<div class="card mb-3"><h3>Activity</h3>${renderHeatmapGrid(heatmap)}</div>`,
     "busy-hours": `<div class="card mb-3">
@@ -353,6 +357,38 @@ function renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, u
       <div class="overview-card-value overview-card-value--small">${escapeHTML(topChoreName)}</div>
       <div class="overview-card-label">Top Chore</div>
     </div>
+  </div>`;
+}
+
+// renderLastDoneSection shows time-since-last-log per chore, most recent
+// first — the single most-checked datum for the baby use case ("how long
+// since the last feed?"). Data comes from latest-per-chore already in state;
+// no new endpoint. Chores never logged are listed last as "never".
+function renderLastDoneSection(chores, latestLogs) {
+  if (!chores || chores.length === 0) {
+    return `<div class="card mb-3"><h3>Last done</h3>
+      <p class="text-secondary text-center">No chores yet</p></div>`;
+  }
+  const rows = chores
+    .map(c => {
+      const latest = latestLogs[c.id];
+      const ts = latest?.completedAt ? new Date(latest.completedAt).getTime() : 0;
+      return { chore: c, ts, ago: latest?.completedAt ? formatTimeAgo(latest.completedAt) : "" };
+    })
+    .sort((a, b) => b.ts - a.ts)
+    .map(({ chore, ago }) => {
+      const agoHTML = ago
+        ? `<span class="last-done-ago">${escapeHTML(ago)}</span>`
+        : `<span class="last-done-ago last-done-ago--never">never</span>`;
+      return `<div class="last-done-row">
+        <span class="last-done-icon" style="--chore-color:${escapeHTML(chore.color)}">${escapeHTML(chore.icon)}</span>
+        <span class="last-done-name">${escapeHTML(chore.name)}</span>
+        ${agoHTML}
+      </div>`;
+    })
+    .join("");
+  return `<div class="card mb-3"><h3>Last done</h3>
+    <div class="last-done-list">${rows}</div>
   </div>`;
 }
 
@@ -768,10 +804,25 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>
-      <p><strong>Dot colors:</strong><br>
-        <strong>Pink</strong> = small top-off &mdash; the follow-up was &le;&nbsp;50% of the preceding feed (tiny snack).<br>
-        <strong>Orange</strong> = close feed &mdash; within 3&nbsp;hours and not a clear growth spike. This includes feeds &le;&nbsp;100% of the preceding feed, or any follow-up to a pink top-off (since the chain started from an unsatisfying snack).<br>
-        <strong>Blue</strong> = growing or spaced feed &mdash; either &gt;&nbsp;3&nbsp;hours apart, or closer together but the baby took more than last time and the preceding feed wasn&rsquo;t itself a top-off.</p>
+      <table class="feeding-gaps-legend">
+        <tbody>
+          <tr>
+            <td><span class="fg-legend-dot" style="background:#EC4899"></span></td>
+            <td><strong>Small top-off</strong></td>
+            <td>Follow-up was &le;&nbsp;50% of the preceding feed (tiny snack).</td>
+          </tr>
+          <tr>
+            <td><span class="fg-legend-dot" style="background:#F97316"></span></td>
+            <td><strong>Close feed</strong></td>
+            <td>Within 3&nbsp;hours and not a clear growth spike (&le;&nbsp;the preceding feed, or a follow-up to a top-off).</td>
+          </tr>
+          <tr>
+            <td><span class="fg-legend-dot" style="background:#2E86AB"></span></td>
+            <td><strong>Growing / spaced</strong></td>
+            <td>&gt;&nbsp;3&nbsp;hours apart, or baby took more than last time.</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;

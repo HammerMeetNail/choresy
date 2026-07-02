@@ -360,7 +360,9 @@ export function renderHistoryView(state) {
 
 function renderStarRatingDisplay(rating) {
   const stars = rating / 10;
-  return `${stars} ⭐`;
+  // Mirror the half-star semantics from the rating input's aria-valuetext so
+  // screen readers announce e.g. "4.5 out of 5 stars", not a bare "4.5 ⭐".
+  return `<span aria-label="${stars} out of 5 stars">${stars} ⭐</span>`;
 }
 
 function fmtChunkRange(start, end) {

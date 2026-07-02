@@ -488,7 +488,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       const pct = (rating / 50) * 100;
       return `<div class="star-rating-row">
         <label class="field-label">Rating</label>
-        <div class="star-rating" data-action="set-rating" data-rating="${rating}" role="slider" aria-valuemin="0" aria-valuemax="50" aria-valuenow="${rating}" aria-valuetext="${rating / 10} stars">
+        <div class="star-rating" data-action="set-rating" data-rating="${rating}" role="slider" tabindex="0" aria-label="Rating" aria-valuemin="0" aria-valuemax="50" aria-valuenow="${rating}" aria-valuetext="${rating / 10} stars">
           <span class="star-rating-bg">☆☆☆☆☆</span>
           <span class="star-rating-fg" style="width:${pct}%">★★★★★</span>
         </div>
