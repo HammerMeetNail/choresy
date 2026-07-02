@@ -4425,7 +4425,23 @@ details[open] .chore-stat-chevron {
 }
 
 /* ── Recent-value volume chips (Phase 5.3) ─────────────────────────────────── */
+/* Deliberately NOT class ".log-chip" so positional .log-chip selectors keep
+   pointing at the indicator chips; this reuses the chip look via its own rule. */
 .sheet-recent-volume-row { margin-bottom: 8px; }
+.volume-recent-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
 .volume-recent-chip--active {
   outline: 2px solid var(--accent, #2E86AB);
   outline-offset: 1px;

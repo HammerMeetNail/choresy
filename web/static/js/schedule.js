@@ -462,7 +462,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   // one fills the volume input(s). Only shown for amount chores with history.
   const recentVolumeSection = (chore.hasVolumeML && (opts.recentVolumes || []).length > 0) ? (() => {
     const chips = opts.recentVolumes.map(ml =>
-      `<button type="button" class="log-chip volume-recent-chip"
+      `<button type="button" class="volume-recent-chip"
         data-action="set-recent-volume" data-ml="${ml}">${escapeHTML(formatVolume(ml, volumeUnit))}</button>`
     ).join("");
     return `<div class="sheet-recent-volume-row">
