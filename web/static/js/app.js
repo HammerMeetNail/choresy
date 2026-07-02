@@ -3992,13 +3992,37 @@ export async function init() {
   // Tell the user it was saved, and replay the queue when we regain
   // connectivity or the app is foregrounded (iOS Safari lacks Background Sync,
   // so foreground replay is the primary mechanism there).
-  window.addEventListener("nabu-log-queued", () => {
+  window.addEventListener("nabu-log-queued", (e) => {
     showToast("Saved — will sync when online", "info");
+    // Synthesize a "pending" row (Phase 2.1) so the queued log is visible in
+    // Activity until it syncs. Reconciled (cleared) on the next successful flush.
+    const body = e?.detail;
+    if (body && typeof body.choreId === "number") {
+      state.pendingLogs = state.pendingLogs || [];
+      state.pendingLogs.unshift({
+        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        choreId: body.choreId,
+        userId: body.userId ?? state.user?.id,
+        note: body.note || "",
+        indicators: body.indicators || [],
+        indicatorVolumes: body.indicatorVolumes || {},
+        volumeML: body.volumeML ?? null,
+        rating: body.rating ?? null,
+        subject: body.subject ?? "",
+        title: body.title ?? "",
+        completedAt: body.completedAt || new Date().toISOString(),
+        _pending: true,
+      });
+      render(document.querySelector("#app"));
+    }
   });
   const flushOfflineQueue = () => {
     if (!state.user) return;
     replayQueue(apiFetch).then(async (synced) => {
       if (synced > 0) {
+        // Reconcile: the queued logs are now on the server, so drop the
+        // synthetic pending rows before refetching.
+        state.pendingLogs = [];
         await Promise.all([loadLatestLogsData(), reloadViewData()]);
         render(document.querySelector("#app"));
         showToast(`Synced ${synced} log${synced === 1 ? "" : "s"}`, "success");

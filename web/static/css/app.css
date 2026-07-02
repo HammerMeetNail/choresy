@@ -4489,3 +4489,16 @@ details[open] .chore-stat-chevron {
 /* ── Subject tagging (Phase 5.5) ───────────────────────────────────────────── */
 .hist-subject { font-weight: 600; opacity: 0.85; }
 .subject-chip { }
+
+/* ── Offline pending log badge (Phase 2.1) ─────────────────────────────────── */
+.hist-pending {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--surface-2, #eee);
+  color: var(--text-secondary, #777);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.hist-row--pending { opacity: 0.7; cursor: default; }

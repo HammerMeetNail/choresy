@@ -553,6 +553,40 @@ describe("Stats: generalized per-chore sections (Phase 3)", () => {
   });
 });
 
+describe("Offline pending log badge (Phase 2.1)", () => {
+  it("renders a pending row with a badge and no view-log action", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    const state = {
+      chores: [{ id: 1, name: "Feed", icon: "🍼", color: "#000" }],
+      members: [{ userId: 1, displayName: "Ann" }],
+      historyLogs: [],
+      pendingLogs: [{
+        id: "pending-1", choreId: 1, userId: 1, note: "", indicators: [],
+        completedAt: "2026-07-02T10:00:00Z", _pending: true,
+      }],
+    };
+    const html = renderHistoryView(state);
+    assert.ok(html.includes("hist-pending"));
+    assert.ok(html.includes("hist-row--pending"));
+    assert.ok(html.includes("Feed"));
+    // A pending row must not be a tappable view-log target.
+    assert.ok(!html.includes('data-action="view-log"\n          data-chore-id="1"\n          data-log-id="pending-1"'));
+  });
+
+  it("excludes pending rows while searching", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    const state = {
+      chores: [{ id: 1, name: "Feed", icon: "🍼", color: "#000" }],
+      members: [],
+      historySearch: "foo",
+      historyLogs: [],
+      pendingLogs: [{ id: "p", choreId: 1, completedAt: "2026-07-02T10:00:00Z", _pending: true }],
+    };
+    const html = renderHistoryView(state);
+    assert.ok(!html.includes("hist-pending"));
+  });
+});
+
 describe("Subject tagging (Phase 5.5)", () => {
   it("chore sheet renders a subjects field with existing tags", async () => {
     const { renderChoreSheet } = await import("../chores.js");

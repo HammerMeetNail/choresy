@@ -164,6 +164,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore)
 	dayNoteService := daynote.NewService(dayNoteStore)
 	dayNoteHandler := handlers.NewDayNoteHandler(dayNoteService)
+	reminderSnoozeHandler := handlers.NewReminderSnoozeHandler(scheduleStore, choreStore, userPrefsStore)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 
@@ -367,6 +368,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	mux.HandleFunc("/api/day-notes", method(http.MethodGet, middleware.RequireAuth(dayNoteHandler.List)))
 	mux.HandleFunc("/api/day-notes/{date}", method(http.MethodPut, middleware.RequireAuth(dayNoteHandler.Set)))
+
+	mux.HandleFunc("/api/reminders/snooze", method(http.MethodPost, middleware.RequireAuth(reminderSnoozeHandler.Snooze)))
 
 	mux.HandleFunc("/api/schedules", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
