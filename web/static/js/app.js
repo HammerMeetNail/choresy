@@ -729,6 +729,13 @@ function renderSettingsView() {
         <button type="button" class="segmented-btn${volumeUnit === "oz" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="oz" aria-pressed="${volumeUnit === "oz"}">oz</button>
       </div>
     </div>
+    <div class="pref-row">
+      <label class="pref-label">
+        <span class="pref-title">Export logs</span>
+        <span class="pref-desc">Download all activity as a CSV spreadsheet</span>
+      </label>
+      <a class="btn btn-secondary btn-sm" href="/api/logs/export?start=2000-01-01" download="nabu-logs.csv">Export CSV</a>
+    </div>
   </div>`;
 
   const activeId = state.activeHouseholdId || hh?.id;

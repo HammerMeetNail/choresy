@@ -70,6 +70,49 @@ func TestLogCreate(t *testing.T) {
 	}
 }
 
+func TestLogExport(t *testing.T) {
+	handler, sessionID, authService := setupLogTest(t)
+
+	// Create a log to export.
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(
+		`{"choreId":1,"note":"export-me"}`,
+	)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	handler.Create(httptest.NewRecorder(), req)
+
+	// Export.
+	exReq := withUser(httptest.NewRequest(http.MethodGet, "/api/logs/export?start=2000-01-01", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+	handler.Export(rec, exReq)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+		t.Fatalf("Content-Type = %q, want text/csv", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, "attachment") {
+		t.Fatalf("Content-Disposition = %q, want attachment", cd)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "date,time,chore,member,title,note") {
+		t.Fatalf("missing CSV header: %s", body)
+	}
+	if !strings.Contains(body, "export-me") {
+		t.Fatalf("exported CSV missing the logged note: %s", body)
+	}
+}
+
+func TestLogExport_InvalidDate(t *testing.T) {
+	handler, sessionID, authService := setupLogTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/logs/export?start=not-a-date", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+	handler.Export(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
 func TestLogToday(t *testing.T) {
 	handler, sessionID, authService := setupLogTest(t)
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/logs/today", nil), authService, sessionID)

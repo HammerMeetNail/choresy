@@ -160,7 +160,7 @@ Owner wants this **if secure**. It is, provided we build it as **declarative con
 
 ## 5. Phase 5 — Bigger quality-of-life features (candidates, pick per appetite)
 
-1. **CSV/export of logs** (date range, per chore) — pediatrician visits, spreadsheets. `GET /api/logs/export?start&end&choreId` returning CSV; button in Settings. Low effort, high trust value.
+1. **CSV/export of logs** ✅ DONE (date range, per chore) — pediatrician visits, spreadsheets. `GET /api/logs/export?start&end&choreId` returning CSV; button in Settings. Low effort, high trust value.
 2. **Duration timer mode** (pairs with Phase 3 `duration` metric): "Start" on the log sheet records start time, persistent chip in the top bar while running, "Stop & log" completes with duration. Needed for breastfeeding/naps where duration matters more than count. Survives reload via localStorage.
 3. **Amount steppers + presets** on the volume input: −10/+10 buttons and tappable recent values (last 3 distinct volumes). Data is already cached (`cachedIndicatorVolumes`); this removes the number-keyboard round-trip at 3am.
 4. **Per-day notes / diary line** on Activity day headers (e.g. "first solid food!") — one text field per day, household-shared.

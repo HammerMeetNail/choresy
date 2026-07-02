@@ -202,6 +202,12 @@ func (s *Service) GetMonthLogs(ctx context.Context, householdID int64, year int,
 	return s.store.ListLogsRange(ctx, householdID, start, end)
 }
 
+// GetLogsInRange returns the household's logs with completed_at in
+// [start, end). Used by the CSV export.
+func (s *Service) GetLogsInRange(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error) {
+	return s.store.ListLogsRange(ctx, householdID, start, end)
+}
+
 func (s *Service) GetDailySummary(ctx context.Context, householdID int64, date time.Time) (DailySummary, error) {
 	logs, err := s.store.ListLogs(ctx, householdID, date)
 	if err != nil {
