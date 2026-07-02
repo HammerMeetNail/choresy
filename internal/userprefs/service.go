@@ -96,6 +96,27 @@ func (s *Service) UpdateStatsSectionOrder(ctx context.Context, userID int64, ord
 	return s.store.Upsert(ctx, userID, prefs)
 }
 
+// UpdateStatsWidgets validates a widget list against the closed schema/caps,
+// assigns server-side IDs, and persists it. Enum fields, title length, count
+// caps, and the serialized byte cap are enforced here. Ownership of the
+// referenced ChoreIDs is NOT checked here — the caller must validate that
+// against the household before calling (see the preferences handler).
+func (s *Service) UpdateStatsWidgets(ctx context.Context, userID int64, widgets []StatsWidget) ([]StatsWidget, error) {
+	normalized, err := ValidateAndNormalizeWidgets(widgets)
+	if err != nil {
+		return nil, err
+	}
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	prefs.StatsWidgets = normalized
+	if err := s.store.Upsert(ctx, userID, prefs); err != nil {
+		return nil, err
+	}
+	return normalized, nil
+}
+
 // UpdateStatsSectionHidden persists the set of stats sections the user has
 // hidden from the stats page. Keys must be drawn from the canonical
 // StatsSections list.

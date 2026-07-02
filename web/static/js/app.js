@@ -22,10 +22,10 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
@@ -852,7 +852,32 @@ async function loadAllStatsData() {
     })(),
     loadBabyTimeSeries(),
     loadChoreAnalyticsData(),
+    loadWidgetData(),
   ]);
+}
+
+// loadWidgetData fetches the time-series each user-defined widget (Phase 4)
+// needs to render. Data maps onto the existing time-series endpoint; widgets
+// add no new query surface. Results are keyed by widget id.
+async function loadWidgetData() {
+  const widgets = state.stats?.widgets || [];
+  if (widgets.length === 0) return;
+  state.stats.widgetData = state.stats.widgetData || {};
+  await Promise.allSettled(widgets.map(async (w) => {
+    // last-done reads from latest-per-chore already in state — no fetch.
+    if (w.type === "last-done") { state.stats.widgetData[w.id] = []; return; }
+    const grain = widgetGrain(w);
+    const results = await Promise.allSettled(
+      (w.choreIds || []).map(async (cid) => {
+        const chore = (state.chores || []).find(c => c.id === cid);
+        const data = await loadChoreTimeSeries(cid, grain);
+        return { chore, ts: data?.timeSeries };
+      })
+    );
+    state.stats.widgetData[w.id] = results
+      .filter(r => r.status === "fulfilled" && r.value.ts)
+      .map(r => r.value);
+  }));
 }
 
 // loadChoreAnalyticsData fetches daily time-series for every chore that has a
@@ -948,7 +973,15 @@ function countTodayLogs() {
 function renderStatsPageView() {
   try {
     if (state.stats && state.stats.overview) {
-      return renderStatsPage(state);
+      const page = renderStatsPage(state);
+      if (state.activeSheet === "widget-wizard") {
+        return `<div class="sheet-overlay-wrapper">
+          ${page}
+          <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+          ${renderWidgetWizard(state, state.activeSheetData?.widgetDraft)}
+        </div>`;
+      }
+      return page;
     }
     return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Loading...</p></div>';
   } catch {
@@ -2371,6 +2404,53 @@ export async function init() {
             showToast("Restored to default", "success");
           })
           .catch(() => showToast("Failed to restore default", "error"));
+        break;
+      }
+
+      // ── Stats widgets (Phase 4) ──────────────────────────────────────────
+
+      case "widget-add": {
+        e.preventDefault();
+        state.activeSheet = "widget-wizard";
+        state.activeSheetData = { widgetDraft: { type: "total", metric: "count", period: "week" } };
+        render(app);
+        break;
+      }
+
+      case "widget-save": {
+        e.preventDefault();
+        const title = (document.querySelector("#widget-title")?.value || "").trim();
+        const type = document.querySelector("#widget-presentation")?.value || "total";
+        const metric = document.querySelector("#widget-metric")?.value || "count";
+        const period = document.querySelector("#widget-period")?.value || "week";
+        const choreIds = [...document.querySelectorAll("[data-action='widget-draft-chore']:checked")]
+          .map(el => parseInt(el.dataset.choreId, 10))
+          .filter(n => !isNaN(n));
+        if (type !== "total" && choreIds.length === 0) {
+          showToast("Pick at least one chore", "error");
+          break;
+        }
+        const widget = { type, metric, period, choreIds, title: title || "Widget" };
+        const widgets = [...(state.stats?.widgets || []), widget];
+        saveStatsWidgets(state, widgets).then(async (saved) => {
+          if (!saved) { showToast("Failed to add widget", "error"); return; }
+          state.activeSheet = null;
+          state.activeSheetData = {};
+          await loadWidgetData();
+          render(app);
+          showToast("Widget added", "success");
+        });
+        break;
+      }
+
+      case "widget-remove": {
+        e.preventDefault();
+        const id = actionEl.dataset.widgetId;
+        const widgets = (state.stats?.widgets || []).filter(w => w.id !== id);
+        saveStatsWidgets(state, widgets).then((saved) => {
+          if (!saved) { showToast("Failed to remove widget", "error"); return; }
+          render(app);
+        });
         break;
       }
 

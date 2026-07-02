@@ -553,6 +553,55 @@ describe("Stats: generalized per-chore sections (Phase 3)", () => {
   });
 });
 
+describe("Stats: user-defined widgets (Phase 4)", () => {
+  const baseState = () => ({
+    chores: [{ id: 12, name: "Feed", icon: "🍼", color: "#000", metricType: "amount", metricUnit: "mL" }],
+    members: [{ userId: 1, displayName: "Ann", avatarColor: "#000" }],
+    latestLogs: {},
+    stats: { widgetData: {} },
+  });
+
+  it("renders a total widget as a big number with unit", async () => {
+    const { renderWidgetSection } = await import("../stats.js");
+    const state = baseState();
+    const w = { id: "abc", type: "total", metric: "amount", period: "week", choreIds: [12], title: "Bottles" };
+    state.stats.widgetData["abc"] = [{ chore: state.chores[0], ts: { metricUnit: "mL", periods: [
+      { totalML: 60 }, { totalML: 90 },
+    ] } }];
+    const html = renderWidgetSection(w, state);
+    assert.ok(html.includes("Bottles"));
+    assert.ok(html.includes("150")); // 60 + 90
+    assert.ok(html.includes("mL"));
+  });
+
+  it("escapes a malicious widget title so it renders inert", async () => {
+    const { renderWidgetSection } = await import("../stats.js");
+    const state = baseState();
+    const w = { id: "x1", type: "total", metric: "count", period: "week", choreIds: [], title: `<img src=x onerror="alert(1)">` };
+    const html = renderWidgetSection(w, state);
+    // The raw tag must not appear; it must be HTML-escaped so it renders inert.
+    assert.ok(!html.includes("<img src=x"));
+    assert.ok(html.includes("&lt;img"));
+  });
+
+  it("widget wizard lists chores and presentation options", async () => {
+    const { renderWidgetWizard } = await import("../stats.js");
+    const state = baseState();
+    const html = renderWidgetWizard(state, { type: "total", metric: "count", period: "week" });
+    assert.ok(html.includes("Add widget"));
+    assert.ok(html.includes("Feed"));
+    assert.ok(html.includes("widget-save"));
+    assert.ok(html.includes("Big number"));
+  });
+
+  it("widgetGrain defaults to daily and honors weekly/monthly", async () => {
+    const { widgetGrain } = await import("../stats.js");
+    assert.equal(widgetGrain({}), "daily");
+    assert.equal(widgetGrain({ grain: "weekly" }), "weekly");
+    assert.equal(widgetGrain({ grain: "bogus" }), "daily");
+  });
+});
+
 describe("Utils: volume units", () => {
   it("formatVolume renders mL and oz", async () => {
     const { formatVolume } = await import("../utils.js");

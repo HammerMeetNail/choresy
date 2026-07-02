@@ -4363,3 +4363,63 @@ details[open] .chore-stat-chevron {
   }
 }
 
+
+/* ── Chore metric picker (Phase 3) ─────────────────────────────────────────── */
+.chore-metric-unit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chore-metric-unit-row .chore-edit-label {
+  margin: 0;
+  white-space: nowrap;
+}
+.chore-metric-unit-row .input {
+  max-width: 140px;
+}
+
+/* ── Custom stats widgets (Phase 4) ────────────────────────────────────────── */
+.widget-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.widget-card-header h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.widget-remove-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2, #eee);
+  color: var(--text-secondary, #666);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.widget-remove-btn:hover { background: var(--danger-bg, #fde8e8); color: var(--danger, #c0392b); }
+.widget-big-number {
+  font-size: 40px;
+  font-weight: 700;
+  text-align: center;
+  padding: 12px 0;
+  color: var(--text, #19323C);
+}
+.widget-big-unit { font-size: 18px; font-weight: 500; color: var(--text-secondary, #666); }
+.widget-chore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.widget-chore-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}

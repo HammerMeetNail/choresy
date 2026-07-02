@@ -162,7 +162,8 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
 		        COALESCE(stats_section_hidden, '[]'::jsonb),
-		        COALESCE(volume_unit, 'ml')
+		        COALESCE(volume_unit, 'ml'),
+		        COALESCE(stats_widgets, '[]'::jsonb)
 		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnError(sql.ErrNoRows)
@@ -194,13 +195,15 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	rawHidden, _ := json.Marshal([]int64{7})
 	rawSecOrder, _ := json.Marshal([]string{})
 	rawSecHidden, _ := json.Marshal([]string{})
+	rawWidgets, _ := json.Marshal([]userprefs.StatsWidget{})
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
 		        COALESCE(stats_section_hidden, '[]'::jsonb),
-		        COALESCE(volume_unit, 'ml')
+		        COALESCE(volume_unit, 'ml'),
+		        COALESCE(stats_widgets, '[]'::jsonb)
 		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden, "oz"))
+		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce", "coalesce", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden, "oz", rawWidgets))
 
 	p, err := store.Get(context.Background(), 5)
 	if err != nil {
@@ -262,8 +265,9 @@ func TestPostgresStore_Upsert(t *testing.T) {
 	rawHidden, _ := json.Marshal([]int64{})
 	rawSecOrder, _ := json.Marshal([]string{})
 	rawSecHidden, _ := json.Marshal([]string{})
+	rawWidgetsUp, _ := json.Marshal([]userprefs.StatsWidget{})
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_preferences`)).
-		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden, "ml").
+		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden, "ml", rawWidgetsUp).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}, Timezone: "UTC"}); err != nil {

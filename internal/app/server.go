@@ -157,7 +157,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
-	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
+	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 

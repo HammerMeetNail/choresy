@@ -3,18 +3,27 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 // PreferencesHandler handles GET /api/preferences and PATCH /api/preferences.
 type PreferencesHandler struct {
-	service *userprefs.Service
+	service    *userprefs.Service
+	choreStore chore.Store // optional; used to ownership-check widget choreIds
 }
 
 // NewPreferencesHandler constructs a PreferencesHandler.
 func NewPreferencesHandler(service *userprefs.Service) *PreferencesHandler {
 	return &PreferencesHandler{service: service}
+}
+
+// WithChoreStore attaches a chore store so widget choreIds can be
+// ownership-checked against the caller's household.
+func (h *PreferencesHandler) WithChoreStore(cs chore.Store) *PreferencesHandler {
+	h.choreStore = cs
+	return h
 }
 
 // Get returns the current user's preferences.
@@ -45,12 +54,13 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ChoreOrder          *[]int64  `json:"choreOrder"`
-		HiddenHomeChoreIDs  *[]int64  `json:"hiddenHomeChoreIds"`
-		Timezone            *string   `json:"timezone"`
-		VolumeUnit          *string   `json:"volumeUnit"`
-		StatsSectionOrder   *[]string `json:"statsSectionOrder"`
-		StatsSectionHidden  *[]string `json:"statsSectionHidden"`
+		ChoreOrder         *[]int64                 `json:"choreOrder"`
+		HiddenHomeChoreIDs *[]int64                 `json:"hiddenHomeChoreIds"`
+		Timezone           *string                  `json:"timezone"`
+		VolumeUnit         *string                  `json:"volumeUnit"`
+		StatsSectionOrder  *[]string                `json:"statsSectionOrder"`
+		StatsSectionHidden *[]string                `json:"statsSectionHidden"`
+		StatsWidgets       *[]userprefs.StatsWidget `json:"statsWidgets"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -94,6 +104,37 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if req.StatsSectionHidden != nil {
 		if err := h.service.UpdateStatsSectionHidden(r.Context(), user.ID, *req.StatsSectionHidden); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	if req.StatsWidgets != nil {
+		// Ownership check: every referenced chore must belong to the caller's
+		// household. This is defense-in-depth on top of the stats endpoints'
+		// own ownership checks (a widget renders via those endpoints).
+		if h.choreStore != nil {
+			owned := map[int64]bool{}
+			if user.HouseholdID != nil {
+				chores, err := h.choreStore.ListChores(r.Context(), *user.HouseholdID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+				for _, c := range chores {
+					owned[c.ID] = true
+				}
+			}
+			for _, wdg := range *req.StatsWidgets {
+				for _, cid := range wdg.ChoreIDs {
+					if !owned[cid] {
+						writeError(w, http.StatusForbidden, "widget references a chore outside your household")
+						return
+					}
+				}
+			}
+		}
+		if _, err := h.service.UpdateStatsWidgets(r.Context(), user.ID, *req.StatsWidgets); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

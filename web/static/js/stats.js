@@ -264,7 +264,11 @@ export function renderStatsPage(state) {
   })();
 
   const choreTimeSeries = state.stats?.choreTimeSeries || {};
-  const dynamicKeys = eligibleChoreSectionKeys(chores);
+  const widgets = state.stats?.widgets || [];
+  const dynamicKeys = [
+    ...eligibleChoreSectionKeys(chores),
+    ...widgets.map(w => widgetSectionKey(w.id)),
+  ];
   const order = resolveStatsLayout(
     state.stats?.sectionOrder,
     state.stats?.sectionHidden,
@@ -332,6 +336,11 @@ export function renderStatsPage(state) {
         const chore = choreMap[id];
         if (!chore) return "";
         return renderChoreAnalyticsSection(chore, choreTimeSeries[id], members);
+      }
+      if (isWidgetSectionKey(k)) {
+        const w = widgets.find(x => widgetSectionKey(x.id) === k);
+        if (!w) return "";
+        return renderWidgetSection(w, state);
       }
       return "";
     })
@@ -411,6 +420,7 @@ function renderCustomizePanel(state) {
       </button>
     </div>
     ${rows}
+    <button class="btn btn-outline btn-sm mt-2" data-action="widget-add">+ Add widget</button>
   </div>`;
 }
 
@@ -885,6 +895,175 @@ export function renderChoreAnalyticsSection(chore, ts, members) {
     </div>
     ${renderMemberList(ts?.byMember, memberMap)}
     <div class="baby-chart">${chartHTML}</div>
+  </div>`;
+}
+
+// ─── User-defined widgets (Phase 4) ─────────────────────────────────────────
+
+// widgetGrain resolves the time-series grain a widget's data should be fetched
+// at. Widgets store an optional grain; default to daily.
+export function widgetGrain(widget) {
+  const g = widget?.grain;
+  return g === "weekly" || g === "monthly" ? g : "daily";
+}
+
+// widgetMetricValue extracts the numeric value for a widget's chosen metric
+// from one time-series period bucket. Amount uses the stored total; duration is
+// rendered in minutes; everything else falls back to the occurrence count.
+function widgetMetricValue(period, metric) {
+  switch (metric) {
+    case "amount": return period.totalML || 0;
+    case "duration": return Math.round((period.totalDuration || 0) / 60);
+    default: return period.count || 0;
+  }
+}
+
+function widgetMetricUnit(widget, ts) {
+  switch (widget.metric) {
+    case "amount": return ts?.metricUnit || "";
+    case "duration": return "min";
+    default: return "";
+  }
+}
+
+// renderWidgetSection renders one user-defined widget. Data comes from
+// state.stats.widgetData[widget.id] (an array of per-chore time-series loaded by
+// app.js) plus state.latestLogs for the last-done type. The widget title is
+// always escaped — widgets carry no markup.
+export function renderWidgetSection(widget, state) {
+  const title = escapeHTML(widget.title || "Widget");
+  const data = (state.stats?.widgetData && state.stats.widgetData[widget.id]) || [];
+  const chores = state.chores || [];
+  const members = state.members || [];
+  const choreMap = {};
+  chores.forEach(c => { choreMap[c.id] = c; });
+
+  let bodyHTML = "";
+  if (widget.type === "last-done") {
+    const latest = state.latestLogs || {};
+    const rows = (widget.choreIds || []).map(id => {
+      const c = choreMap[id];
+      if (!c) return "";
+      const l = latest[id];
+      const ago = l?.completedAt ? formatTimeAgo(l.completedAt) : "";
+      const agoHTML = ago
+        ? `<span class="last-done-ago">${escapeHTML(ago)}</span>`
+        : `<span class="last-done-ago last-done-ago--never">never</span>`;
+      return `<div class="last-done-row">
+        <span class="last-done-icon" style="--chore-color:${escapeHTML(c.color)}">${escapeHTML(c.icon)}</span>
+        <span class="last-done-name">${escapeHTML(c.name)}</span>
+        ${agoHTML}
+      </div>`;
+    }).join("");
+    bodyHTML = `<div class="last-done-list">${rows || '<p class="text-secondary text-center">No chores</p>'}</div>`;
+  } else if (widget.type === "member-split") {
+    const memberMap = {};
+    members.forEach(m => { memberMap[m.userId] = m; });
+    const merged = {};
+    data.forEach(d => (d.ts?.byMember || []).forEach(e => { merged[e.userId] = (merged[e.userId] || 0) + e.count; }));
+    const byMember = Object.entries(merged)
+      .map(([userId, count]) => ({ userId: parseInt(userId, 10), count }))
+      .sort((a, b) => b.count - a.count);
+    bodyHTML = renderMemberList(byMember, memberMap);
+  } else if (widget.type === "timeseries") {
+    const ts = data[0]?.ts;
+    const periods = ts?.periods || [];
+    const unit = widgetMetricUnit(widget, ts);
+    bodyHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => widgetMetricValue(p, widget.metric),
+      unitLabel: unit || (widget.metric === "count" ? "count" : ""),
+      fmt: v => `${v}${unit ? " " + unit : ""}`,
+    });
+  } else {
+    // "total" (and any other type) → a big-number aggregate over the window.
+    let total = 0;
+    data.forEach(d => (d.ts?.periods || []).forEach(p => { total += widgetMetricValue(p, widget.metric); }));
+    const unit = data.length ? widgetMetricUnit(widget, data[0].ts) : "";
+    bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
+  }
+
+  return `<div class="card mb-3 widget-card">
+    <div class="widget-card-header">
+      <h3>${title}</h3>
+      <button class="widget-remove-btn" data-action="widget-remove" data-widget-id="${escapeHTML(widget.id)}" aria-label="Remove widget">×</button>
+    </div>
+    ${bodyHTML}
+  </div>`;
+}
+
+// renderWidgetWizard renders the "Add widget" bottom sheet. `draft` holds the
+// in-progress selection.
+export function renderWidgetWizard(state, draft) {
+  const chores = state.chores || [];
+  const d = draft || {};
+  const selChores = new Set(d.choreIds || []);
+  const type = d.type || "total";
+  const metric = d.metric || "count";
+  const period = d.period || "week";
+
+  const presentations = [
+    { value: "total", label: "Big number" },
+    { value: "timeseries", label: "Bar chart" },
+    { value: "member-split", label: "Member split" },
+    { value: "last-done", label: "Last done" },
+  ];
+  const metrics = [
+    { value: "count", label: "Count" },
+    { value: "amount", label: "Amount" },
+    { value: "duration", label: "Duration" },
+  ];
+  const periods = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+    { value: "all", label: "All" },
+  ];
+
+  const choreChecks = chores.map(c =>
+    `<label class="widget-chore-check">
+      <input type="checkbox" data-action="widget-draft-chore" data-chore-id="${c.id}" ${selChores.has(c.id) ? "checked" : ""}>
+      <span>${escapeHTML(c.icon)} ${escapeHTML(c.name)}</span>
+    </label>`
+  ).join("");
+
+  const opt = (arr, sel) => arr.map(o => `<option value="${o.value}"${o.value === sel ? " selected" : ""}>${escapeHTML(o.label)}</option>`).join("");
+
+  return `<div class="bottom-sheet widget-wizard-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Add widget</div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-title">Name</label>
+      <input id="widget-title" type="text" class="input" maxlength="60" placeholder="e.g. Bottles this week" value="${escapeHTML(d.title || "")}" />
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">Chores</label>
+      <div class="widget-chore-list">${choreChecks || '<p class="text-secondary">No chores yet</p>'}</div>
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-presentation">Show as</label>
+      <select id="widget-presentation" class="input" data-action="widget-draft-field" data-field="type">${opt(presentations, type)}</select>
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-metric">Value</label>
+      <select id="widget-metric" class="input" data-action="widget-draft-field" data-field="metric">${opt(metrics, metric)}</select>
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-period">Period</label>
+      <select id="widget-period" class="input" data-action="widget-draft-field" data-field="period">${opt(periods, period)}</select>
+    </div>
+
+    <div class="chore-sheet-footer">
+      <div class="chore-sheet-footer-left"></div>
+      <div class="chore-sheet-footer-right">
+        <button type="button" class="btn btn-outline" data-action="close-sheet">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="widget-save">Add</button>
+      </div>
+    </div>
   </div>`;
 }
 

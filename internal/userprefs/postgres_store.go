@@ -22,14 +22,16 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 	var rawSecOrder []byte
 	var rawSecHidden []byte
 	var volumeUnit string
+	var rawWidgets []byte
 	err := s.db.QueryRowContext(ctx,
 		`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
 		        COALESCE(stats_section_hidden, '[]'::jsonb),
-		        COALESCE(volume_unit, 'ml')
+		        COALESCE(volume_unit, 'ml'),
+		        COALESCE(stats_widgets, '[]'::jsonb)
 		 FROM user_preferences WHERE user_id = $1`,
 		userID,
-	).Scan(&rawOrder, &rawHidden, &tz, &rawSecOrder, &rawSecHidden, &volumeUnit)
+	).Scan(&rawOrder, &rawHidden, &tz, &rawSecOrder, &rawSecHidden, &volumeUnit, &rawWidgets)
 	if err == sql.ErrNoRows {
 		return Preferences{
 			ChoreOrder:         []int64{},
@@ -37,6 +39,7 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 			StatsSectionOrder:  []string{},
 			StatsSectionHidden: []string{},
 			VolumeUnit:         "ml",
+			StatsWidgets:       []StatsWidget{},
 		}, nil
 	}
 	if err != nil {
@@ -79,6 +82,16 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 		volumeUnit = "ml"
 	}
 
+	var widgets []StatsWidget
+	if len(rawWidgets) > 0 {
+		if err := json.Unmarshal(rawWidgets, &widgets); err != nil {
+			return Preferences{}, err
+		}
+	}
+	if widgets == nil {
+		widgets = []StatsWidget{}
+	}
+
 	return Preferences{
 		ChoreOrder:         order,
 		HiddenHomeChoreIDs: hidden,
@@ -86,6 +99,7 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 		StatsSectionOrder:  secOrder,
 		StatsSectionHidden: secHidden,
 		VolumeUnit:         volumeUnit,
+		StatsWidgets:       widgets,
 	}, nil
 }
 
@@ -110,6 +124,14 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 	if volumeUnit != "oz" {
 		volumeUnit = "ml"
 	}
+	widgets := p.StatsWidgets
+	if widgets == nil {
+		widgets = []StatsWidget{}
+	}
+	rawWidgets, err := json.Marshal(widgets)
+	if err != nil {
+		return err
+	}
 	rawOrder, err := json.Marshal(order)
 	if err != nil {
 		return err
@@ -128,8 +150,8 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO user_preferences (user_id, chore_order, hidden_home_chore_ids, timezone,
-		                               stats_section_order, stats_section_hidden, volume_unit, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		                               stats_section_order, stats_section_hidden, volume_unit, stats_widgets, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
 		ON CONFLICT (user_id)
 		DO UPDATE SET chore_order           = EXCLUDED.chore_order,
 		              hidden_home_chore_ids = EXCLUDED.hidden_home_chore_ids,
@@ -137,8 +159,9 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 		              stats_section_order   = EXCLUDED.stats_section_order,
 		              stats_section_hidden  = EXCLUDED.stats_section_hidden,
 		              volume_unit           = EXCLUDED.volume_unit,
+		              stats_widgets         = EXCLUDED.stats_widgets,
 		              updated_at            = EXCLUDED.updated_at`,
-		userID, rawOrder, rawHidden, p.Timezone, rawSecOrder, rawSecHidden, volumeUnit,
+		userID, rawOrder, rawHidden, p.Timezone, rawSecOrder, rawSecHidden, volumeUnit, rawWidgets,
 	)
 	return err
 }
