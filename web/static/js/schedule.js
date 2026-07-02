@@ -471,6 +471,19 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     </div>`;
   })() : "";
 
+  // Duration timer start (Phase 5.2): for duration-metric chores, offer a
+  // "Start timer" action on a fresh log. Stopping happens from the top-bar chip.
+  const durationTimerSection = (!log && chore.metricType === "duration") ? `
+    <div class="sheet-duration-row">
+      <button type="button" class="btn btn-primary btn-full" data-action="start-timer"
+        data-chore-id="${chore.id}"
+        data-chore-name="${escapeHTML(chore.name)}"
+        data-chore-icon="${escapeHTML(chore.icon)}">
+        ▶ Start timer
+      </button>
+      <p class="sheet-hint">Records elapsed time. Stop from the timer chip up top.</p>
+    </div>` : "";
+
   const selectedMemberId = log?.userId ?? (currentUserId || null);
   const memberSection = renderMemberSelect(members, currentUserId, selectedMemberId, "log");
 
@@ -590,6 +603,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       ${ratingSection}
       ${memberSection}
       ${noteSection}
+      ${durationTimerSection}
       ${actions}
       ${removeScheduleBtn}
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">

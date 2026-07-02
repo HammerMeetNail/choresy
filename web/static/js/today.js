@@ -55,7 +55,7 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null, durationSeconds = null) {
   const body = { choreId, note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
@@ -67,6 +67,7 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (followUpTime) body.followUpTime = followUpTime;
   if (rating !== null) body.rating = rating;
   if (title) body.title = title;
+  if (durationSeconds !== null) body.durationSeconds = durationSeconds;
   // Idempotency key so an offline replay can't create a duplicate.
   body.idempotencyKey = newIdempotencyKey();
   try {

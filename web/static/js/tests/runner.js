@@ -553,6 +553,51 @@ describe("Stats: generalized per-chore sections (Phase 3)", () => {
   });
 });
 
+describe("Duration timer (Phase 5.2)", () => {
+  it("formatElapsed renders m:ss and h:mm:ss", async () => {
+    const { formatElapsed } = await import("../timer.js");
+    assert.equal(formatElapsed(0), "0:00");
+    assert.equal(formatElapsed(65), "1:05");
+    assert.equal(formatElapsed(3725), "1:02:05");
+  });
+
+  it("elapsedSeconds computes whole seconds since start", async () => {
+    const { elapsedSeconds } = await import("../timer.js");
+    const t = { choreId: 1, startedAt: 10_000 };
+    assert.equal(elapsedSeconds(t, 10_000), 0);
+    assert.equal(elapsedSeconds(t, 95_500), 85);
+    assert.equal(elapsedSeconds(null), 0);
+  });
+
+  it("save/load round-trips a timer via localStorage", async () => {
+    const store = {};
+    globalThis.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+      removeItem: (k) => { delete store[k]; },
+    };
+    const { saveTimer, loadTimer } = await import("../timer.js");
+    saveTimer({ choreId: 7, choreName: "Nap", choreIcon: "😴", startedAt: 123 });
+    const t = loadTimer();
+    assert.equal(t.choreId, 7);
+    assert.equal(t.choreName, "Nap");
+    saveTimer(null);
+    assert.equal(loadTimer(), null);
+    delete globalThis.localStorage;
+  });
+
+  it("loadTimer rejects a corrupt value", async () => {
+    const store = { nabu_active_timer: "{not json" };
+    globalThis.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: () => {}, removeItem: () => {},
+    };
+    const { loadTimer } = await import("../timer.js");
+    assert.equal(loadTimer(), null);
+    delete globalThis.localStorage;
+  });
+});
+
 describe("Log sheet: recent-value chips (Phase 5.3)", () => {
   const chore = { id: 1, icon: "🍼", name: "Feed", color: "#000", hasVolumeML: true, indicatorLabels: ["🍼 formula"] };
 

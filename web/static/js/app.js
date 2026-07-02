@@ -26,6 +26,7 @@ import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChor
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets } from "./preferences.js";
+import { loadTimer, saveTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
@@ -210,6 +211,7 @@ export function render(root) {
   }
   updateTabs(tabRoute);
   updateTopBar();
+  renderTimerChip();
 
   // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
   // first rendered (scrollTop === 0).  This prevents the grid from always
@@ -1260,6 +1262,42 @@ function updateTopBar() {
   }
 }
 
+// ─── Duration timer chip (Phase 5.2) ─────────────────────────────────────────
+
+// renderTimerChip creates/updates/removes a fixed-position chip showing the
+// running timer. It lives on document.body (outside the morph root) so DOM
+// morphing never disturbs it. A 1s interval keeps the elapsed time fresh.
+let _timerInterval = null;
+function renderTimerChip() {
+  let chip = document.querySelector("#timer-chip");
+  const t = state.activeTimer;
+  if (!t) {
+    if (chip) chip.remove();
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    return;
+  }
+  if (!chip) {
+    chip = document.createElement("button");
+    chip.id = "timer-chip";
+    chip.type = "button";
+    chip.className = "timer-chip";
+    chip.setAttribute("data-action", "stop-timer");
+    document.body.appendChild(chip);
+  }
+  const secs = elapsedSeconds(t);
+  chip.innerHTML = `<span class="timer-chip-icon">${escapeHTML(t.choreIcon || "⏱")}</span>
+    <span class="timer-chip-name">${escapeHTML(t.choreName || "Timer")}</span>
+    <span class="timer-chip-time">${formatElapsed(secs)}</span>
+    <span class="timer-chip-stop">Stop &amp; log</span>`;
+  if (!_timerInterval) {
+    _timerInterval = setInterval(() => {
+      const el = document.querySelector("#timer-chip .timer-chip-time");
+      if (el && state.activeTimer) el.textContent = formatElapsed(elapsedSeconds(state.activeTimer));
+      else if (!state.activeTimer && _timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    }, 1000);
+  }
+}
+
 function closeNotifPanel() {
   const container = document.querySelector("#notif-panel-container");
   if (container && !container.hidden) {
@@ -1491,6 +1529,9 @@ export async function init() {
   state = createAppState();
 
   state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
+
+  // Restore an in-progress duration timer (Phase 5.2) so it survives reloads.
+  state.activeTimer = loadTimer();
 
   // Register the service worker and set up the controllerchange listener early,
   // before any async work, so the "App updated" toast fires reliably on every
@@ -2511,6 +2552,46 @@ export async function init() {
           }
         });
         actionEl.classList.add("volume-recent-chip--active");
+        break;
+      }
+
+      // ── Duration timer (Phase 5.2) ───────────────────────────────────────
+
+      case "start-timer": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        if (isNaN(choreId)) break;
+        state.activeTimer = {
+          choreId,
+          choreName: actionEl.dataset.choreName || "",
+          choreIcon: actionEl.dataset.choreIcon || "⏱",
+          startedAt: Date.now(),
+        };
+        saveTimer(state.activeTimer);
+        state.activeSheet = null;
+        state.activeSheetData = {};
+        render(app);
+        showToast("Timer started", "info");
+        break;
+      }
+
+      case "stop-timer": {
+        e.preventDefault();
+        const t = state.activeTimer;
+        if (!t) break;
+        const durationSeconds = elapsedSeconds(t);
+        const completedAt = new Date().toISOString();
+        // Clear the timer immediately so a double-tap can't double-log.
+        state.activeTimer = null;
+        saveTimer(null);
+        render(app);
+        logChore(t.choreId, "", "", [], null, completedAt, null, state.user?.id ?? null, {}, 0, null, null, null, durationSeconds)
+          .then(async () => {
+            await Promise.all([loadTodayData(), loadLatestLogsData()]);
+            render(app);
+            showToast(`Logged ${formatElapsed(durationSeconds)}`, "success");
+          })
+          .catch(() => showToast("Failed to log timer", "error"));
         break;
       }
 
