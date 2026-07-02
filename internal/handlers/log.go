@@ -105,7 +105,8 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Rating           *int           `json:"rating"`      // optional rating 0-50 (tenths of a star)
 		UserID           *int64         `json:"userId"`      // optional: log on behalf of another household member
 		FollowUpMinutes  int            `json:"followUpMinutes"`
-		FollowUpTime     string         `json:"followUpTime"` // local ISO datetime for schedule placement
+		FollowUpTime     string         `json:"followUpTime"`     // local ISO datetime for schedule placement
+		IdempotencyKey   string         `json:"idempotencyKey"`   // optional client token to de-dup offline replays
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -169,7 +170,12 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating)
+	idemKey := strings.TrimSpace(req.IdempotencyKey)
+	if len(idemKey) > 64 {
+		writeError(w, http.StatusBadRequest, "idempotencyKey too long")
+		return
+	}
+	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, idemKey)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return

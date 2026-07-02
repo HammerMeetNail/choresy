@@ -1,6 +1,7 @@
 import { createAppState, resetAuthedState } from "./state.js";
 import { morphInnerHTML } from "./morph.js";
 import { apiMe, apiFetch } from "./api.js";
+import { replayQueue, queuedCount } from "./offline-queue.js";
 import { escapeHTML, localDateStr } from "./utils.js";
 import {
   loadSession,
@@ -3579,6 +3580,33 @@ export async function init() {
   // past a threshold refetches the active tab's data. Honors
   // prefers-reduced-motion (skips the transition, still refreshes).
   setupPullToRefresh();
+
+  // ── Offline log queue: replay + messaging ───────────────────────────────────
+  // A log made while offline is queued (see today.js logChore / offline-queue).
+  // Tell the user it was saved, and replay the queue when we regain
+  // connectivity or the app is foregrounded (iOS Safari lacks Background Sync,
+  // so foreground replay is the primary mechanism there).
+  window.addEventListener("nabu-log-queued", () => {
+    showToast("Saved — will sync when online", "info");
+  });
+  const flushOfflineQueue = () => {
+    if (!state.user) return;
+    replayQueue(apiFetch).then(async (synced) => {
+      if (synced > 0) {
+        await Promise.all([loadLatestLogsData(), reloadViewData()]);
+        render(document.querySelector("#app"));
+        showToast(`Synced ${synced} log${synced === 1 ? "" : "s"}`, "success");
+      }
+    }).catch(() => {});
+  };
+  window.addEventListener("online", flushOfflineQueue);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) flushOfflineQueue();
+  });
+  // Replay anything left from a previous session on boot.
+  if (state.user && (typeof navigator === "undefined" || navigator.onLine !== false)) {
+    flushOfflineQueue();
+  }
 
   render(app);
 }

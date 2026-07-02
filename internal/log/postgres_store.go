@@ -56,11 +56,58 @@ func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, 
 	if log.Title != nil {
 		title = sql.NullString{String: *log.Title, Valid: true}
 	}
+	var idemKey sql.NullString
+	if log.IdempotencyKey != "" {
+		idemKey = sql.NullString{String: log.IdempotencyKey, Valid: true}
+	}
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, created_at
-	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML), nullStr(indVolJSON), ptrToNullInt64(log.Rating), title).Scan(&log.ID, &log.CreatedAt)
+		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, created_at
+	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML), nullStr(indVolJSON), ptrToNullInt64(log.Rating), title, idemKey).Scan(&log.ID, &log.CreatedAt)
 	return log, err
+}
+
+func (s *PostgresStore) FindLogByIdempotencyKey(ctx context.Context, householdID int64, key string) (*ChoreLog, error) {
+	if key == "" {
+		return nil, nil
+	}
+	var l ChoreLog
+	var indJSON string
+	var indVolJSON sql.NullString
+	var slotHour sql.NullInt64
+	var logDate sql.NullString
+	var volumeML sql.NullInt64
+	var rating sql.NullInt64
+	var title sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,'')
+		FROM chore_logs WHERE household_id = $1 AND idempotency_key = $2
+		LIMIT 1
+	`, householdID, key).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
+	if l.Indicators == nil {
+		l.Indicators = []string{}
+	}
+	l.SlotHour = nullIntToPtr(slotHour)
+	if logDate.Valid {
+		l.LogDate = &logDate.String
+	}
+	l.VolumeML = nullIntToPtr(volumeML)
+	l.Rating = nullIntToPtr(rating)
+	if title.Valid {
+		l.Title = &title.String
+	}
+	if indVolJSON.Valid && indVolJSON.String != "" {
+		_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
+	}
+	l.IdempotencyKey = key
+	return &l, nil
 }
 
 func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) {

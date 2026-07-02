@@ -46,6 +46,57 @@ func TestLogService_SearchHistoryLogs(t *testing.T) {
 	}
 }
 
+func TestLogService_LogChoreIdempotent(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	// First call with a key creates the log.
+	l1, created1, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent: %v", err)
+	}
+	if !created1 {
+		t.Fatal("expected created=true on first call")
+	}
+
+	// Replay with the same key returns the SAME log and does not create a new one.
+	l2, created2, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent replay: %v", err)
+	}
+	if created2 {
+		t.Fatal("expected created=false on replay")
+	}
+	if l2.ID != l1.ID {
+		t.Fatalf("replay returned different log: %d vs %d", l2.ID, l1.ID)
+	}
+
+	// A different key creates a distinct log.
+	l3, created3, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-xyz")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent: %v", err)
+	}
+	if !created3 || l3.ID == l1.ID {
+		t.Fatal("expected a new distinct log for a different key")
+	}
+
+	// The same key in a DIFFERENT household must not collide.
+	l4, created4, err := svc.LogChoreIdempotent(ctx, 2, 20, 200, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent: %v", err)
+	}
+	if !created4 || l4.ID == l1.ID {
+		t.Fatal("same key in another household must create a separate log")
+	}
+
+	// Empty key always creates.
+	_, createdA, _ := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, "")
+	_, createdB, _ := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, "")
+	if !createdA || !createdB {
+		t.Fatal("empty key must always create")
+	}
+}
+
 func TestLogService_LogChore_Basic(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()

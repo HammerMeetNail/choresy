@@ -122,6 +122,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Timezone sync | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
 | **Baby Care** |
 | Feed Baby volume | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift`, `Views/StatsView.swift` | `/api/logs` | Built | |
+| Offline log queue + idempotency | `today.js`, `offline-queue.js`, `offline-log-queue.spec.js` | — | `/api/logs` (`idempotencyKey`) | **iOS pending** | PWA queues offline log POSTs in IndexedDB and replays on reconnect/foreground; server de-dups on a client `idempotencyKey` (migration 035, unique per household). iOS should queue via its stores and send the same key |
 | Change Baby indicators | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | Volume prefill | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | **Preferences** |

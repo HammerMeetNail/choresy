@@ -20,6 +20,9 @@ type ChoreLog struct {
 	LogDate          *string        `json:"-"`
 	VolumeML         *int           `json:"volumeML,omitempty"`
 	Rating           *int           `json:"rating,omitempty"`
+	// IdempotencyKey is a client-generated token used to de-duplicate offline
+	// log replays. Never returned to clients. Empty means "no key".
+	IdempotencyKey string `json:"-"`
 }
 
 type DailySummary struct {
@@ -48,4 +51,8 @@ type Store interface {
 	// household's history whose note or title matches query (case-insensitive
 	// substring), ordered newest-first.
 	SearchHistoryLogs(ctx context.Context, householdID int64, query string, limit int) ([]ChoreLog, error)
+	// FindLogByIdempotencyKey returns the log previously created with the given
+	// client idempotency key for this household, if any. Used to make offline
+	// log replay safe (at-most-once creation per key).
+	FindLogByIdempotencyKey(ctx context.Context, householdID int64, key string) (*ChoreLog, error)
 }

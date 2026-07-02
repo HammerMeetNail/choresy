@@ -171,6 +171,21 @@ func (s *MemoryStore) SearchHistoryLogs(_ context.Context, householdID int64, qu
 	return result, nil
 }
 
+func (s *MemoryStore) FindLogByIdempotencyKey(_ context.Context, householdID int64, key string) (*ChoreLog, error) {
+	if key == "" {
+		return nil, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, l := range s.logs {
+		if l.HouseholdID == householdID && l.IdempotencyKey == key {
+			cp := l
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
+
 func logMatchesDate(l ChoreLog, date time.Time) bool {
 	y1, m1, d1 := logDateParts(l)
 	y2, m2, d2 := date.UTC().Date()

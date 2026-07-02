@@ -1,6 +1,12 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML, formatVolume } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
+import { enqueueLog } from "./offline-queue.js";
+
+function newIdempotencyKey() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function formatLocalISODate(d) {
   const year = d.getFullYear();
@@ -61,11 +67,29 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (followUpTime) body.followUpTime = followUpTime;
   if (rating !== null) body.rating = rating;
   if (title) body.title = title;
-  const { data } = await apiFetch("/api/logs", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return data;
+  // Idempotency key so an offline replay can't create a duplicate.
+  body.idempotencyKey = newIdempotencyKey();
+  try {
+    const { data } = await apiFetch("/api/logs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return data;
+  } catch (err) {
+    // Network failure (offline / flaky). Queue the log so it (and its
+    // timestamp) is not lost, then report it as queued instead of failing.
+    // Capture completedAt now if it wasn't set, so the time is preserved.
+    if (!body.completedAt) body.completedAt = new Date().toISOString();
+    try {
+      await enqueueLog(body);
+      if (typeof window !== "undefined" && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent("nabu-log-queued"));
+      }
+      return { log: null, queued: true };
+    } catch {
+      throw err; // couldn't even queue — surface the original error
+    }
+  }
 }
 
 export async function undoLog(logId) {

@@ -40,6 +40,27 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int) (ChoreLog, error) {
+	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating)
+	created, err := s.store.CreateLog(ctx, entry)
+	if err != nil {
+		return ChoreLog{}, err
+	}
+	// The actor (who performed the logging) is the authenticated user in
+	// context, NOT necessarily the chore log's UserID — a member can log a
+	// chore on behalf of another household member. audit.Emit enriches with
+	// the context actor so the audit trail records who did it.
+	s.logAudit(ctx, "log.created", map[string]string{
+		"household_id": idStr(householdID),
+		"log_id":       idStr(created.ID),
+		"chore_id":     idStr(choreID),
+	})
+	return created, nil
+}
+
+// buildLog assembles a ChoreLog from the create-log inputs, resolving the
+// canonical completion timestamp and log date. Shared by LogChore and
+// LogChoreIdempotent.
+func (s *Service) buildLog(householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int) ChoreLog {
 	var logCompletedAt time.Time
 	if completedAt != nil {
 		logCompletedAt = completedAt.UTC()
@@ -57,7 +78,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		d := date.Format("2006-01-02")
 		logDate = &d
 	}
-	created, err := s.store.CreateLog(ctx, ChoreLog{
+	return ChoreLog{
 		HouseholdID:      householdID,
 		UserID:           userID,
 		ChoreID:          choreID,
@@ -70,20 +91,40 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		LogDate:          logDate,
 		VolumeML:         volumeML,
 		Rating:           rating,
-	})
-	if err != nil {
-		return ChoreLog{}, err
 	}
-	// The actor (who performed the logging) is the authenticated user in
-	// context, NOT necessarily the chore log's UserID — a member can log a
-	// chore on behalf of another household member. audit.Emit enriches with
-	// the context actor so the audit trail records who did it.
+}
+
+// LogChoreIdempotent creates a log, de-duplicating by a client-generated
+// idempotency key so offline replay is safe. Returns (log, created) where
+// created is false when an existing log with the same key was returned. When
+// key is empty it behaves exactly like LogChore (always creates).
+func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, idempotencyKey string) (ChoreLog, bool, error) {
+	if idempotencyKey != "" {
+		if existing, err := s.store.FindLogByIdempotencyKey(ctx, householdID, idempotencyKey); err != nil {
+			return ChoreLog{}, false, err
+		} else if existing != nil {
+			return *existing, false, nil
+		}
+	}
+	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating)
+	entry.IdempotencyKey = idempotencyKey
+	created, err := s.store.CreateLog(ctx, entry)
+	if err != nil {
+		// A concurrent replay may have won the unique-index race. Re-resolve by
+		// key and return that log instead of surfacing a duplicate-key error.
+		if idempotencyKey != "" {
+			if existing, ferr := s.store.FindLogByIdempotencyKey(ctx, householdID, idempotencyKey); ferr == nil && existing != nil {
+				return *existing, false, nil
+			}
+		}
+		return ChoreLog{}, false, err
+	}
 	s.logAudit(ctx, "log.created", map[string]string{
 		"household_id": idStr(householdID),
 		"log_id":       idStr(created.ID),
 		"chore_id":     idStr(choreID),
 	})
-	return created, nil
+	return created, true, nil
 }
 
 func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int) error {

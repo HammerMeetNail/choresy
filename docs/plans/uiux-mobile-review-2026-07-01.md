@@ -64,7 +64,7 @@ Baby feeding volumes are mL end-to-end (inputs, charts, history rows: `today.js:
 
 ## 2. Phase 2 — Interaction & ergonomics gaps
 
-### 2.1 Offline logging queue (highest-value item in this phase)
+### 2.1 Offline logging queue ✅ DONE (inline per-log pending styling deferred)
 The SW only caches **GET** requests (`service-worker.js:131-133`). A `POST /api/logs` on flaky reception (3am feed, walking the pram) fails with a toast and **the log is lost** — worst possible failure for the baby use case where the timestamp matters.
 
 **Plan:**
