@@ -888,7 +888,10 @@ async function loadAllStatsData() {
 // needs to render. Data maps onto the existing time-series endpoint; widgets
 // add no new query surface. Results are keyed by widget id.
 async function loadWidgetData() {
-  const widgets = state.stats?.widgets || [];
+  const hidden = new Set((state.stats && state.stats.sectionHidden) || []);
+  const widgets = (state.stats?.widgets || [])
+    .filter(w => !hidden.has(`widget:${w.id}`))
+    .slice(0, MAX_ANALYTICS_FETCHES);
   if (widgets.length === 0) return;
   state.stats.widgetData = state.stats.widgetData || {};
   await Promise.allSettled(widgets.map(async (w) => {
@@ -908,11 +911,21 @@ async function loadWidgetData() {
   }));
 }
 
-// loadChoreAnalyticsData fetches daily time-series for every chore that has a
+// MAX_ANALYTICS_FETCHES bounds the per-chore/per-widget time-series fan-out on
+// a single Stats open, so a household with many metric/indicator chores can't
+// trigger an unbounded burst of full-year-scan requests.
+const MAX_ANALYTICS_FETCHES = 15;
+
+// loadChoreAnalyticsData fetches daily time-series for chores that have a
 // generalized analytics section (a metric or indicators), powering the
-// per-chore `chore:<id>` stats sections (Phase 3).
+// per-chore `chore:<id>` stats sections (Phase 3). It skips sections the user
+// has hidden and caps the number of fetches to bound DB load.
 async function loadChoreAnalyticsData() {
-  const chores = (state.chores || []).filter(choreHasAnalytics);
+  const hidden = new Set((state.stats && state.stats.sectionHidden) || []);
+  const chores = (state.chores || [])
+    .filter(choreHasAnalytics)
+    .filter(c => !hidden.has(`chore:${c.id}`))
+    .slice(0, MAX_ANALYTICS_FETCHES);
   if (chores.length === 0) return;
   state.stats = state.stats || {};
   state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
@@ -1645,7 +1658,7 @@ export async function init() {
       }
       if (state.currentRoute === "/activity") {
         if (state.activityView === "history") {
-          loadHistory().then(data => {
+          Promise.all([loadHistory(), loadDayNotesData()]).then(([data]) => {
             state.historyLogs = data?.logs || [];
             state.historyHasMore = data?.hasMore || false;
             state.historyBefore = data?.start || null;
@@ -2073,7 +2086,7 @@ export async function init() {
           .map(el => el.dataset.label)
           .filter(Boolean);
         // Subject tag (Phase 5.5): single-select chip, if any.
-        const subject = document.querySelector('.subject-chip.log-chip--on')?.dataset.subject || null;
+        const subject = document.querySelector('.subject-chip.subject-chip--on')?.dataset.subject || null;
         const indicatorVolumes = {};
         document.querySelectorAll('.indicator-volume-select').forEach(select => {
           const indicator = select.dataset.indicator;
@@ -2536,11 +2549,11 @@ export async function init() {
         const wasOn = actionEl.getAttribute("aria-pressed") === "true";
         // Single-select: clear all, then set this one unless it was already on.
         document.querySelectorAll(".subject-chip").forEach(chip => {
-          chip.classList.remove("log-chip--on");
+          chip.classList.remove("subject-chip--on");
           chip.setAttribute("aria-pressed", "false");
         });
         if (!wasOn) {
-          actionEl.classList.add("log-chip--on");
+          actionEl.classList.add("subject-chip--on");
           actionEl.setAttribute("aria-pressed", "true");
         }
         break;
@@ -4103,6 +4116,7 @@ async function reloadViewData() {
   if (state.currentRoute === "/activity") {
     if (state.activityView === "history") {
       try {
+        loadDayNotesData().catch(() => {});
         const prevLogs = [...(state.historyLogs || [])];
         const prevBefore = state.historyBefore;
         const prevHasMore = state.historyHasMore;

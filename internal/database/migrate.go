@@ -9,7 +9,38 @@ import (
 	migrationassets "github.com/HammerMeetNail/nabu/migrations"
 )
 
+// migrateLockKey is a Postgres session advisory-lock key that serializes
+// concurrent migrators. Rolling deploys / multiple replicas all call Migrate at
+// boot; without this, two instances racing to INSERT the same schema_migrations
+// row would make the loser's transaction fail and crash-loop the pod. Distinct
+// from reminder.LeaderLockKey ("nabu_rmd").
+const migrateLockKey int64 = 0x6e6162755f6d6772 // "nabu_mgr"
+
+// Migrate applies pending migrations under a session advisory lock so that only
+// one instance migrates at a time; the others block until it finishes and then
+// see the already-applied migrations and skip them.
 func Migrate(ctx context.Context, db *sql.DB) error {
+	// A session advisory lock is connection-scoped, so hold it on a single
+	// dedicated connection for the duration of the migration run.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, migrateLockKey)
+	}()
+	return migrateLocked(ctx, db)
+}
+
+// migrateLocked runs the migration loop. The caller must already hold the
+// migration advisory lock. The reads of schema_migrations happen after the lock
+// is acquired, so a blocked-then-unblocked instance sees the winner's applied
+// rows and skips them.
+func migrateLocked(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,

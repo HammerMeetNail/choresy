@@ -4474,7 +4474,9 @@ details[open] .chore-stat-chevron {
 /* ── Duration timer chip (Phase 5.2) ───────────────────────────────────────── */
 .timer-chip {
   position: fixed;
-  top: 56px;
+  /* Sit just above the bottom tab bar so it never overlaps the top-bar/home
+     header controls (which would obscure the Stop tap target). */
+  bottom: 76px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 900;
@@ -4503,8 +4505,28 @@ details[open] .chore-stat-chevron {
 .sheet-duration-row { margin-top: 8px; }
 
 /* ── Subject tagging (Phase 5.5) ───────────────────────────────────────────── */
+/* Own class (not .log-chip) so positional .log-chip selectors keep pointing at
+   the indicator chips even for chores that define subjects. */
 .hist-subject { font-weight: 600; opacity: 0.85; }
-.subject-chip { }
+.subject-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.subject-chip--on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
 
 /* ── Offline pending log badge (Phase 2.1) ─────────────────────────────────── */
 .hist-pending {

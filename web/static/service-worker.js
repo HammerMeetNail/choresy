@@ -1,4 +1,8 @@
-const CACHE_NAME = "nabu-static-v1";
+// Bump on any release that changes shipped static assets so the new SW purges
+// the previous cache on activate (the activate handler deletes caches whose key
+// != CACHE_NAME). This prevents serving a stale mix of old runtime-cached,
+// version-hashed JS modules alongside a newly-deployed app.
+const CACHE_NAME = "nabu-static-v2";
 const OFFLINE_URL = "/static/offline.html";
 const STATIC_ASSETS = [
   "/static/css/app.css",

@@ -489,7 +489,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     const current = log?.subject ?? null;
     const chips = chore.subjects.map(s => {
       const on = current === s;
-      return `<button type="button" class="log-chip subject-chip${on ? " log-chip--on" : ""}"
+      return `<button type="button" class="subject-chip${on ? " subject-chip--on" : ""}"
         data-action="pick-subject" data-subject="${escapeHTML(s)}" aria-pressed="${on}">${escapeHTML(s)}</button>`;
     }).join("");
     return `<div class="sheet-subject-row">
