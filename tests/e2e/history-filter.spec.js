@@ -280,7 +280,55 @@ test.describe('History filter', () => {
     await page.locator(`.hist-filter-chip[data-chore-id="${chores[1].id}"]`).click();
     await page.waitForTimeout(300);
 
-    await expect(page.locator('text=No logs match the selected chores.')).toBeVisible();
+    // Single page, no older logs: definitive "nothing matches" message.
+    await expect(page.locator('text=No activity matches the selected chores.')).toBeVisible();
     await expect(page.locator('.hist-row')).toHaveCount(0);
+  });
+
+  test('empty filtered page still offers Load more to page further back', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choresRes = await page.request.get('/api/chores', {
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const chores = (await choresRes.json()).chores;
+    expect(chores.length).toBeGreaterThanOrEqual(2);
+
+    const now = new Date();
+    const tenDaysAgo = new Date(now.getTime() - 10 * 86400000);
+
+    // chores[0]: recent (in the current 7-day window).
+    await page.request.post('/api/logs', {
+      data: { choreId: chores[0].id, note: '', indicators: [], completedAt: now.toISOString() },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    // chores[1]: older than a week, so it lives on a later page.
+    await page.request.post('/api/logs', {
+      data: { choreId: chores[1].id, note: '', indicators: [], completedAt: tenDaysAgo.toISOString() },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.click('[data-nav="activity"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+    await page.waitForSelector('.hist-row', { timeout: 10000 });
+
+    // First page shows only the recent log, and a Load more button (older logs exist).
+    await expect(page.locator('.hist-row')).toHaveCount(1);
+    await expect(page.locator('.load-more-btn')).toBeVisible();
+
+    // Filter to the older chore: nothing on this page matches, but the match is
+    // further back — so we show the time-range hint AND keep Load more.
+    await openFilter(page);
+    await page.locator(`.hist-filter-chip[data-chore-id="${chores[1].id}"]`).click();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('.hist-row')).toHaveCount(0);
+    await expect(page.locator('text=No matching activity in this time range.')).toBeVisible();
+    await expect(page.locator('.load-more-btn')).toBeVisible();
+
+    // Paging back reveals the older matching log.
+    await page.locator('.load-more-btn').click();
+    await expect(page.locator('.hist-row')).toHaveCount(1);
+    await expect(page.locator(`.hist-row[data-chore-id="${chores[1].id}"]`)).toHaveCount(1);
   });
 });

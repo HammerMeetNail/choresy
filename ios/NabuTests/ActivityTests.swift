@@ -98,6 +98,40 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(sorted[0].key, "2026-06-02")
         XCTAssertEqual(sorted[1].key, "2026-06-01")
     }
+    // MARK: - Chore filter (additive selection)
+
+    private func makeLog(id: Int, choreId: Int) -> ChoreLog {
+        ChoreLog(id: id, householdId: 1, userId: 1, choreId: choreId,
+                 completedAt: Date(), note: "", indicators: [],
+                 slotHour: nil, createdAt: Date(), volumeML: nil,
+                 indicatorVolumes: nil)
+    }
+
+    func testFilterEmptySelectionReturnsAll() {
+        let logs = [makeLog(id: 1, choreId: 1), makeLog(id: 2, choreId: 2)]
+        let result = filterLogsByChores(logs, selected: [])
+        XCTAssertEqual(result.count, 2)
+    }
+
+    func testFilterSingleChore() {
+        let logs = [makeLog(id: 1, choreId: 1), makeLog(id: 2, choreId: 2), makeLog(id: 3, choreId: 1)]
+        let result = filterLogsByChores(logs, selected: [1])
+        XCTAssertEqual(result.count, 2)
+        XCTAssertTrue(result.allSatisfy { $0.choreId == 1 })
+    }
+
+    func testFilterMultipleChoresIsAdditive() {
+        let logs = [makeLog(id: 1, choreId: 1), makeLog(id: 2, choreId: 2), makeLog(id: 3, choreId: 3)]
+        let result = filterLogsByChores(logs, selected: [1, 3])
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(Set(result.map { $0.choreId }), [1, 3])
+    }
+
+    func testFilterNoMatchReturnsEmpty() {
+        let logs = [makeLog(id: 1, choreId: 1), makeLog(id: 2, choreId: 2)]
+        let result = filterLogsByChores(logs, selected: [99])
+        XCTAssertTrue(result.isEmpty)
+    }
 }
 
 private extension String {

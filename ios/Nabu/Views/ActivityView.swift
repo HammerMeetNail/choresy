@@ -6,6 +6,10 @@ struct ActivityView: View {
     @State private var historyLogs: [ChoreLog] = []
     @State private var historyHasMore = false
     @State private var historyBefore: String?
+    // Additive chore filter: empty = show all activity, otherwise show only the
+    // selected chores. Matches the PWA activity filter.
+    @State private var choreFilter: Set<Int> = []
+    @State private var showingFilter = false
 
     private let activityStore: ActivityStore
     private let logStore: LogStore
@@ -21,10 +25,26 @@ struct ActivityView: View {
             // sub-views were removed there for low usage / visual noise).
             HistoryListView(
                 activityStore: activityStore, logStore: logStore,
-                logs: $historyLogs, hasMore: $historyHasMore, before: $historyBefore
+                logs: $historyLogs, hasMore: $historyHasMore, before: $historyBefore,
+                choreFilter: $choreFilter
             )
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingFilter = true
+                    } label: {
+                        Image(systemName: choreFilter.isEmpty
+                            ? "line.3.horizontal.decrease.circle"
+                            : "line.3.horizontal.decrease.circle.fill")
+                    }
+                    .accessibilityLabel("Filter activity")
+                }
+            }
+            .sheet(isPresented: $showingFilter) {
+                ChoreFilterSheet(chores: state.chores, selected: $choreFilter)
+            }
         }
         .task {
             await loadHistory()
@@ -50,6 +70,7 @@ struct HistoryListView: View {
     @Binding var logs: [ChoreLog]
     @Binding var hasMore: Bool
     @Binding var before: String?
+    @Binding var choreFilter: Set<Int>
     @EnvironmentObject var state: AppState
 
     @State private var isLoadingMore = false
@@ -58,6 +79,15 @@ struct HistoryListView: View {
 
     var body: some View {
         List {
+            if let message = emptyMessage {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 24)
+                    .listRowSeparator(.hidden)
+            }
+
             ForEach(groupedLogs(), id: \.key) { group in
                 Section(group.key) {
                     ForEach(group.rows) { log in
@@ -88,11 +118,24 @@ struct HistoryListView: View {
         }
     }
 
+    /// Message to show when the (filtered) list is empty. Distinguishes "no
+    /// match on this page but more pages exist" from "nothing matches at all",
+    /// so a paginated view doesn't wrongly claim there's no matching activity.
+    private var emptyMessage: String? {
+        guard groupedLogs().isEmpty else { return nil }
+        if !choreFilter.isEmpty {
+            return hasMore
+                ? "No matching activity in this time range. Load more to look further back."
+                : "No activity matches the selected chores."
+        }
+        return logs.isEmpty ? "No completed chores yet." : nil
+    }
+
     private func groupedLogs() -> [(key: String, rows: [ChoreLog])] {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         var groups: [String: [ChoreLog]] = [:]
-        for log in logs {
+        for log in filterLogsByChores(logs, selected: choreFilter) {
             let dateStr = f.string(from: log.completedAt)
             groups[dateStr, default: []].append(log)
         }
@@ -165,5 +208,74 @@ struct HistoryListView: View {
             self.before = data.start
         } catch {}
         isLoadingMore = false
+    }
+}
+
+// MARK: - Chore Filter Sheet
+
+/// Multi-select chore filter presented from the Activity toolbar. Selection is
+/// additive: tapping "All activity" clears the filter, tapping a chore toggles
+/// it. Chores are listed in a single alphabetically-sorted list with large,
+/// tap-friendly rows.
+struct ChoreFilterSheet: View {
+    let chores: [Chore]
+    @Binding var selected: Set<Int>
+    @Environment(\.dismiss) private var dismiss
+
+    private var sortedChores: [Chore] {
+        chores.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button {
+                    selected.removeAll()
+                } label: {
+                    HStack {
+                        Text("All activity")
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        if selected.isEmpty {
+                            Image(systemName: "checkmark")
+                                .foregroundColor(.accentColor)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                ForEach(sortedChores) { chore in
+                    Button {
+                        if selected.contains(chore.id) {
+                            selected.remove(chore.id)
+                        } else {
+                            selected.insert(chore.id)
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(chore.icon)
+                                .font(.title3)
+                                .frame(width: 28)
+                            Text(chore.name)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            if selected.contains(chore.id) {
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
+            .navigationTitle("Filter activity")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 }

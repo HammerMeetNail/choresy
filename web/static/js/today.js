@@ -247,10 +247,25 @@ export function renderHistoryView(state) {
       })).filter(g => g.rows.length > 0)
     : rawDayGroups;
 
+  const loadMore = state.historyHasMore
+    ? `<div class="load-more-wrap"><button type="button" class="btn btn-secondary load-more-btn" data-action="load-more-history">Load more</button></div>`
+    : '';
+
   if (dayGroups.length === 0) {
+    // Nothing on the loaded pages matches. If more pages exist, the match may
+    // simply be further back in time — keep the Load more button available.
+    let emptyMsg;
+    if (!hasFilter) {
+      emptyMsg = '<p class="text-secondary">No completed chores yet.</p>';
+    } else if (state.historyHasMore) {
+      emptyMsg = '<p class="text-secondary">No matching activity in this time range. Load more to look further back.</p>';
+    } else {
+      emptyMsg = '<p class="text-secondary">No activity matches the selected chores.</p>';
+    }
     return `<div class="history-view">
       ${filterFab}
-      ${hasFilter ? '<p class="text-secondary">No logs match the selected chores.</p>' : '<p class="text-secondary">No completed chores yet.</p>'}
+      ${emptyMsg}
+      ${loadMore}
     </div>`;
   }
 
@@ -334,10 +349,6 @@ export function renderHistoryView(state) {
       ${days}
     </div>`;
   }).join('');
-
-  const loadMore = state.historyHasMore
-    ? `<div class="load-more-wrap"><button type="button" class="btn btn-secondary load-more-btn" data-action="load-more-history">Load more</button></div>`
-    : '';
 
   return `<div class="history-view">
     ${html}

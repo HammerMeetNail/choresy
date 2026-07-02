@@ -74,3 +74,14 @@ func fmtTime(_ date: Date) -> String {
     f.dateFormat = "HH:mm"
     return f.string(from: date)
 }
+
+// MARK: - Activity filtering
+
+/// Filters history logs by a set of selected chore IDs. An empty selection
+/// means "no filter" — every log is returned. This mirrors the PWA activity
+/// filter's additive semantics: nothing selected shows all activity, and each
+/// selected chore adds its logs to the view.
+func filterLogsByChores(_ logs: [ChoreLog], selected: Set<Int>) -> [ChoreLog] {
+    guard !selected.isEmpty else { return logs }
+    return logs.filter { selected.contains($0.choreId) }
+}
