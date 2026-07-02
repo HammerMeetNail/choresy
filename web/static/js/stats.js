@@ -176,6 +176,15 @@ export async function loadChoreTimeSeries(choreId, period) {
   return data;
 }
 
+// loadChoreSummary fetches a period-scoped aggregate (count/amount/duration +
+// per-member split) for one chore. Powers period-correct widgets (Phase 4).
+export async function loadChoreSummary(choreId, period) {
+  const { data } = await apiFetch(
+    `/api/stats/chores/${choreId}/summary?period=${period || "week"}`
+  );
+  return data;
+}
+
 export async function loadFeedingGaps(start, end) {
   const params = new URLSearchParams();
   if (start) params.set("start", start);
@@ -908,33 +917,20 @@ export function widgetGrain(widget) {
   return (p === "month" || p === "all") ? "monthly" : "daily";
 }
 
-// widgetTotalBuckets is how many trailing time-series buckets a "total" widget
-// should sum for its period (Infinity = the whole fetched range). Paired with
-// widgetGrain: day=1 daily bucket, week=7 daily, month=1 monthly, all=every
-// monthly bucket. Without this the total ignored the period entirely.
-export function widgetTotalBuckets(widget) {
-  switch (widget?.period) {
-    case "day": return 1;
-    case "month": return 1;
-    case "all": return Infinity;
-    default: return 7; // "week"
-  }
-}
-
 // widgetMetricValue extracts the numeric value for a widget's chosen metric
-// from one time-series period bucket. Amount uses the stored total; duration is
-// rendered in minutes; everything else falls back to the occurrence count.
-function widgetMetricValue(period, metric) {
+// from a bucket/summary carrying totalML/totalDuration/count. Amount uses the
+// stored total; duration is in minutes; everything else is the occurrence count.
+function widgetMetricValue(src, metric) {
   switch (metric) {
-    case "amount": return period.totalML || 0;
-    case "duration": return Math.round((period.totalDuration || 0) / 60);
-    default: return period.count || 0;
+    case "amount": return src.totalML || 0;
+    case "duration": return Math.round((src.totalDuration || 0) / 60);
+    default: return src.count || 0;
   }
 }
 
-function widgetMetricUnit(widget, ts) {
+function widgetMetricUnit(widget, src) {
   switch (widget.metric) {
-    case "amount": return ts?.metricUnit || "";
+    case "amount": return src?.metricUnit || "";
     case "duration": return "min";
     default: return "";
   }
@@ -973,8 +969,9 @@ export function renderWidgetSection(widget, state) {
   } else if (widget.type === "member-split") {
     const memberMap = {};
     members.forEach(m => { memberMap[m.userId] = m; });
+    // Period-scoped byMember comes from the summary endpoint.
     const merged = {};
-    data.forEach(d => (d.ts?.byMember || []).forEach(e => { merged[e.userId] = (merged[e.userId] || 0) + e.count; }));
+    data.forEach(d => (d.summary?.byMember || []).forEach(e => { merged[e.userId] = (merged[e.userId] || 0) + e.count; }));
     const byMember = Object.entries(merged)
       .map(([userId, count]) => ({ userId: parseInt(userId, 10), count }))
       .sort((a, b) => b.count - a.count);
@@ -989,13 +986,11 @@ export function renderWidgetSection(widget, state) {
       fmt: v => `${v}${unit ? " " + unit : ""}`,
     });
   } else {
-    // "total" (and any other type) → a big-number aggregate over the period.
-    // Sum only the trailing buckets that fall within the widget's period
-    // (slice(-Infinity) yields the whole array, so "all" sums everything).
-    const n = widgetTotalBuckets(widget);
+    // "total" (and any other type) → a big-number, period-scoped aggregate from
+    // the summary endpoint (the server bounds it to the widget's period).
     let total = 0;
-    data.forEach(d => (d.ts?.periods || []).slice(-n).forEach(p => { total += widgetMetricValue(p, widget.metric); }));
-    const unit = data.length ? widgetMetricUnit(widget, data[0].ts) : "";
+    data.forEach(d => { if (d.summary) total += widgetMetricValue(d.summary, widget.metric); });
+    const unit = data.length ? widgetMetricUnit(widget, data[0].summary) : "";
     bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
   }
 

@@ -125,6 +125,19 @@ type TimeSeriesPeriod struct {
 	VolumeByIndicator map[string]int `json:"volumeByIndicator,omitempty"`
 }
 
+// ChoreSummary is a period-scoped aggregate for one chore, used by the
+// user-defined widgets (Phase 4) so a widget's period actually bounds the
+// numbers (unlike the year-scoped time-series byMember). "all" is true all-time.
+type ChoreSummary struct {
+	ChoreID       int64              `json:"choreId"`
+	Count         int                `json:"count"`
+	TotalML       int                `json:"totalML"`
+	TotalDuration int                `json:"totalDuration"`
+	ByMember      []LeaderboardEntry `json:"byMember"`
+	MetricType    string             `json:"metricType,omitempty"`
+	MetricUnit    string             `json:"metricUnit,omitempty"`
+}
+
 type FeedingGap struct {
 	Hour            int    `json:"hour"`
 	GapMinutes      int    `json:"gapMinutes"`
@@ -964,6 +977,84 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID
 	}
 
 	return gaps, nil
+}
+
+// GetChoreSummary returns a period-scoped aggregate (count, amount, duration,
+// per-member split) for a single chore. period is day|week|month|all; "all"
+// counts every log ever recorded. The chore must belong to householdID.
+func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int64, period string, loc *time.Location) (*ChoreSummary, error) {
+	ch, err := s.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return nil, err
+	}
+	if ch.HouseholdID != householdID {
+		return nil, fmt.Errorf("chore not found")
+	}
+
+	now := nowIn(loc)
+	var start, end time.Time
+	allTime := false
+	switch period {
+	case "day":
+		y, m, d := now.Date()
+		start = time.Date(y, m, d, 0, 0, 0, 0, loc)
+		end = start.AddDate(0, 0, 1)
+	case "month":
+		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+		end = start.AddDate(0, 1, 0)
+	case "all":
+		allTime = true
+	default: // "week"
+		start = wkStart(now, loc)
+		end = start.AddDate(0, 0, 7)
+	}
+
+	var logs []log.ChoreLog
+	if allTime {
+		epochStart := time.Unix(0, 0).UTC()
+		farFuture := time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+		logs, err = s.logStore.ListLogsRange(ctx, householdID, epochStart, farFuture)
+	} else {
+		logs, err = s.fetchLogsInRange(ctx, householdID, start, end, loc)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &ChoreSummary{
+		ChoreID:    choreID,
+		MetricType: ch.MetricType,
+		MetricUnit: ch.MetricUnit,
+		ByMember:   []LeaderboardEntry{},
+	}
+	byMember := map[int64]int{}
+	for _, l := range logs {
+		if l.ChoreID != choreID {
+			continue
+		}
+		if !allTime && !logInRange(l, start, end, loc) {
+			continue
+		}
+		summary.Count++
+		byMember[l.UserID]++
+		if len(l.IndicatorVolumes) > 0 {
+			for _, v := range l.IndicatorVolumes {
+				if v > 0 {
+					summary.TotalML += v
+				}
+			}
+		} else if l.VolumeML != nil && *l.VolumeML > 0 {
+			summary.TotalML += *l.VolumeML
+		}
+		if l.DurationSeconds != nil {
+			summary.TotalDuration += *l.DurationSeconds
+		}
+	}
+	for uid, c := range byMember {
+		summary.ByMember = append(summary.ByMember, LeaderboardEntry{UserID: uid, Count: c})
+	}
+	sort.Slice(summary.ByMember, func(i, j int) bool { return summary.ByMember[i].Count > summary.ByMember[j].Count })
+	return summary, nil
 }
 
 // fetchLogsInRange fetches logs with widened bounds to account for timezone

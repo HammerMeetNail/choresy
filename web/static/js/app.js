@@ -22,7 +22,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets } from "./preferences.js";
@@ -897,16 +897,32 @@ async function loadWidgetData() {
   await Promise.allSettled(widgets.map(async (w) => {
     // last-done reads from latest-per-chore already in state — no fetch.
     if (w.type === "last-done") { state.stats.widgetData[w.id] = []; return; }
-    const grain = widgetGrain(w);
+    if (w.type === "timeseries") {
+      // A chart needs buckets: fetch the time-series at the period's grain.
+      const grain = widgetGrain(w);
+      const results = await Promise.allSettled(
+        (w.choreIds || []).map(async (cid) => {
+          const chore = (state.chores || []).find(c => c.id === cid);
+          const data = await loadChoreTimeSeries(cid, grain);
+          return { chore, ts: data?.timeSeries };
+        })
+      );
+      state.stats.widgetData[w.id] = results
+        .filter(r => r.status === "fulfilled" && r.value.ts)
+        .map(r => r.value);
+      return;
+    }
+    // total / member-split (and any other type) → period-scoped summary so the
+    // widget's period actually bounds the numbers (incl. true all-time).
     const results = await Promise.allSettled(
       (w.choreIds || []).map(async (cid) => {
         const chore = (state.chores || []).find(c => c.id === cid);
-        const data = await loadChoreTimeSeries(cid, grain);
-        return { chore, ts: data?.timeSeries };
+        const data = await loadChoreSummary(cid, w.period || "week");
+        return { chore, summary: data?.summary };
       })
     );
     state.stats.widgetData[w.id] = results
-      .filter(r => r.status === "fulfilled" && r.value.ts)
+      .filter(r => r.status === "fulfilled" && r.value.summary)
       .map(r => r.value);
   }));
 }

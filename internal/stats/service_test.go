@@ -51,6 +51,64 @@ func seedService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service, *stubC
 
 var utc = time.UTC
 
+func TestGetChoreSummary_PeriodScopedAndByMember(t *testing.T) {
+	ctx := context.Background()
+	logStore := chorelog.NewMemoryStore()
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, utc)
+
+	mk := func(uid, choreID int64, at time.Time, vol, dur int) chorelog.ChoreLog {
+		v, d := vol, dur
+		return chorelog.ChoreLog{HouseholdID: 1, UserID: uid, ChoreID: choreID, CompletedAt: at, VolumeML: &v, DurationSeconds: &d}
+	}
+	// Chore 100 today: two members. Ten days ago: one more (only "all" sees it).
+	// A chore-101 log today must be excluded from the 100 summary.
+	for _, l := range []chorelog.ChoreLog{
+		mk(10, 100, today, 100, 300),
+		mk(11, 100, today, 50, 120),
+		mk(10, 100, today.AddDate(0, 0, -10), 200, 60),
+		mk(10, 101, today, 999, 999),
+	} {
+		if _, err := logStore.CreateLog(ctx, l); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	cs := &stubChoreStore{chores: []stats.ChoreInfo{
+		{ID: 100, HouseholdID: 1, Name: "Bottle", MetricType: "amount", MetricUnit: "mL"},
+		{ID: 101, HouseholdID: 1, Name: "Other"},
+	}}
+	svc := stats.NewService(logStore, cs)
+
+	day, err := svc.GetChoreSummary(ctx, 1, 100, "day", utc)
+	if err != nil {
+		t.Fatalf("day: %v", err)
+	}
+	if day.Count != 2 || day.TotalML != 150 || day.TotalDuration != 420 {
+		t.Fatalf("day summary = %+v, want count 2 / ml 150 / dur 420", day)
+	}
+	if day.MetricType != "amount" || day.MetricUnit != "mL" {
+		t.Fatalf("metric = %q/%q, want amount/mL", day.MetricType, day.MetricUnit)
+	}
+
+	all, err := svc.GetChoreSummary(ctx, 1, 100, "all", utc)
+	if err != nil {
+		t.Fatalf("all: %v", err)
+	}
+	if all.Count != 3 || all.TotalML != 350 || all.TotalDuration != 480 {
+		t.Fatalf("all summary = %+v, want count 3 / ml 350 / dur 480", all)
+	}
+	// byMember sorted desc: user 10 has 2, user 11 has 1.
+	if len(all.ByMember) != 2 || all.ByMember[0].UserID != 10 || all.ByMember[0].Count != 2 {
+		t.Fatalf("byMember = %+v, want [{10,2},{11,1}]", all.ByMember)
+	}
+
+	// A chore in another household is not found.
+	if _, err := svc.GetChoreSummary(ctx, 999, 100, "all", utc); err == nil {
+		t.Fatalf("expected error for foreign household")
+	}
+}
+
 // ─── Leaderboard ─────────────────────────────────────────────────────────────
 
 func TestGetMonthlyLeaderboard_Basic(t *testing.T) {

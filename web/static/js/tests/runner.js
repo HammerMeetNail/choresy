@@ -703,17 +703,27 @@ describe("Stats: user-defined widgets (Phase 4)", () => {
     stats: { widgetData: {} },
   });
 
-  it("renders a total widget as a big number with unit", async () => {
+  it("renders a total widget from the period-scoped summary", async () => {
     const { renderWidgetSection } = await import("../stats.js");
     const state = baseState();
     const w = { id: "abc", type: "total", metric: "amount", period: "week", choreIds: [12], title: "Bottles" };
-    state.stats.widgetData["abc"] = [{ chore: state.chores[0], ts: { metricUnit: "mL", periods: [
-      { totalML: 60 }, { totalML: 90 },
-    ] } }];
+    // The server bounds the total to the period; the client just reads it.
+    state.stats.widgetData["abc"] = [{ chore: state.chores[0], summary: { totalML: 150, metricUnit: "mL" } }];
     const html = renderWidgetSection(w, state);
     assert.ok(html.includes("Bottles"));
-    assert.ok(html.includes("150")); // 60 + 90
+    assert.ok(html.includes("150"));
     assert.ok(html.includes("mL"));
+  });
+
+  it("member-split reads the period-scoped summary byMember", async () => {
+    const { renderWidgetSection } = await import("../stats.js");
+    const state = baseState();
+    state.members = [{ userId: 1, displayName: "Ann", avatarColor: "#000" }, { userId: 2, displayName: "Bo", avatarColor: "#111" }];
+    const w = { id: "ms", type: "member-split", metric: "count", period: "week", choreIds: [12], title: "Split" };
+    state.stats.widgetData["ms"] = [{ chore: state.chores[0], summary: { byMember: [{ userId: 1, count: 3 }, { userId: 2, count: 1 }] } }];
+    const html = renderWidgetSection(w, state);
+    assert.ok(html.includes("Ann"));
+    assert.ok(html.includes("Bo"));
   });
 
   it("escapes a malicious widget title so it renders inert", async () => {
@@ -745,26 +755,6 @@ describe("Stats: user-defined widgets (Phase 4)", () => {
     assert.equal(widgetGrain({ period: "all" }), "monthly");
   });
 
-  it("a total widget honors its period instead of summing the whole window", async () => {
-    const { renderWidgetSection, widgetTotalBuckets } = await import("../stats.js");
-    assert.equal(widgetTotalBuckets({ period: "day" }), 1);
-    assert.equal(widgetTotalBuckets({ period: "week" }), 7);
-    assert.equal(widgetTotalBuckets({ period: "month" }), 1);
-    assert.equal(widgetTotalBuckets({ period: "all" }), Infinity);
-
-    // 10 daily buckets of count=1 each. A "day" total = 1, a "week" total = 7,
-    // an "all" total = 10 — NOT always 10 (the old bug).
-    const periods = Array.from({ length: 10 }, (_, i) => ({ start: `2026-06-${String(i + 1).padStart(2, "0")}`, count: 1 }));
-    const mk = (period) => ({
-      chores: [{ id: 1, name: "C", icon: "x", color: "#000" }],
-      members: [], latestLogs: {},
-      stats: { widgetData: { w: [{ ts: { periods } }] } },
-    });
-    const w = (period) => ({ id: "w", type: "total", metric: "count", period, choreIds: [1], title: "T" });
-    assert.ok(renderWidgetSection(w("day"), mk("day")).includes(">1<"));
-    assert.ok(renderWidgetSection(w("week"), mk("week")).includes(">7<"));
-    assert.ok(renderWidgetSection(w("all"), mk("all")).includes(">10<"));
-  });
 });
 
 describe("Utils: volume units", () => {

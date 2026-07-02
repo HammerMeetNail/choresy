@@ -79,6 +79,33 @@ test.describe('Stats widgets (Phase 4)', () => {
     await expect(page.locator('.widget-card')).toContainText('<img src=x');
   });
 
+  test('widget period scopes the total (all-time counts an old log, week does not)', async ({ page }) => {
+    const { csrf, chore } = await setupWithChore(page); // logs one volume today
+    const old = new Date();
+    old.setDate(old.getDate() - 40);
+    await page.request.post('/api/logs', {
+      data: { choreId: chore.id, completedAt: old.toISOString() },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.request.patch('/api/preferences', {
+      data: {
+        statsWidgets: [
+          { type: 'total', metric: 'count', period: 'week', choreIds: [chore.id], title: 'WeekCount' },
+          { type: 'total', metric: 'count', period: 'all', choreIds: [chore.id], title: 'AllCount' },
+        ],
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.reload();
+    await page.click('a[data-nav="stats"]');
+    await page.waitForSelector('.widget-card');
+
+    const week = page.locator('.widget-card', { hasText: 'WeekCount' });
+    const all = page.locator('.widget-card', { hasText: 'AllCount' });
+    await expect(week.locator('.widget-big-number')).toHaveText('1'); // today only
+    await expect(all.locator('.widget-big-number')).toHaveText('2');  // today + 40d ago
+  });
+
   test('remove a widget', async ({ page }) => {
     const { csrf, chore } = await setupWithChore(page);
     await page.request.patch('/api/preferences', {
