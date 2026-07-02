@@ -144,6 +144,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIContractTests.swift` | All state-changing endpoints | Built | |
 | **Schedule Reminders** |
 | Schedule reminder notification type | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift`, `NotificationTests.swift` | `/api/notification-preferences` | Built | |
+| Reminder "Log now" action | `service-worker.js`, `app.js`, `quicklog-deeplink.spec.js` | — | push payload (`choreId`,`type`) | **iOS pending** | Web push notification gains a "Log now" action deep-linking to `/?quicklog=chore:<id>`; server includes choreId/type in the reminder push payload. iOS should add an APNs action category. Snooze action deferred (needs a reschedule endpoint) |
 | Per-chore reminder pref | `chores.js`, `app.js` | `Views/ChoreEditView.swift`, `ModelDecodingTests.swift` | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | Done | |
 | Default lead time in settings | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift` | `/api/notification-preferences` | Done | |
 | Schedule done visual (amber bg) | `schedule-tab.js`, `app.css` | `Views/ScheduleView.swift` | N/A (client rendering) | Done | |

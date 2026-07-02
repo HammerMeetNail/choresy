@@ -91,7 +91,7 @@ The SW only caches **GET** requests (`service-worker.js:131-133`). A `POST /api/
 ### 2.5 Pull-to-refresh ✅ DONE
 In iOS standalone mode there's no browser refresh, and data refresh relies on the 30s notification poll + visibilitychange (`app.js:3216`). Add a lightweight pull-to-refresh on scrollable tab roots (overscroll gesture → refetch the active tab's data). CSS `overscroll-behavior` is already the hook point; implement with a small touch handler, honoring `prefers-reduced-motion`.
 
-### 2.6 Notification actions
+### 2.6 Notification actions ✅ DONE ("Log now" deep-link; "Snooze 30m" deferred — needs a reschedule endpoint)
 `notificationclick` only focuses/opens the app (`service-worker.js:112-129`). For chore reminders, add notification **action buttons**: "✓ Log now" (fires the log POST from the SW with the stored CSRF-exempt push token or deep-links to the pre-filled sheet) and "Snooze 30m". Deep-link payload should carry `choreId` so the app opens straight into the log sheet.
 *iOS note: web push actions work on iOS 16.4+; native APNs actions are part of the (unbuilt) APNs plan.*
 

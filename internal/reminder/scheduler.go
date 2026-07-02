@@ -197,8 +197,21 @@ func (s *Scheduler) tick(ctx context.Context) error {
 			title := fmt.Sprintf("%s %s", ch.Icon, ch.Name)
 			body := fmt.Sprintf("Due at %s", formatTime(sch.SpecificTime))
 
-			if err := s.pushSender.SendPushToUser(ctx, userID, title, body); err != nil {
-				log.Printf("reminder: push to %d: %v", userID, err)
+			// Prefer the data-carrying variant so the notification can offer a
+			// "Log now" action deep-linking to the chore's log sheet.
+			var pushErr error
+			if ds, ok := s.pushSender.(interface {
+				SendPushToUserWithData(ctx context.Context, userID int64, title, body string, data map[string]any) error
+			}); ok {
+				pushErr = ds.SendPushToUserWithData(ctx, userID, title, body, map[string]any{
+					"choreId": sch.ChoreID,
+					"type":    "schedule_reminder",
+				})
+			} else {
+				pushErr = s.pushSender.SendPushToUser(ctx, userID, title, body)
+			}
+			if pushErr != nil {
+				log.Printf("reminder: push to %d: %v", userID, pushErr)
 				continue
 			}
 			sent++

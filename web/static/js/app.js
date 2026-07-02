@@ -1399,6 +1399,23 @@ export async function init() {
     setInterval(() => {
       if (window.__swReg) window.__swReg.update().catch(() => {});
     }, 300000);
+
+    // A "Log now" notification action on an already-open app posts a message
+    // (rather than opening a new window). Open the pre-filled log sheet.
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (msg && msg.type === "quicklog" && msg.choreId && state.user) {
+        const chore = (state.chores || []).find(c => c.id === msg.choreId);
+        if (chore) {
+          state.currentRoute = "/";
+          state.homeView = "log";
+          state.activeSheet = "home-log";
+          state.activeSheetData = { choreId: chore.id };
+          const appEl = document.querySelector("#app");
+          if (appEl) render(appEl);
+        }
+      }
+    });
   }
 
   try {
@@ -3075,6 +3092,10 @@ export async function init() {
         if (quicklog === "feed-baby") {
           chore = chores.find(c => c.predefinedKey === "Feed Baby")
             || chores.find(c => c.name === "Feed Baby");
+        } else if (quicklog.startsWith("chore:")) {
+          // Deep link from a "Log now" notification action.
+          const id = parseInt(quicklog.slice("chore:".length), 10);
+          chore = chores.find(c => c.id === id) || null;
         }
         if (chore) {
           state.activeSheet = "home-log";
