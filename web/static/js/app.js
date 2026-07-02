@@ -229,6 +229,129 @@ export function render(root) {
       wrapper.scrollTop = Math.min(Math.max(7, h - 2), 11) * ROW_HEIGHT;
     }
   }
+
+  observeHistorySentinel(root);
+}
+
+// IntersectionObserver-driven infinite scroll for the history list. The
+// sentinel is re-created on each render, so we (re)observe the current one
+// after every render. When it scrolls into view we trigger the same
+// load-more path as the button (which remains as a fallback).
+let _historyObserver = null;
+function observeHistorySentinel(root) {
+  const sentinel = root.querySelector(".hist-sentinel");
+  if (!_historyObserver && typeof IntersectionObserver !== "undefined") {
+    _historyObserver = new IntersectionObserver((entries) => {
+      // Only auto-load once the user has actually scrolled the list. On a
+      // short page the sentinel is already on-screen at scrollTop 0; without
+      // this guard we'd drain every page on first paint. Real infinite scroll
+      // (scroll down → reach the sentinel) still works; the Load-more button
+      // remains the affordance for unscrolled short pages.
+      const scroller = document.querySelector(".app-shell");
+      if (scroller && scroller.scrollTop <= 0) return;
+      for (const entry of entries) {
+        if (entry.isIntersecting && state.historyHasMore && !state._historyLoadingMore) {
+          loadMoreHistoryPage();
+        }
+      }
+    }, { rootMargin: "200px" });
+  }
+  if (_historyObserver) {
+    _historyObserver.disconnect();
+    if (sentinel) _historyObserver.observe(sentinel);
+  }
+}
+
+function loadMoreHistoryPage() {
+  if (state._historyLoadingMore || !state.historyBefore) return;
+  state._historyLoadingMore = true;
+  loadMoreHistory(state.historyBefore).then(data => {
+    state.historyLogs = [...(state.historyLogs || []), ...(data?.logs || [])];
+    state.historyHasMore = data?.hasMore || false;
+    state.historyBefore = data?.start || null;
+    state._historyLoadingMore = false;
+    render(document.querySelector("#app"));
+  }).catch(() => { state._historyLoadingMore = false; });
+}
+
+// Refetch the data backing the currently-active tab, then re-render. Used by
+// pull-to-refresh.
+async function refreshActiveTab() {
+  const route = state.currentRoute || window.location.pathname || "/";
+  try {
+    if (route === "/activity") {
+      const data = await loadHistory(state.historySearch);
+      state.historyLogs = data?.logs || [];
+      state.historyHasMore = data?.hasMore || false;
+      state.historyBefore = data?.start || null;
+    } else if (route === "/stats") {
+      await Promise.all([loadStatsData(), loadAllStatsData()]);
+    } else if (route === "/schedule") {
+      state.schedules = await loadSchedules();
+      await loadTodayData();
+    } else if (route === "/settings") {
+      await loadHouseholdData();
+    } else {
+      await Promise.all([loadTodayData(), loadLatestLogsData(), loadNotifData()]);
+    }
+  } catch {}
+  render(document.querySelector("#app"));
+}
+
+function setupPullToRefresh() {
+  const shell = document.querySelector(".app-shell");
+  if (!shell) return;
+  const ptr = document.createElement("div");
+  ptr.className = "ptr-indicator";
+  ptr.innerHTML = '<div class="ptr-spinner" aria-hidden="true"></div>';
+  document.body.appendChild(ptr);
+
+  const THRESHOLD = 70;
+  const reduceMotion = typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let startY = 0, pulling = false, ready = false, refreshing = false;
+
+  const reset = () => {
+    pulling = false; ready = false;
+    ptr.classList.remove("ptr-indicator--ready", "ptr-indicator--active");
+    ptr.style.transition = reduceMotion ? "none" : "";
+    ptr.style.transform = "translateX(-50%) translateY(-100%)";
+    ptr.style.opacity = "0";
+  };
+
+  shell.addEventListener("touchstart", (e) => {
+    if (refreshing || state.activeSheet) { pulling = false; return; }
+    if (shell.scrollTop <= 0) {
+      startY = e.touches[0].clientY;
+      pulling = true; ready = false;
+    } else {
+      pulling = false;
+    }
+  }, { passive: true });
+
+  shell.addEventListener("touchmove", (e) => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || shell.scrollTop > 0) { reset(); return; }
+    const pull = Math.min(dy, 120);
+    ready = pull >= THRESHOLD;
+    ptr.style.transition = "none";
+    ptr.style.transform = `translateX(-50%) translateY(${Math.min(pull - 40, 24)}px)`;
+    ptr.style.opacity = String(Math.min(pull / THRESHOLD, 1));
+    ptr.classList.toggle("ptr-indicator--ready", ready);
+  }, { passive: true });
+
+  shell.addEventListener("touchend", () => {
+    if (!pulling) return;
+    pulling = false;
+    if (!ready) { reset(); return; }
+    refreshing = true;
+    ptr.style.transition = reduceMotion ? "none" : "";
+    ptr.style.transform = "translateX(-50%) translateY(24px)";
+    ptr.style.opacity = "1";
+    ptr.classList.add("ptr-indicator--active");
+    refreshActiveTab().finally(() => { refreshing = false; reset(); });
+  });
 }
 
 function renderActivityView() {
@@ -2279,7 +2402,8 @@ export async function init() {
       case "load-more-history": {
         e.preventDefault();
         const before = state.historyBefore;
-        if (!before) break;
+        if (!before || state._historyLoadingMore) break;
+        state._historyLoadingMore = true;
         const btn = actionEl;
         btn.disabled = true;
         btn.textContent = "Loading...";
@@ -2287,8 +2411,10 @@ export async function init() {
           state.historyLogs = [...(state.historyLogs || []), ...(data.logs || [])];
           state.historyHasMore = data.hasMore;
           state.historyBefore = data.start || null;
+          state._historyLoadingMore = false;
           render(app);
         }).catch(() => {
+          state._historyLoadingMore = false;
           btn.disabled = false;
           btn.textContent = "Load more";
         });
@@ -2684,6 +2810,30 @@ export async function init() {
     }
     e.preventDefault();
     setStarRatingValue(container, next);
+  });
+
+  // ── History text search (debounced) ────────────────────────────────────────
+  let historySearchTimer = null;
+  document.addEventListener("input", (e) => {
+    const el = e.target.closest?.('[data-action="history-search"]');
+    if (!el) return;
+    state.historySearch = el.value || "";
+    clearTimeout(historySearchTimer);
+    historySearchTimer = setTimeout(() => {
+      loadHistory(state.historySearch).then(data => {
+        state.historyLogs = data?.logs || [];
+        state.historyHasMore = data?.hasMore || false;
+        state.historyBefore = data?.start || null;
+        render(app);
+        // Restore focus + caret after the morph re-render.
+        const input = document.querySelector("#history-search-input");
+        if (input) {
+          input.focus();
+          const end = input.value.length;
+          try { input.setSelectionRange(end, end); } catch {}
+        }
+      }).catch(() => {});
+    }, 300);
   });
 
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
@@ -3422,6 +3572,13 @@ export async function init() {
     const route = state.currentRoute || window.location.pathname || "/";
     if (route === "/" || route === "/today") refreshHomeCardTimes(state);
   }, 60000);
+
+  // ── Pull-to-refresh ────────────────────────────────────────────────────────
+  // In iOS standalone mode there is no browser refresh chrome. Add a light
+  // overscroll gesture on the scroll container: pulling down from the top
+  // past a threshold refetches the active tab's data. Honors
+  // prefers-reduced-motion (skips the transition, still refreshes).
+  setupPullToRefresh();
 
   render(app);
 }

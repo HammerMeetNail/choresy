@@ -37,8 +37,10 @@ export async function loadWeek(start) {
   return data;
 }
 
-export async function loadHistory() {
-  const { data } = await apiFetch("/api/logs/history");
+export async function loadHistory(query = "") {
+  const q = (query || "").trim();
+  const url = q ? `/api/logs/history?q=${encodeURIComponent(q)}` : "/api/logs/history";
+  const { data } = await apiFetch(url);
   return data;
 }
 
@@ -178,15 +180,32 @@ export function renderHistoryFilter(state) {
   return html;
 }
 
+export function renderHistorySearchBar(state) {
+  const q = state.historySearch || "";
+  return `<div class="hist-search">
+    <input type="search" id="history-search-input" class="hist-search-input"
+      placeholder="Search notes &amp; titles…" value="${escapeHTML(q)}"
+      data-action="history-search" aria-label="Search activity" autocomplete="off">
+  </div>`;
+}
+
 export function renderHistoryView(state) {
   const logs = state.historyLogs || [];
   const chores = state.chores || [];
   const filter = state.historyChoreFilter;
-  const filterFab = chores.length > 0 ? renderHistoryFilter(state) : '';
+  const searching = !!(state.historySearch && state.historySearch.trim());
+  // Chore chips filter the loaded (windowed) pages; they don't apply to a
+  // flat text search, so hide the filter FAB while searching.
+  const filterFab = (chores.length > 0 && !searching) ? renderHistoryFilter(state) : '';
+  const searchBar = renderHistorySearchBar(state);
 
   if (logs.length === 0) {
+    const emptyMsg = searching
+      ? '<p class="text-secondary">No activity matches your search.</p>'
+      : '<p class="text-secondary">No completed chores yet.</p>';
     return `<div class="history-view">
-      <p class="text-secondary">No completed chores yet.</p>
+      ${searchBar}
+      ${emptyMsg}
       ${filterFab}
     </div>`;
   }
@@ -264,6 +283,7 @@ export function renderHistoryView(state) {
       emptyMsg = '<p class="text-secondary">No activity matches the selected chores.</p>';
     }
     return `<div class="history-view">
+      ${searchBar}
       ${filterFab}
       ${emptyMsg}
       ${loadMore}
@@ -343,7 +363,7 @@ export function renderHistoryView(state) {
           </div>
         </button>`;
       }).join('');
-      return `<div class="hist-date-header">${g.label}</div>${rows}`;
+      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span></div>${rows}`;
     }).join('');
     return `<div class="hist-chunk">
       <div class="hist-chunk-header">${chunk.label}</div>
@@ -351,8 +371,18 @@ export function renderHistoryView(state) {
     </div>`;
   }).join('');
 
+  // Sentinel for infinite scroll: when it scrolls into view an
+  // IntersectionObserver (app.js) auto-loads the next page. The Load more
+  // button stays as an explicit fallback. Only present when more pages exist
+  // and we're not in flat-search mode.
+  const sentinel = (state.historyHasMore && !searching)
+    ? '<div class="hist-sentinel" data-history-sentinel aria-hidden="true"></div>'
+    : '';
+
   return `<div class="history-view">
+    ${searchBar}
     ${html}
+    ${sentinel}
     ${loadMore}
     ${filterFab}
   </div>`;

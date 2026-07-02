@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -284,6 +285,64 @@ func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, star
 		logs = []ChoreLog{}
 	}
 	return logs, hasMore, nil
+}
+
+func (s *PostgresStore) SearchHistoryLogs(ctx context.Context, householdID int64, query string, limit int) ([]ChoreLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	// Escape LIKE wildcards so user input is matched literally.
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
+	like := "%" + esc + "%"
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, household_id, user_id, chore_id, completed_at,
+		       COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
+		       log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,'')
+		FROM chore_logs
+		WHERE household_id = $1
+		  AND (note ILIKE $2 ESCAPE '\' OR title ILIKE $2 ESCAPE '\')
+		ORDER BY completed_at DESC
+		LIMIT $3
+	`, householdID, like, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var logs []ChoreLog
+	for rows.Next() {
+		var l ChoreLog
+		var indJSON string
+		var indVolJSON sql.NullString
+		var slotHour sql.NullInt64
+		var logDate sql.NullString
+		var volumeML sql.NullInt64
+		var rating sql.NullInt64
+		var title sql.NullString
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
+		if l.Indicators == nil {
+			l.Indicators = []string{}
+		}
+		l.SlotHour = nullIntToPtr(slotHour)
+		if logDate.Valid {
+			l.LogDate = &logDate.String
+		}
+		l.VolumeML = nullIntToPtr(volumeML)
+		l.Rating = nullIntToPtr(rating)
+		if title.Valid {
+			l.Title = &title.String
+		}
+		if indVolJSON.Valid && indVolJSON.String != "" {
+			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
+		}
+		logs = append(logs, l)
+	}
+	if logs == nil {
+		logs = []ChoreLog{}
+	}
+	return logs, rows.Err()
 }
 
 func nilToEmptyLog(s []string) []string {

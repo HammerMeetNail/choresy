@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -135,6 +136,39 @@ func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, e
 		result = []ChoreLog{}
 	}
 	return result, hasOlder, nil
+}
+
+func (s *MemoryStore) SearchHistoryLogs(_ context.Context, householdID int64, query string, limit int) ([]ChoreLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var result []ChoreLog
+	for _, l := range s.logs {
+		if l.HouseholdID != householdID {
+			continue
+		}
+		note := strings.ToLower(l.Note)
+		title := ""
+		if l.Title != nil {
+			title = strings.ToLower(*l.Title)
+		}
+		if q == "" || strings.Contains(note, q) || strings.Contains(title, q) {
+			result = append(result, l)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CompletedAt.After(result[j].CompletedAt)
+	})
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	if result == nil {
+		result = []ChoreLog{}
+	}
+	return result, nil
 }
 
 func logMatchesDate(l ChoreLog, date time.Time) bool {

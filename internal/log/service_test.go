@@ -10,6 +10,42 @@ import (
 
 // ─── Service tests ────────────────────────────────────────────────────────────
 
+func TestLogService_SearchHistoryLogs(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	if _, err := svc.LogChore(ctx, 1, 10, 100, nil, "changed the water filter", nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+	if _, err := svc.LogChore(ctx, 1, 10, 101, nil, "fed the cats", nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+	// A log in a different household must never match.
+	if _, err := svc.LogChore(ctx, 2, 20, 200, nil, "filter for other house", nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+
+	got, err := svc.SearchHistoryLogs(ctx, 1, "FILTER", 50)
+	if err != nil {
+		t.Fatalf("SearchHistoryLogs: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(got))
+	}
+	if got[0].Note != "changed the water filter" {
+		t.Errorf("wrong match: %q", got[0].Note)
+	}
+
+	// Non-matching query returns empty (never nil).
+	none, err := svc.SearchHistoryLogs(ctx, 1, "zzz-nope", 50)
+	if err != nil {
+		t.Fatalf("SearchHistoryLogs: %v", err)
+	}
+	if none == nil || len(none) != 0 {
+		t.Fatalf("expected empty non-nil slice, got %#v", none)
+	}
+}
+
 func TestLogService_LogChore_Basic(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()

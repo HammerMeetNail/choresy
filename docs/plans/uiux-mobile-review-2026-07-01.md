@@ -83,12 +83,12 @@ The SW only caches **GET** requests (`service-worker.js:131-133`). A `POST /api/
 - Tap-to-log from **Today** view logs instantly with `showToastWithUndo` (good). Home-grid taps open the full sheet always. For simple chores with no indicators/volume/rating, consider **tap = instant log + undo toast** on Home too, with long-press (or a small ⋯) opening the sheet. This matches the "grandmother-fast" goal; the sheet remains for feed/change chores which need data.
 - "Remove log" in the edit sheet (`schedule.js:533-537`) deletes with no confirm and no undo toast. Route it through the same undo-toast path.
 
-### 2.4 History/Activity improvements
+### 2.4 History/Activity improvements ✅ DONE
 - **Infinite scroll**: replace/augment the "Load more" button (`today.js:250-252`) with an IntersectionObserver sentinel (keep the button as fallback). Filtered views already keep Load more visible — same logic drives auto-load.
 - **Search**: no way to find "when did we last change the filter" — add a text search across note/title in the history endpoint (`GET /api/logs/history?q=`) with a debounced input next to the filter FAB.
 - **Day summaries**: the day header (`today.js:345`) could carry a per-day count chip ("Tue, Jul 1 · 7") for free scanability.
 
-### 2.5 Pull-to-refresh
+### 2.5 Pull-to-refresh ✅ DONE
 In iOS standalone mode there's no browser refresh, and data refresh relies on the 30s notification poll + visibilitychange (`app.js:3216`). Add a lightweight pull-to-refresh on scrollable tab roots (overscroll gesture → refetch the active tab's data). CSS `overscroll-behavior` is already the hook point; implement with a small touch handler, honoring `prefers-reduced-motion`.
 
 ### 2.6 Notification actions

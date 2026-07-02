@@ -195,3 +195,9 @@ func (s *Service) LatestPerChore(ctx context.Context, householdID int64) (map[in
 func (s *Service) GetHistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
 	return s.store.HistoryLogs(ctx, householdID, start, end)
 }
+
+// SearchHistoryLogs returns up to limit logs across all household history
+// whose note or title matches query (case-insensitive substring).
+func (s *Service) SearchHistoryLogs(ctx context.Context, householdID int64, query string, limit int) ([]ChoreLog, error) {
+	return s.store.SearchHistoryLogs(ctx, householdID, query, limit)
+}

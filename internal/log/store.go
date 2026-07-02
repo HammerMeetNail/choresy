@@ -44,4 +44,8 @@ type Store interface {
 	// HistoryLogs returns logs between start and end (exclusive), ordered
 	// newest-first, and whether older logs exist before start.
 	HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) (logs []ChoreLog, hasMore bool, err error)
+	// SearchHistoryLogs returns up to limit logs across all of the
+	// household's history whose note or title matches query (case-insensitive
+	// substring), ordered newest-first.
+	SearchHistoryLogs(ctx context.Context, householdID int64, query string, limit int) ([]ChoreLog, error)
 }

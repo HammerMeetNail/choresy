@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -448,6 +449,26 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
 	if user.HouseholdID == nil {
 		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	// Text search across note/title spans all history and bypasses the
+	// windowed pagination — search results are a flat, capped, newest-first
+	// list.
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		if len(q) > 100 {
+			q = q[:100]
+		}
+		logs, err := h.service.SearchHistoryLogs(r.Context(), *user.HouseholdID, q, 100)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"logs":    logs,
+			"hasMore": false,
+			"query":   q,
+		})
 		return
 	}
 
