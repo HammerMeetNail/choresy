@@ -1,7 +1,6 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
-import { sortChoresByOrder } from "./preferences.js";
 
 function formatLocalISODate(d) {
   const year = d.getFullYear();
@@ -153,16 +152,20 @@ export function renderTodayView(state) {
 export function renderHistoryFilter(state) {
   const filter = state.historyChoreFilter;
   const chores = state.chores || [];
-  const sorted = sortChoresByOrder(chores, state.choreOrder || []);
+  const sorted = [...chores].sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
   const open = state.historyFilterOpen;
 
-  const allActive = filter === null;
+  // Empty/null filter = show everything, with nothing highlighted. Selecting
+  // chores narrows the view to only those chores (additive).
+  const hasFilter = Array.isArray(filter) && filter.length > 0;
+  const allActive = !hasFilter;
   let html = '<div class="hist-filter-fab">';
   html += `<div class="hist-filter-chips${open ? ' hist-filter-chips--open' : ''}">`;
-  html += `<button type="button" class="hist-filter-chip hist-filter-all${allActive ? ' active' : ''}" data-action="history-filter-all">All</button>`;
+  html += `<button type="button" class="hist-filter-chip hist-filter-all${allActive ? ' active' : ''}" data-action="history-filter-all">All activity</button>`;
   for (const c of sorted) {
-    const active = filter === null || filter.includes(c.id);
-    html += `<button type="button" class="hist-filter-chip${active ? ' active' : ''}" data-action="history-filter-chore" data-chore-id="${c.id}" style="${active ? `--chore-color:${c.color}` : ''}">
+    const active = hasFilter && filter.includes(c.id);
+    html += `<button type="button" class="hist-filter-chip${active ? ' active' : ''}" data-action="history-filter-chore" data-chore-id="${c.id}" style="--chore-color:${c.color}">
       <span class="hist-filter-chip-icon">${escapeHTML(c.icon)}</span>
       <span class="hist-filter-chip-name">${escapeHTML(c.name)}</span>
     </button>`;
@@ -234,8 +237,9 @@ export function renderHistoryView(state) {
     });
   }
 
-  // Apply chore filter
-  const dayGroups = filter !== null
+  // Apply chore filter. Empty/null = show everything.
+  const hasFilter = Array.isArray(filter) && filter.length > 0;
+  const dayGroups = hasFilter
     ? rawDayGroups.map(g => ({
         date: g.date,
         label: g.label,
@@ -246,7 +250,7 @@ export function renderHistoryView(state) {
   if (dayGroups.length === 0) {
     return `<div class="history-view">
       ${filterFab}
-      ${filter !== null ? '<p class="text-secondary">No logs match the selected chores.</p>' : '<p class="text-secondary">No completed chores yet.</p>'}
+      ${hasFilter ? '<p class="text-secondary">No logs match the selected chores.</p>' : '<p class="text-secondary">No completed chores yet.</p>'}
     </div>`;
   }
 

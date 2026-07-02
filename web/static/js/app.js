@@ -2215,7 +2215,8 @@ export async function init() {
 
       case "history-filter-all": {
         e.preventDefault();
-        state.historyChoreFilter = state.historyChoreFilter === null ? [] : null;
+        // Clear the filter: show all activity, nothing highlighted.
+        state.historyChoreFilter = null;
         render(app);
         break;
       }
@@ -2230,17 +2231,16 @@ export async function init() {
       case "history-filter-chore": {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);
-        if (state.historyChoreFilter === null) {
-          state.historyChoreFilter = (state.chores || []).map(c => c.id).filter(id => id !== choreId);
-        } else if (state.historyChoreFilter.includes(choreId)) {
-          state.historyChoreFilter = state.historyChoreFilter.filter(id => id !== choreId);
-          if (state.historyChoreFilter.length === 0) {
-            state.historyChoreFilter = null;
-          }
+        // Additive selection: build up the set of chores to show. An empty
+        // set means no filter (show everything).
+        const selected = Array.isArray(state.historyChoreFilter) ? [...state.historyChoreFilter] : [];
+        const idx = selected.indexOf(choreId);
+        if (idx === -1) {
+          selected.push(choreId);
         } else {
-          const updated = [...state.historyChoreFilter, choreId];
-          state.historyChoreFilter = updated.length >= (state.chores || []).length ? null : updated;
+          selected.splice(idx, 1);
         }
+        state.historyChoreFilter = selected.length === 0 ? null : selected;
         render(app);
         break;
       }

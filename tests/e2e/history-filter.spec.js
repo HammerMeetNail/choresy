@@ -45,7 +45,7 @@ async function openFilter(page) {
 }
 
 test.describe('History filter', () => {
-  test('filter button appears and opens dropdown with chore chips', async ({ page }) => {
+  test('filter dropdown opens with nothing selected by default', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
@@ -72,14 +72,14 @@ test.describe('History filter', () => {
     const chips = page.locator('.hist-filter-chip[data-action="history-filter-chore"]');
     await expect(chips).toHaveCount(chores.length);
 
-    // All chips should be active by default (no filter applied)
+    // No chore chips selected by default; "All activity" is the active state.
     for (let i = 0; i < chores.length; i++) {
-      await expect(chips.nth(i)).toHaveClass(/active/);
+      await expect(chips.nth(i)).not.toHaveClass(/active/);
     }
     await expect(page.locator('.hist-filter-all')).toHaveClass(/active/);
   });
 
-  test('tapping a chore chip hides that chore from history', async ({ page }) => {
+  test('tapping a chore chip shows only that chore', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
@@ -108,15 +108,62 @@ test.describe('History filter', () => {
     await expect(page.locator('.hist-row')).toHaveCount(3);
 
     await openFilter(page);
-    await page.locator('.hist-filter-chip[data-action="history-filter-chore"]').first().click();
+    const chip0 = page.locator(`.hist-filter-chip[data-chore-id="${chores[0].id}"]`);
+    await chip0.click();
     await page.waitForTimeout(300);
 
-    await expect(page.locator('.hist-filter-chip[data-action="history-filter-chore"]').first()).not.toHaveClass(/active/);
-    await expect(page.locator('.hist-row')).toHaveCount(2);
+    await expect(chip0).toHaveClass(/active/);
+    await expect(page.locator('.hist-row')).toHaveCount(1);
     await expect(page.locator('.hist-filter-all')).not.toHaveClass(/active/);
   });
 
-  test('tapping "All" toggles all chips off then on', async ({ page }) => {
+  test('selecting multiple chores is additive', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choresRes = await page.request.get('/api/chores', {
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const chores = (await choresRes.json()).chores;
+    expect(chores.length).toBeGreaterThanOrEqual(3);
+
+    await page.request.post('/api/logs', {
+      data: { choreId: chores[0].id, note: '', indicators: [], completedAt: new Date().toISOString() },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.request.post('/api/logs', {
+      data: { choreId: chores[1].id, note: '', indicators: [], completedAt: new Date().toISOString() },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.request.post('/api/logs', {
+      data: { choreId: chores[2].id, note: '', indicators: [], completedAt: new Date().toISOString() },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.click('[data-nav="activity"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+    await page.waitForSelector('.hist-row', { timeout: 10000 });
+
+    await expect(page.locator('.hist-row')).toHaveCount(3);
+
+    await openFilter(page);
+    const chip0 = page.locator(`.hist-filter-chip[data-chore-id="${chores[0].id}"]`);
+    const chip1 = page.locator(`.hist-filter-chip[data-chore-id="${chores[1].id}"]`);
+
+    // First selection narrows to a single chore.
+    await chip0.click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('.hist-row')).toHaveCount(1);
+
+    // Adding a second selection widens to two chores.
+    await chip1.click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('.hist-row')).toHaveCount(2);
+    await expect(chip0).toHaveClass(/active/);
+    await expect(chip1).toHaveClass(/active/);
+    await expect(page.locator('.hist-filter-all')).not.toHaveClass(/active/);
+  });
+
+  test('tapping "All activity" clears the filter', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
@@ -142,38 +189,20 @@ test.describe('History filter', () => {
 
     await openFilter(page);
 
-    // Exclude first chore
-    await page.locator('.hist-filter-chip[data-action="history-filter-chore"]').first().click();
+    const chip0 = page.locator(`.hist-filter-chip[data-chore-id="${chores[0].id}"]`);
+    await chip0.click();
     await page.waitForTimeout(300);
     await expect(page.locator('.hist-row')).toHaveCount(1);
 
-    // After excluding, filter is [all_except_one] (not null)
-    // Clicking All toggles to show all (null)
+    // "All activity" clears any selection and shows everything again.
     await page.locator('.hist-filter-all').click();
     await page.waitForTimeout(300);
     await expect(page.locator('.hist-row')).toHaveCount(2);
     await expect(page.locator('.hist-filter-all')).toHaveClass(/active/);
-
-    // Clicking All again toggles to hide all ([])
-    await page.locator('.hist-filter-all').click();
-    await page.waitForTimeout(300);
-    await expect(page.locator('.hist-row')).toHaveCount(0);
-
-    // Third click: show all again
-    await page.locator('.hist-filter-all').click();
-    await page.waitForTimeout(300);
-    await expect(page.locator('.hist-row')).toHaveCount(2);
-    await expect(page.locator('.hist-filter-all')).toHaveClass(/active/);
-
-    const chips = page.locator('.hist-filter-chip[data-action="history-filter-chore"]');
-    for (let i = 0; i < chores.length; i++) {
-      await expect(chips.nth(i)).toHaveClass(/active/);
-    }
+    await expect(chip0).not.toHaveClass(/active/);
   });
 
-
-
-  test('re-adding a chore via chip toggles it back in', async ({ page }) => {
+  test('tapping a selected chip again removes it', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
@@ -201,30 +230,32 @@ test.describe('History filter', () => {
 
     await openFilter(page);
 
-    const chip0 = page.locator('.hist-filter-chip[data-action="history-filter-chore"]').nth(0);
-    const chip1 = page.locator('.hist-filter-chip[data-action="history-filter-chore"]').nth(1);
+    const chip0 = page.locator(`.hist-filter-chip[data-chore-id="${chores[0].id}"]`);
+    const chip1 = page.locator(`.hist-filter-chip[data-chore-id="${chores[1].id}"]`);
     await chip0.click();
     await page.waitForTimeout(300);
     await chip1.click();
     await page.waitForTimeout(300);
 
-    await expect(page.locator('.hist-row')).toHaveCount(1);
+    await expect(page.locator('.hist-row')).toHaveCount(2);
 
+    // Deselect chip0: only chip1's chore remains.
     await chip0.click();
     await page.waitForTimeout(300);
-    await expect(page.locator('.hist-row')).toHaveCount(2);
-    await expect(chip0).toHaveClass(/active/);
-    await expect(chip1).not.toHaveClass(/active/);
+    await expect(page.locator('.hist-row')).toHaveCount(1);
+    await expect(chip0).not.toHaveClass(/active/);
+    await expect(chip1).toHaveClass(/active/);
 
+    // Deselect the last chip: filter clears, everything shows again.
     await chip1.click();
     await page.waitForTimeout(300);
     await expect(page.locator('.hist-row')).toHaveCount(3);
     await expect(page.locator('.hist-filter-all')).toHaveClass(/active/);
-    await expect(chip0).toHaveClass(/active/);
-    await expect(chip1).toHaveClass(/active/);
+    await expect(chip0).not.toHaveClass(/active/);
+    await expect(chip1).not.toHaveClass(/active/);
   });
 
-  test('shows empty message when filter excludes all logs', async ({ page }) => {
+  test('shows empty message when selection matches no logs', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
@@ -233,6 +264,7 @@ test.describe('History filter', () => {
     const chores = (await choresRes.json()).chores;
     expect(chores.length).toBeGreaterThanOrEqual(2);
 
+    // Only chores[0] has a log; selecting a different chore matches nothing.
     await page.request.post('/api/logs', {
       data: { choreId: chores[0].id, note: '', indicators: [], completedAt: new Date().toISOString() },
       headers: { 'X-CSRF-Token': csrf },
@@ -245,7 +277,7 @@ test.describe('History filter', () => {
     await expect(page.locator('.hist-row')).toHaveCount(1);
 
     await openFilter(page);
-    await page.locator('.hist-filter-chip[data-action="history-filter-chore"]').first().click();
+    await page.locator(`.hist-filter-chip[data-chore-id="${chores[1].id}"]`).click();
     await page.waitForTimeout(300);
 
     await expect(page.locator('text=No logs match the selected chores.')).toBeVisible();

@@ -824,13 +824,14 @@ input:focus, select:focus, textarea:focus {
   right: 0;
   z-index: 50;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px;
-  max-width: calc(100vw - 40px);
-  width: max-content;
-  max-height: 240px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  max-height: min(60vh, 460px);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -850,36 +851,35 @@ input:focus, select:focus, textarea:focus {
 .hist-filter-chip {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 20px;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 500;
-  white-space: nowrap;
-  flex-shrink: 0;
+  text-align: left;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-  opacity: 0.55;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .hist-filter-chip:active {
-  opacity: 0.7;
+  background: color-mix(in srgb, var(--text-primary) 6%, var(--surface));
 }
 
 .hist-filter-chip.active {
-  opacity: 1;
   border-color: var(--chore-color, var(--primary));
-  background: color-mix(in srgb, var(--chore-color, var(--primary)) 12%, var(--bg));
+  background: color-mix(in srgb, var(--chore-color, var(--primary)) 14%, var(--bg));
   color: var(--text-primary);
   font-weight: 600;
 }
 
 .hist-filter-all {
-  opacity: 1;
   font-weight: 600;
+  margin-bottom: 2px;
 }
 
 .hist-filter-all.active {
@@ -889,14 +889,18 @@ input:focus, select:focus, textarea:focus {
 }
 
 .hist-filter-chip-icon {
-  font-size: 14px;
+  font-size: 18px;
   line-height: 1;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
 }
 
 .hist-filter-chip-name {
-  max-width: 80px;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .load-more-wrap {
