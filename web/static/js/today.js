@@ -1,5 +1,5 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, formatVolume } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
 
 function formatLocalISODate(d) {
@@ -23,7 +23,7 @@ function shiftDate(iso, offset) {
 
 function fmtDate(iso) {
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 export async function loadToday(date) {
@@ -193,6 +193,7 @@ export function renderHistoryView(state) {
   const members = state.members || [];
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
+  const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
 
   const pad = n => String(n).padStart(2, '0');
 
@@ -207,7 +208,7 @@ export function renderHistoryView(state) {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h % 12 || 12;
     const timeStr = `${h12}:${pad(d.getMinutes())} ${ampm}`;
-    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const dayLabel = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
     if (dateKey !== currentDate) {
       currentDate = dateKey;
@@ -321,10 +322,10 @@ export function renderHistoryView(state) {
       const rows = g.rows.map(r => {
         const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
           const icon = escapeHTML(label.split(' ')[0]);
-          return `${icon} ${ml}mL`;
+          return `${icon} ${formatVolume(ml, volumeUnit)}`;
         });
         const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
-        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${r.volumeML}mL` : '';
+        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${formatVolume(r.volumeML, volumeUnit)}` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
         const titleStr = r.title ? `<span class="hist-title">${escapeHTML(r.title)}</span>` : '';
@@ -364,6 +365,6 @@ function renderStarRatingDisplay(rating) {
 
 function fmtChunkRange(start, end) {
   const opts = { month: 'short', day: 'numeric' };
-  return `${start.toLocaleDateString('en-US', opts)} - ${end.toLocaleDateString('en-US', opts)}`;
+  return `${start.toLocaleDateString(undefined, opts)} - ${end.toLocaleDateString(undefined, opts)}`;
 }
 

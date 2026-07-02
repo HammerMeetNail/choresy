@@ -61,6 +61,21 @@ func (s *Service) UpdateTimezone(ctx context.Context, userID int64, tz string) e
 	return s.store.Upsert(ctx, userID, prefs)
 }
 
+// UpdateVolumeUnit persists the user's preferred volume display unit. Only
+// "ml" and "oz" are accepted; any other value is rejected. Volumes remain
+// stored in canonical milliliters regardless of this setting.
+func (s *Service) UpdateVolumeUnit(ctx context.Context, userID int64, unit string) error {
+	if unit != "ml" && unit != "oz" {
+		return fmt.Errorf("invalid volume unit: %q", unit)
+	}
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.VolumeUnit = unit
+	return s.store.Upsert(ctx, userID, prefs)
+}
+
 // UpdateStatsSectionOrder persists the user's preferred ordering of stats
 // page sections. Keys must be drawn from the canonical StatsSections list;
 // unknown keys are rejected.

@@ -24,7 +24,7 @@ import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHist
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
@@ -255,7 +255,7 @@ function renderHistoryView() {
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -279,7 +279,7 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -392,7 +392,7 @@ function renderCalendarView() {
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -477,7 +477,7 @@ function renderScheduleView() {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -592,6 +592,21 @@ function renderSettingsView() {
     </div>`;
   }
 
+  const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
+  const prefsCard = `<div class="card mt-3">
+    <h3>Preferences</h3>
+    <div class="pref-row">
+      <label class="pref-label">
+        <span class="pref-title">Feed volume unit</span>
+        <span class="pref-desc">How bottle volumes are shown and entered</span>
+      </label>
+      <div class="segmented" role="group" aria-label="Feed volume unit">
+        <button type="button" class="segmented-btn${volumeUnit === "ml" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="ml" aria-pressed="${volumeUnit === "ml"}">mL</button>
+        <button type="button" class="segmented-btn${volumeUnit === "oz" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="oz" aria-pressed="${volumeUnit === "oz"}">oz</button>
+      </div>
+    </div>
+  </div>`;
+
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
     <div class="card mt-3">
@@ -612,9 +627,9 @@ function renderSettingsView() {
     </div>` : "";
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
 }
 
 async function loadStatsData() {
@@ -1232,6 +1247,11 @@ export async function init() {
     }
 
     const actionEl = e.target.closest("[data-action]");
+
+    // Dismiss any open heatmap tap-tooltip when tapping away from a cell.
+    if (!e.target.closest("[data-action=\"heatmap-tap\"]")) {
+      document.querySelectorAll(".heatmap-tooltip--visible").forEach(el => el.classList.remove("heatmap-tooltip--visible"));
+    }
 
     // data-nav SPA navigation: check first so it works without data-action
     if (navEl) {
@@ -2357,6 +2377,44 @@ export async function init() {
         break;
       }
 
+      case "set-volume-unit": {
+        e.preventDefault();
+        const unit = actionEl.dataset.unit === "oz" ? "oz" : "ml";
+        if (unit === state.volumeUnit) break;
+        // saveVolumeUnit updates state optimistically (and rolls back on
+        // failure); render now for snappy feedback and again on completion.
+        saveVolumeUnit(state, unit).then(() => render(app));
+        render(app);
+        break;
+      }
+
+      case "heatmap-tap": {
+        // Touch devices can't hover the cell's title attribute, so reveal a
+        // positioned tooltip on tap. Tapping the same cell again, or anywhere
+        // else, dismisses it (see the top-of-handler dismissal below).
+        e.preventDefault();
+        const cell = e.target.closest("[data-action=\"heatmap-tap\"]");
+        if (!cell) break;
+        const wrap = cell.closest(".heatmap-wrap");
+        const tip = wrap?.querySelector(".heatmap-tooltip");
+        if (!tip) break;
+        const alreadyFor = tip.dataset.date === cell.dataset.date;
+        const wasVisible = tip.classList.contains("heatmap-tooltip--visible");
+        if (alreadyFor && wasVisible) {
+          tip.classList.remove("heatmap-tooltip--visible");
+          break;
+        }
+        const label = `${new Date(cell.dataset.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${cell.dataset.count} chore${cell.dataset.count === "1" ? "" : "s"}`;
+        tip.textContent = label;
+        tip.dataset.date = cell.dataset.date;
+        const wrapRect = wrap.getBoundingClientRect();
+        const cellRect = cell.getBoundingClientRect();
+        tip.style.left = `${cellRect.left - wrapRect.left + cellRect.width / 2}px`;
+        tip.style.top = `${cellRect.top - wrapRect.top - 4}px`;
+        tip.classList.add("heatmap-tooltip--visible");
+        break;
+      }
+
       case "top-chores-user": {
         e.preventDefault();
         const uid = parseInt(actionEl.dataset.userId, 10);
@@ -2762,6 +2820,37 @@ export async function init() {
         initTasks.push(loadAllStatsData());
       }
       await Promise.all(initTasks);
+    }
+  } catch {}
+
+  // ── PWA manifest shortcuts (?quicklog=…) ───────────────────────────────────
+  // Long-pressing the home-screen icon exposes "Log feed", "Log chore", and
+  // "Activity" shortcuts that deep-link via a start_url query param. Handle it
+  // once here after bootstrap so the user lands one tap from logging.
+  try {
+    const quicklog = new URLSearchParams(window.location.search).get("quicklog");
+    if (quicklog && state.user && state.household) {
+      if (quicklog === "activity") {
+        state.currentRoute = "/activity";
+        state.activityView = "history";
+      } else {
+        state.currentRoute = "/";
+        state.homeView = "log";
+        const chores = state.chores || [];
+        let chore = null;
+        if (quicklog === "feed-baby") {
+          chore = chores.find(c => c.predefinedKey === "Feed Baby")
+            || chores.find(c => c.name === "Feed Baby");
+        }
+        if (chore) {
+          state.activeSheet = "home-log";
+          state.activeSheetData = { choreId: chore.id };
+        }
+        // quicklog=chore (or a missing Feed Baby chore) simply lands on the
+        // fast home grid, which is one tap from logging.
+      }
+      // Strip the query so a refresh doesn't reopen the sheet.
+      window.history.replaceState({}, "", window.location.pathname);
     }
   } catch {}
 

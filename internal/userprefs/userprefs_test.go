@@ -161,7 +161,8 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	store := userprefs.NewPostgresStore(db)
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
-		        COALESCE(stats_section_hidden, '[]'::jsonb)
+		        COALESCE(stats_section_hidden, '[]'::jsonb),
+		        COALESCE(volume_unit, 'ml')
 		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnError(sql.ErrNoRows)
@@ -195,10 +196,11 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	rawSecHidden, _ := json.Marshal([]string{})
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
-		        COALESCE(stats_section_hidden, '[]'::jsonb)
+		        COALESCE(stats_section_hidden, '[]'::jsonb),
+		        COALESCE(volume_unit, 'ml')
 		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden))
+		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden, "oz"))
 
 	p, err := store.Get(context.Background(), 5)
 	if err != nil {
@@ -212,6 +214,39 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	}
 	if p.Timezone != "America/New_York" {
 		t.Fatalf("Timezone = %q, want %q", p.Timezone, "America/New_York")
+	}
+	if p.VolumeUnit != "oz" {
+		t.Fatalf("VolumeUnit = %q, want %q", p.VolumeUnit, "oz")
+	}
+}
+
+func TestService_UpdateVolumeUnit(t *testing.T) {
+	store := userprefs.NewMemoryStore()
+	svc := userprefs.NewService(store)
+	ctx := context.Background()
+
+	// Default is ml.
+	p, _ := svc.GetPreferences(ctx, 1)
+	if p.VolumeUnit != "ml" {
+		t.Fatalf("default VolumeUnit = %q, want ml", p.VolumeUnit)
+	}
+
+	if err := svc.UpdateVolumeUnit(ctx, 1, "oz"); err != nil {
+		t.Fatalf("UpdateVolumeUnit(oz): %v", err)
+	}
+	p, _ = svc.GetPreferences(ctx, 1)
+	if p.VolumeUnit != "oz" {
+		t.Fatalf("VolumeUnit = %q, want oz", p.VolumeUnit)
+	}
+
+	// Invalid units are rejected.
+	if err := svc.UpdateVolumeUnit(ctx, 1, "gallons"); err == nil {
+		t.Fatalf("expected error for invalid unit")
+	}
+	// The rejected update must not have changed the stored value.
+	p, _ = svc.GetPreferences(ctx, 1)
+	if p.VolumeUnit != "oz" {
+		t.Fatalf("VolumeUnit after invalid update = %q, want oz", p.VolumeUnit)
 	}
 }
 
@@ -228,7 +263,7 @@ func TestPostgresStore_Upsert(t *testing.T) {
 	rawSecOrder, _ := json.Marshal([]string{})
 	rawSecHidden, _ := json.Marshal([]string{})
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_preferences`)).
-		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden).
+		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden, "ml").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}, Timezone: "UTC"}); err != nil {

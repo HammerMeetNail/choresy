@@ -127,6 +127,8 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Chore order | `preferences.js`, `home-jiggle-grid.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
 | Hidden home chores | `preferences.js`, `home-remove-chore.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
 | Timezone | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
+| Volume unit (mL/oz) | `preferences.js`, `utils.js`, `settings-volume-unit.spec.js` | — | `/api/preferences` (`volumeUnit`) | **iOS pending** | New per-user pref; volumes stored canonically in mL, converted at display/input. iOS must surface the toggle in Settings and respect it in LogSheet/StatsView/history |
+| PWA manifest shortcuts | `manifest.webmanifest`, `app.js` (`?quicklog=`) | — | N/A (PWA install surface) | N/A | PWA-only: home-screen icon long-press shortcuts (Log feed / Log chore / Activity). iOS uses native Home-Screen quick actions if/when built |
 | **Navigation** |
 | Five tabs | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | |
 | Tab order (Stats, Activity, Home, Schedule, Settings) | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | Same tab set/order as PWA |

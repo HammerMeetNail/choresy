@@ -491,3 +491,45 @@ describe("Stats: colorForIndicator", () => {
   });
 });
 
+describe("Utils: volume units", () => {
+  it("formatVolume renders mL and oz", async () => {
+    const { formatVolume } = await import("../utils.js");
+    assert.equal(formatVolume(60, "ml"), "60 mL");
+    assert.equal(formatVolume(null, "ml"), "");
+    // 60 mL ≈ 2.03 oz → rounded to 1dp
+    assert.equal(formatVolume(60, "oz"), "2 oz");
+    assert.equal(formatVolume(30, "oz"), "1 oz");
+    assert.equal(formatVolume(89, "oz"), "3 oz");
+  });
+
+  it("ozToMl / mlToOz round-trip within a rounding step", async () => {
+    const { ozToMl, mlToOz } = await import("../utils.js");
+    assert.equal(ozToMl(2), 59); // 2 * 29.5735 ≈ 59.15
+    assert.ok(Math.abs(mlToOz(59) - 2) < 0.05);
+  });
+
+  it("volumeOptions returns mL-valued options with unit-specific labels", async () => {
+    const { volumeOptions } = await import("../utils.js");
+    const ml = volumeOptions("ml");
+    assert.equal(ml[0].ml, 0);
+    assert.equal(ml[1].label, "5 mL");
+    assert.equal(ml[ml.length - 1].ml, 200);
+
+    const oz = volumeOptions("oz");
+    assert.equal(oz[0].label, "0.5 oz");
+    // value is always canonical mL
+    assert.equal(oz[0].ml, ozToMlLocal(0.5));
+    function ozToMlLocal(o) { return Math.round(o * 29.5735); }
+  });
+
+  it("volumeOptions injects a selected mL not already present, keeping sort", async () => {
+    const { volumeOptions } = await import("../utils.js");
+    const oz = volumeOptions("oz", 137); // arbitrary mL not an oz preset
+    assert.ok(oz.some(o => o.ml === 137));
+    // still sorted ascending by ml
+    for (let i = 1; i < oz.length; i++) {
+      assert.ok(oz[i].ml >= oz[i - 1].ml);
+    }
+  });
+});
+

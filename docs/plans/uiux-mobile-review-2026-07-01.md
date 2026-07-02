@@ -39,23 +39,23 @@ Chart stack colors are dictionaries keyed on literal strings `"🍼 formula"`, `
 **Fix:** assign colors per label from a stable palette (hash of label → palette index), with the four known labels keeping their current colors for continuity. This also unblocks Phase 3 (generalized metrics for any chore).
 *iOS note: same mapping function should be ported so charts match across clients.*
 
-### 1.3 Heatmap tooltips don't work on touch
+### 1.3 Heatmap tooltips don't work on touch ✅ DONE
 Heatmap cells only have `title` attributes (`stats.js:387`) — invisible on iOS/Android. The feeding-gaps scatter already solved this with `data-action="scatter-tap"` tap-to-reveal tooltips.
 
 **Fix:** reuse the scatter's tap-tooltip pattern for heatmap cells (show `date · N chores` on tap; tap elsewhere dismisses). Also add `aria-label` per cell.
 
-### 1.4 Inconsistent/hard-coded locale + date formatting
+### 1.4 Inconsistent/hard-coded locale + date formatting ✅ DONE
 `toLocaleDateString("en-US", …)` is hard-coded in `today.js:26`, `stats.js:129,141`, history chunk labels (`today.js:366`), while other spots pass `undefined` (`stats.js:1150`). Week is computed Monday-start in `currentWeekLabel` (`stats.js:134-143`) but the heatmap grid is Sunday-start (`stats.js:353-374`).
 
 **Fix:** drop the explicit `"en-US"` everywhere (use the device locale), and pick one week-start convention (recommend deriving from locale, or a single constant) used by heatmap, leaderboard ranges, and history chunks.
 
-### 1.5 Volume unit is mL-only
+### 1.5 Volume unit is mL-only ✅ DONE
 Baby feeding volumes are mL end-to-end (inputs, charts, history rows: `today.js:326-327`, `stats.js` throughout). US caregivers think in oz.
 
 **Fix:** per-user preference `volumeUnit: "ml" | "oz"` in `user_preferences` (same pattern as timezone). Store canonical mL in the DB; convert at render and at input (accept oz input, round to mL). One shared `formatVolume(ml, unit)` util.
 *iOS note: needs the same pref surfaced in Settings and respected in HomeView/LogSheet/StatsView.*
 
-### 1.6 Manifest polish
+### 1.6 Manifest polish ✅ DONE
 `manifest.webmanifest` is missing:
 - `shortcuts` — long-press app icon → "Log feed", "Log chore", "Activity". Cheap and very high value for the baby use case (one gesture from home screen to the log sheet). Add `start_url` query params (e.g. `/?quicklog=feed-baby`) handled in `app.js` boot.
 - `id` field (stable identity), `description`, and `screenshots` (better install sheet on Android).

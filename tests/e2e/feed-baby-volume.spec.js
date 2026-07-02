@@ -109,7 +109,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const meta = page.locator('.hist-meta').first();
-    await expect(meta).toContainText('85mL');
+    await expect(meta).toContainText('85 mL');
   });
 
   test('non-Feed Baby chores do not show per-indicator volume pickers', async ({ page }) => {
@@ -414,9 +414,9 @@ test.describe('History indicator icons', () => {
 
     const meta = page.locator('.hist-meta').first();
     await expect(meta).toContainText('🍼');
-    await expect(meta).toContainText('80mL');
+    await expect(meta).toContainText('80 mL');
     await expect(meta).toContainText('🤱');
-    await expect(meta).toContainText('60mL');
+    await expect(meta).toContainText('60 mL');
     await expect(meta).not.toContainText('breast');
     await expect(meta).not.toContainText('formula');
   });

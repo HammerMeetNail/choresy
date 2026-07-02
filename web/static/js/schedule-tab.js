@@ -18,7 +18,7 @@ function fmtDayHeader(iso) {
   if (iso === today) return "Today";
   const tomorrow = shiftISO(today, 1);
   if (iso === tomorrow) return "Tomorrow";
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
 
 function fmtTime(hhmm) {
@@ -93,7 +93,7 @@ export function renderScheduleTab(state) {
       const timeStr = fmtTime(r.sch.specificTime);
       const doneClass = r.isToday && r.isDone ? "sch-row--done" : "";
       const summarySuffix = r.sch.recurrenceEnd
-        ? ` until ${new Date(r.sch.recurrenceEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+        ? ` until ${new Date(r.sch.recurrenceEnd).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
         : "";
       const slotTime = r.sch.specificTime || "";
       const slotHour = slotTime ? slotTime.split(':')[0] : "";

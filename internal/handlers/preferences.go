@@ -48,6 +48,7 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		ChoreOrder          *[]int64  `json:"choreOrder"`
 		HiddenHomeChoreIDs  *[]int64  `json:"hiddenHomeChoreIds"`
 		Timezone            *string   `json:"timezone"`
+		VolumeUnit          *string   `json:"volumeUnit"`
 		StatsSectionOrder   *[]string `json:"statsSectionOrder"`
 		StatsSectionHidden  *[]string `json:"statsSectionHidden"`
 	}
@@ -73,6 +74,13 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Timezone != nil {
 		if err := h.service.UpdateTimezone(r.Context(), user.ID, *req.Timezone); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if req.VolumeUnit != nil {
+		if err := h.service.UpdateVolumeUnit(r.Context(), user.ID, *req.VolumeUnit); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}

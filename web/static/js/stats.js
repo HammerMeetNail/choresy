@@ -1,5 +1,29 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML, localDateStr } from "./utils.js";
+import { escapeHTML, localDateStr, formatVolume, mlToOz } from "./utils.js";
+
+// The stats page renders volumes in the user's preferred unit. Volumes are
+// stored canonically in mL; `currentVolumeUnit` is set once at the top of
+// renderStatsPage and read by the volume-display helpers below. This avoids
+// threading the unit through every chart builder.
+let currentVolumeUnit = "ml";
+
+// fmtVol renders a canonical mL amount with its unit suffix ("60 mL"/"2 oz").
+function fmtVol(ml) {
+  return formatVolume(ml, currentVolumeUnit);
+}
+
+// volAxisTick renders a bare numeric axis tick in the active unit (no suffix).
+function volAxisTick(ml) {
+  if (currentVolumeUnit === "oz") {
+    return String(Number(mlToOz(ml).toFixed(1))).replace(/\.0$/, "");
+  }
+  return String(ml);
+}
+
+// volUnitLabel is the short axis unit label.
+function volUnitLabel() {
+  return currentVolumeUnit === "oz" ? "oz" : "mL";
+}
 
 // Canonical section list and default order. Must match
 // internal/userprefs/sections.go exactly. When you add a new section,
@@ -126,7 +150,7 @@ function formatRangeLabel(start, end) {
   if (!start || !end) return "";
   const fmt = (s) => {
     const d = new Date(s + "T00:00:00");
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
   return `${fmt(start)} – ${fmt(end)}`;
 }
@@ -138,7 +162,7 @@ function currentWeekLabel() {
   monday.setDate(now.getDate() - ((day + 6) % 7));
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
-  const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   return `${fmt(monday)} – ${fmt(sunday)}`;
 }
 
@@ -175,6 +199,7 @@ function formatHour(h) {
 }
 
 export function renderStatsPage(state) {
+  currentVolumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
   const stats = state.stats || {};
   const overview = stats.overview || {};
   const streaks = overview.streaks || {};
@@ -383,13 +408,17 @@ function renderHeatmapGrid(heatmap) {
 
   const maxCount = Math.max(0, ...Object.values(cellMap));
 
-  // Build a GitHub-style grid: columns = weeks, rows = days (Sun-Sat)
+  // Build a GitHub-style grid: columns = weeks, rows = days (Mon-Sun).
+  // Monday-start matches the server's week definition (internal/stats
+  // wkStart) and the "This Week" range label, so heatmap columns line up
+  // with leaderboard/recap weeks.
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const dayOfWeek = today.getDay();
+  // Days since the most recent Monday: JS getDay() is Sun=0..Sat=6.
+  const mondayIndex = (today.getDay() + 6) % 7;
   const endDate = new Date(today);
   const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - (dayOfWeek + 19 * 7));
+  startDate.setDate(startDate.getDate() - (mondayIndex + 19 * 7));
 
   const weeks = [];
   let current = new Date(startDate);
@@ -404,8 +433,12 @@ function renderHeatmapGrid(heatmap) {
     weeks.push(week);
   }
 
-  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  let html = '<div class="heatmap-grid">';
+  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  // Wrapper is position:relative so the tap-to-reveal tooltip (touch devices
+  // can't hover a title attribute) can be positioned over the tapped cell.
+  let html = '<div class="heatmap-wrap">';
+  html += '<div class="heatmap-tooltip" role="status" aria-live="polite" aria-hidden="true"></div>';
+  html += '<div class="heatmap-grid">';
   html += '<div class="heatmap-inner">';
   html += '<div class="heatmap-day-labels">';
   dayLabels.forEach(l => {
@@ -416,8 +449,8 @@ function renderHeatmapGrid(heatmap) {
   weeks.forEach((week, wi) => {
     html += '<div class="heatmap-week">';
     week.forEach((cell, di) => {
-      const title = `${cell.date}: ${cell.count} chores`;
-      html += `<span class="heatmap-cell" style="background:${heatmapColor(cell.count, maxCount)}" title="${title}"></span>`;
+      const label = heatmapCellLabel(cell.date, cell.count);
+      html += `<span class="heatmap-cell" style="background:${heatmapColor(cell.count, maxCount)}" data-action="heatmap-tap" data-date="${cell.date}" data-count="${cell.count}" role="button" tabindex="0" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}"></span>`;
     });
     html += '</div>';
   });
@@ -431,8 +464,21 @@ function renderHeatmapGrid(heatmap) {
   });
   html += '<span>More</span>';
   html += '</div>';
-  html += '</div>';
+  html += '</div>'; // .heatmap-grid
+  html += '</div>'; // .heatmap-wrap
   return html;
+}
+
+// heatmapCellLabel builds the "Tue, Jul 1 · 3 chores" readout shown on a
+// cell's tap tooltip and aria-label. Uses the device locale (no hard-coded
+// en-US) per the locale-consistency cleanup.
+function heatmapCellLabel(dateStr, count) {
+  let datePart = dateStr;
+  const d = new Date(dateStr + "T00:00:00");
+  if (!isNaN(d.getTime())) {
+    datePart = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+  return `${datePart} · ${count} chore${count === 1 ? "" : "s"}`;
 }
 
 function renderBusyHoursDateRange(start, end) {
@@ -616,12 +662,12 @@ function renderChoreStatsList(choreStats, choreMap, period) {
       const maxVol = Math.max(1, ...cs.volumeHistory.map(v => v.totalML));
       const volBars = cs.volumeHistory.map(v => {
         const h = maxVol > 0 ? (v.totalML / maxVol) * 40 : 0;
-        return `<div class="vol-bar-wrap"><div class="vol-bar" style="height:${h}px" title="${v.date}: ${v.totalML}mL"></div></div>`;
+        return `<div class="vol-bar-wrap"><div class="vol-bar" style="height:${h}px" title="${v.date}: ${fmtVol(v.totalML)}"></div></div>`;
       }).join("");
 
       let avgStr = "";
       if (cs.avgVolume != null) {
-        avgStr = `<span class="text-secondary">Avg ${Math.round(cs.avgVolume)}mL / feed</span>`;
+        avgStr = `<span class="text-secondary">Avg ${fmtVol(Math.round(cs.avgVolume))} / feed</span>`;
       }
 
       const volLabel = period === "day" ? "Volume" : period === "week" ? `Volume (${periodLabel})` : `Volume (${periodLabel})`;
@@ -790,7 +836,7 @@ function renderClusterGapScatter(gaps) {
     if (isPink) {
       const idx = g.hour * 1000 + g.gapMinutes;
       const dateStr = formatScatterDate(g.date);
-      const volLabel = `${g.precedingVolume}\u202fmL \u2192 ${g.followUpVolume}\u202fmL`;
+      const volLabel = `${fmtVol(g.precedingVolume).replace(" ", "\u202f")} \u2192 ${fmtVol(g.followUpVolume).replace(" ", "\u202f")}`;
       const clampTipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
       const tipY = Math.max(y - 14, topM + 10);
       svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${volLabel}">`;
@@ -804,7 +850,7 @@ function renderClusterGapScatter(gaps) {
     } else if (isOrange) {
       const idx = g.hour * 1000 + g.gapMinutes;
       const dateStr = formatScatterDate(g.date);
-      const volLabel = `${g.precedingVolume}\u202fmL \u2192 ${g.followUpVolume}\u202fmL`;
+      const volLabel = `${fmtVol(g.precedingVolume).replace(" ", "\u202f")} \u2192 ${fmtVol(g.followUpVolume).replace(" ", "\u202f")}`;
       const clampTipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
       const tipY = Math.max(y - 14, topM + 10);
       svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${volLabel}">`;
@@ -818,7 +864,7 @@ function renderClusterGapScatter(gaps) {
     } else {
       const idx = g.hour * 1000 + g.gapMinutes;
       const dateStr = formatScatterDate(g.date);
-      const volLabel = `${g.precedingVolume}\u202fmL \u2192 ${g.followUpVolume}\u202fmL`;
+      const volLabel = `${fmtVol(g.precedingVolume).replace(" ", "\u202f")} \u2192 ${fmtVol(g.followUpVolume).replace(" ", "\u202f")}`;
       const clampTipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
       const tipY = Math.max(y - 14, topM + 10);
       svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${volLabel}">`;
@@ -917,10 +963,10 @@ function renderVolumeChart(periods, period) {
   ticks.forEach(t => {
     const y = topM + chartH - Math.round((t / maxML) * chartH);
     svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="var(--chart-grid)" stroke-width="0.5"/>`;
-    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${t}</text>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${volAxisTick(t)}</text>`;
   });
 
-  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">mL</text>`;
+  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">${volUnitLabel()}</text>`;
 
   const stackKeys = [];
 
@@ -946,12 +992,12 @@ function renderVolumeChart(periods, period) {
     stackKeys.forEach(key => {
       const ml = p.volumeByIndicator?.[key] || 0;
       attributedML += ml;
-      if (ml > 0) parts.push(`${escapeHTML(key)} ${ml}mL`);
+      if (ml > 0) parts.push(`${escapeHTML(key)} ${fmtVol(ml)}`);
     });
     const unlabeledML = p.totalML - attributedML;
-    if (unlabeledML > 0) parts.push(`unlabeled ${unlabeledML}mL`);
+    if (unlabeledML > 0) parts.push(`unlabeled ${fmtVol(unlabeledML)}`);
 
-    const valText = parts.join(", ") || (p.totalML > 0 ? `${p.totalML} mL` : "");
+    const valText = parts.join(", ") || (p.totalML > 0 ? fmtVol(p.totalML) : "");
     const fullLabel = formatPeriodLabel(p, period);
     const barH = Math.max(totalH_, 0.5);
     const estWidth = valText.length * 7;
@@ -1027,7 +1073,7 @@ function renderVolumeChart(periods, period) {
     }
     if (unlabeledTotalML > 0) {
       svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="var(--chart-axis)" opacity="0.6"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">unlabeled ${unlabeledTotalML}mL</text>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">unlabeled ${fmtVol(unlabeledTotalML)}</text>`;
     }
   }
 

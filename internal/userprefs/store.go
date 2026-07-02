@@ -19,6 +19,11 @@ type Preferences struct {
 	// stats aggregation.  Empty means UTC.
 	Timezone string `json:"timezone"`
 
+	// VolumeUnit is the user's preferred unit for displaying/inputting feed
+	// volumes: "ml" (default) or "oz". Volumes are always stored canonically
+	// in milliliters; this only affects rendering and the log-sheet picker.
+	VolumeUnit string `json:"volumeUnit"`
+
 	// StatsSectionOrder is the user's preferred ordering of stats page
 	// sections, expressed as an ordered list of canonical section keys.
 	// Missing or empty means "use the canonical default order".

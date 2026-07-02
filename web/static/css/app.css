@@ -326,6 +326,64 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--border);
 }
 
+/* Generic settings preference row + segmented control (reuses notif-pref look) */
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.pref-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pref-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.pref-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.segmented {
+  display: inline-flex;
+  background: var(--segment-track);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.segmented-btn {
+  min-width: 48px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.segmented-btn--active {
+  background: var(--segment-active);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
 .notif-pref-row:last-child {
   border-bottom: none;
 }
@@ -1627,6 +1685,37 @@ details[open] .member-chevron {
 }
 
 /* Heatmap */
+.heatmap-wrap {
+  position: relative;
+}
+
+.heatmap-tooltip {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, -100%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+}
+
+.heatmap-tooltip--visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.heatmap-cell[data-action="heatmap-tap"] {
+  cursor: pointer;
+}
+
 .heatmap-grid {
   display: flex;
   flex-direction: column;
