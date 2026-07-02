@@ -4422,6 +4422,19 @@ details[open] .chore-stat-chevron {
   align-items: center;
   gap: 8px;
   padding: 4px 0;
+  cursor: pointer;
+}
+/* Counter the global form-input width so the checkbox stays its natural size
+   and sits directly next to its chore label (mirrors .customize-check). */
+.widget-chore-check input {
+  flex-shrink: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+}
+.widget-chore-check span {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── Recent-value volume chips (Phase 5.3) ─────────────────────────────────── */
