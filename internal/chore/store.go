@@ -31,6 +31,9 @@ type Chore struct {
 	// MetricUnit is the display unit label for an "amount" metric (e.g. "mL",
 	// "oz", "g", "min"). Empty for non-amount metrics.
 	MetricUnit string `json:"metricUnit"`
+	// Subjects is an optional list of subject tags for this chore (e.g. twin
+	// names), used to distinguish which subject a log is about (Phase 5.5).
+	Subjects []string `json:"subjects"`
 }
 
 // Metric type constants for Chore.MetricType.

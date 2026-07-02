@@ -553,6 +553,40 @@ describe("Stats: generalized per-chore sections (Phase 3)", () => {
   });
 });
 
+describe("Subject tagging (Phase 5.5)", () => {
+  it("chore sheet renders a subjects field with existing tags", async () => {
+    const { renderChoreSheet } = await import("../chores.js");
+    const html = renderChoreSheet({ id: 1, name: "Feed", icon: "🍼", color: "#000", subjects: ["👶 Alice", "👶 Bob"] });
+    assert.ok(html.includes("Subjects"));
+    assert.ok(html.includes("add-subject-label"));
+    assert.ok(html.includes("👶 Alice"));
+    assert.ok(html.includes("👶 Bob"));
+  });
+
+  it("log sheet renders subject chips only when the chore has subjects", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const withSubjects = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.ok(withSubjects.includes("pick-subject"));
+    assert.ok(withSubjects.includes("Alice"));
+
+    const without = renderLogSheet(
+      { id: 2, icon: "🧹", name: "Vacuum", color: "#000", subjects: [] },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.ok(!without.includes("pick-subject"));
+  });
+
+  it("log sheet preselects the existing log's subject", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      { id: 9, subject: "Bob", indicators: [] }, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    // The Bob chip should be pressed/on.
+    assert.match(html, /data-subject="Bob"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Bob"/);
+  });
+});
+
 describe("Duration timer (Phase 5.2)", () => {
   it("formatElapsed renders m:ss and h:mm:ss", async () => {
     const { formatElapsed } = await import("../timer.js");

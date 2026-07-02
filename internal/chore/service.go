@@ -31,7 +31,7 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
-func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string) (Chore, error) {
+func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string, subjects []string) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -57,6 +57,9 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if !ValidMetricType(metricType) {
 		metricType = MetricNone
 	}
+	if subjects == nil {
+		subjects = []string{}
+	}
 	created, err := s.store.CreateChore(ctx, Chore{
 		HouseholdID:       householdID,
 		Name:              name,
@@ -70,6 +73,7 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 		FollowUpEnabled:   fu,
 		MetricType:        metricType,
 		MetricUnit:        metricUnit,
+		Subjects:          subjects,
 	})
 	if err != nil {
 		return Chore{}, err
@@ -90,7 +94,7 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 	return s.store.GetChore(ctx, choreID)
 }
 
-func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string) error {
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string, subjects *[]string) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
@@ -131,6 +135,13 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 	}
 	if metricUnit != nil {
 		existing.MetricUnit = *metricUnit
+	}
+	if subjects != nil {
+		s := *subjects
+		if s == nil {
+			s = []string{}
+		}
+		existing.Subjects = s
 	}
 	if err := s.store.UpdateChore(ctx, existing); err != nil {
 		return err

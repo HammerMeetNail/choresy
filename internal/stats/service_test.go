@@ -36,7 +36,7 @@ func seedService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service, *stubC
 	ctx := context.Background()
 	for _, l := range logs {
 		d := l.CompletedAt
-		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil, nil)
+		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("seed log: %v", err)
 		}
@@ -483,7 +483,7 @@ func TestGetTopChores_Limit(t *testing.T) {
 			// previous day, which on the 1st of the month fell into the previous
 			// month and was excluded by the "month" window, failing the test.
 			d := ref.Add(time.Duration(-j) * time.Minute)
-			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, nil, "", nil, nil, &d, nil, &d, nil, nil, nil)
+			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, nil, "", nil, nil, &d, nil, &d, nil, nil, nil, nil)
 			if err != nil {
 				t.Fatalf("seed log: %v", err)
 			}
@@ -595,7 +595,7 @@ func seedFeedingService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service,
 	ctx := context.Background()
 	for _, l := range logs {
 		d := l.CompletedAt
-		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil, nil)
+		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, nil, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("seed feeding log: %v", err)
 		}

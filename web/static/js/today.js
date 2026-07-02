@@ -99,7 +99,7 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}, rating = null, title = null) {
+export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}, rating = null, title = null, subject = undefined) {
   const body = { note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (volumeML !== null) body.volumeML = volumeML;
@@ -109,6 +109,7 @@ export async function updateLog(logId, note, indicators = [], volumeML = null, u
   if (completedAt) body.completedAt = completedAt;
   if (rating !== null) body.rating = rating;
   if (title) body.title = title;
+  if (subject !== undefined) body.subject = subject;
   const { response, data } = await apiFetch(`/api/logs/${logId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -276,6 +277,7 @@ export function renderHistoryView(state) {
       indicatorIcons,
       rating: l.rating,
       title: l.title || '',
+      subject: l.subject || '',
       logId: l.id,
       choreId: l.choreId,
       date: dateKey,
@@ -373,6 +375,7 @@ export function renderHistoryView(state) {
         const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${formatVolume(r.volumeML, volumeUnit)}` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
+        const subjectStr = r.subject ? ` · <span class="hist-subject">${escapeHTML(r.subject)}</span>` : '';
         const titleStr = r.title ? `<span class="hist-title">${escapeHTML(r.title)}</span>` : '';
         return `
         <button type="button" class="hist-row" style="--chore-color:${r.color}"
@@ -384,7 +387,7 @@ export function renderHistoryView(state) {
           <div class="hist-body">
             <span class="hist-name">${escapeHTML(r.name)}</span>
             ${titleStr}
-            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${subjectStr}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
           </div>
         </button>`;
       }).join('');

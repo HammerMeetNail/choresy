@@ -2069,8 +2069,11 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         const note    = (document.querySelector('#log-note')?.value || "").trim();
         const titleVal = (document.querySelector('#log-title')?.value || "").trim();
-        const indicators = [...document.querySelectorAll('.log-chip--on')]
-          .map(el => el.dataset.label);
+        const indicators = [...document.querySelectorAll('.log-chip--on[data-action="toggle-indicator"]')]
+          .map(el => el.dataset.label)
+          .filter(Boolean);
+        // Subject tag (Phase 5.5): single-select chip, if any.
+        const subject = document.querySelector('.subject-chip.log-chip--on')?.dataset.subject || null;
         const indicatorVolumes = {};
         document.querySelectorAll('.indicator-volume-select').forEach(select => {
           const indicator = select.dataset.indicator;
@@ -2129,7 +2132,7 @@ export async function init() {
         }
 
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating, titleVal || null)
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating, titleVal || null, subject)
           : (() => {
             const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
             const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
@@ -2142,7 +2145,7 @@ export async function init() {
               const pad = n => String(n).padStart(2, "0");
               followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
             }
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null);
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null, null, subject);
           })();
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
@@ -2441,12 +2444,16 @@ export async function init() {
         const metricUnit = metricType === "amount"
           ? ((document.querySelector("#chore-metric-unit")?.value || "").trim() || "mL")
           : "";
+        // Subjects (Phase 5.5): collect non-empty subject tags.
+        const subjects = [...document.querySelectorAll(".subject-label-input")]
+          .map(el => el.value.trim())
+          .filter(v => v.length > 0);
 
         if (isNew) {
           const followUpEnabled = document.querySelector("[data-action='toggle-followup-enabled']")?.checked ?? true;
           apiFetch("/api/chores", {
             method: "POST",
-            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit }),
+            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects }),
           }).then(async ({ data }) => {
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }
@@ -2466,7 +2473,7 @@ export async function init() {
           const followUpEnabled = followUpEnabledEl?.checked;
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit }),
+            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects }),
           }).then(async () => {
             state.activeSheet = null;
             state.activeSheetData = {};
@@ -2519,6 +2526,23 @@ export async function init() {
             showToast("Restored to default", "success");
           })
           .catch(() => showToast("Failed to restore default", "error"));
+        break;
+      }
+
+      // ── Subject picker (Phase 5.5) ───────────────────────────────────────
+
+      case "pick-subject": {
+        e.preventDefault();
+        const wasOn = actionEl.getAttribute("aria-pressed") === "true";
+        // Single-select: clear all, then set this one unless it was already on.
+        document.querySelectorAll(".subject-chip").forEach(chip => {
+          chip.classList.remove("log-chip--on");
+          chip.setAttribute("aria-pressed", "false");
+        });
+        if (!wasOn) {
+          actionEl.classList.add("log-chip--on");
+          actionEl.setAttribute("aria-pressed", "true");
+        }
         break;
       }
 
@@ -2742,6 +2766,31 @@ export async function init() {
       }
 
       case "remove-indicator-label": {
+        e.preventDefault();
+        const row = actionEl.closest(".indicator-chip-row");
+        if (row) row.remove();
+        break;
+      }
+
+      case "add-subject-label": {
+        e.preventDefault();
+        const list = document.querySelector("#subject-labels-list");
+        if (!list) break;
+        const idx = list.children.length;
+        const row = document.createElement("div");
+        row.className = "indicator-chip-row";
+        row.dataset.subjectIndex = idx;
+        row.innerHTML = `<input type="text" class="subject-label-input input" data-subject-index="${idx}"
+          value="" placeholder="e.g. 👶 Alice" maxlength="30" />
+          <button type="button" class="indicator-remove-btn"
+            data-action="remove-subject-label" data-subject-index="${idx}"
+            aria-label="Remove subject">×</button>`;
+        list.appendChild(row);
+        row.querySelector("input")?.focus();
+        break;
+      }
+
+      case "remove-subject-label": {
         e.preventDefault();
         const row = actionEl.closest(".indicator-chip-row");
         if (row) row.remove();

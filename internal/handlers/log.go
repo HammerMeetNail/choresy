@@ -107,6 +107,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		VolumeML         *int           `json:"volumeML"`        // optional volume in mL
 		Rating           *int           `json:"rating"`          // optional rating 0-50 (tenths of a star)
 		DurationSeconds  *int           `json:"durationSeconds"` // optional elapsed seconds for duration-metric chores
+		Subject          *string        `json:"subject"`         // optional subject tag (Phase 5.5)
 		UserID           *int64         `json:"userId"`          // optional: log on behalf of another household member
 		FollowUpMinutes  int            `json:"followUpMinutes"`
 		FollowUpTime     string         `json:"followUpTime"`   // local ISO datetime for schedule placement
@@ -179,7 +180,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "idempotencyKey too long")
 		return
 	}
-	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, req.DurationSeconds, idemKey)
+	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, req.DurationSeconds, req.Subject, idemKey)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -281,6 +282,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		VolumeML         *int           `json:"volumeML"`
 		Rating           *int           `json:"rating"`          // optional rating 0-50 (tenths of a star)
 		DurationSeconds  *int           `json:"durationSeconds"` // optional elapsed seconds for duration-metric chores
+		Subject          *string        `json:"subject"`         // optional subject tag (Phase 5.5)
 		UserID           *int64         `json:"userId"`          // optional: change who the log is attributed to
 		CompletedAt      string         `json:"completedAt"`     // optional: new completion timestamp
 		Hour             *int           `json:"hour"`            // optional: new slot hour
@@ -335,7 +337,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds, req.Subject); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return
@@ -609,7 +611,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=\"nabu-logs.csv\"")
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"date", "time", "chore", "member", "title", "note", "volume_ml", "indicators", "indicator_volumes", "rating", "duration_seconds"})
+	_ = cw.Write([]string{"date", "time", "chore", "member", "title", "note", "volume_ml", "indicators", "indicator_volumes", "rating", "duration_seconds", "subject"})
 	for _, l := range logs {
 		if filterChoreID != 0 && l.ChoreID != filterChoreID {
 			continue
@@ -630,6 +632,10 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 		durationSec := ""
 		if l.DurationSeconds != nil {
 			durationSec = strconv.Itoa(*l.DurationSeconds)
+		}
+		subject := ""
+		if l.Subject != nil {
+			subject = *l.Subject
 		}
 		indVol := ""
 		if len(l.IndicatorVolumes) > 0 {
@@ -652,6 +658,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			indVol,
 			rating,
 			durationSec,
+			subject,
 		})
 	}
 	cw.Flush()

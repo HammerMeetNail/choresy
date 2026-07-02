@@ -70,6 +70,22 @@ func validateMetric(metricType, metricUnit string) (int, string) {
 	return 0, ""
 }
 
+// validateSubjects checks the per-chore subject tags (Phase 5.5).
+func validateSubjects(subjects []string) (int, string) {
+	if len(subjects) > 8 {
+		return http.StatusBadRequest, "too many subjects"
+	}
+	for _, s := range subjects {
+		if utf8.RuneCountInString(s) == 0 || utf8.RuneCountInString(s) > 30 {
+			return http.StatusBadRequest, "subjects must be 1-30 characters"
+		}
+		if strings.ContainsAny(s, "\x00\n\r\t") {
+			return http.StatusBadRequest, "subject contains invalid characters"
+		}
+	}
+	return 0, ""
+}
+
 type ChoreHandler struct {
 	service *chore.Service
 }
@@ -114,6 +130,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		FollowUpEnabled   *bool    `json:"followUpEnabled"`
 		MetricType        string   `json:"metricType"`
 		MetricUnit        string   `json:"metricUnit"`
+		Subjects          []string `json:"subjects"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -128,8 +145,12 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, msg)
 		return
 	}
+	if code, msg := validateSubjects(req.Subjects); code != 0 {
+		writeError(w, code, msg)
+		return
+	}
 
-	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit)
+	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -175,15 +196,16 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name              string   `json:"name"`
-		Icon              string   `json:"icon"`
-		Color             string   `json:"color"`
-		Category          string   `json:"category"`
-		IndicatorLabels   []string `json:"indicatorLabels"`
-		IndicatorDefaults []string `json:"indicatorDefaults"`
-		FollowUpEnabled   *bool    `json:"followUpEnabled"`
-		MetricType        *string  `json:"metricType"`
-		MetricUnit        *string  `json:"metricUnit"`
+		Name              string    `json:"name"`
+		Icon              string    `json:"icon"`
+		Color             string    `json:"color"`
+		Category          string    `json:"category"`
+		IndicatorLabels   []string  `json:"indicatorLabels"`
+		IndicatorDefaults []string  `json:"indicatorDefaults"`
+		FollowUpEnabled   *bool     `json:"followUpEnabled"`
+		MetricType        *string   `json:"metricType"`
+		MetricUnit        *string   `json:"metricUnit"`
+		Subjects          *[]string `json:"subjects"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -205,8 +227,14 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, msg)
 		return
 	}
+	if req.Subjects != nil {
+		if code, msg := validateSubjects(*req.Subjects); code != 0 {
+			writeError(w, code, msg)
+			return
+		}
+	}
 
-	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit); err != nil {
+	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}

@@ -4485,3 +4485,7 @@ details[open] .chore-stat-chevron {
 }
 .timer-chip-name { max-width: 32vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-duration-row { margin-top: 8px; }
+
+/* ── Subject tagging (Phase 5.5) ───────────────────────────────────────────── */
+.hist-subject { font-weight: 600; opacity: 0.85; }
+.subject-chip { }

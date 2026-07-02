@@ -99,6 +99,7 @@ export function renderChoreSheet(chore, opts = {}) {
   const choreId = chore?.id ?? null;
   const metricType = chore?.metricType || "none";
   const metricUnit = chore?.metricUnit || "";
+  const subjects = chore?.subjects || [];
 
   const { scheduleReminderEnabled = false, reminderPref = null, defaultLeadMinutes = 10 } = opts;
   const leadTimes = [5, 10, 15, 30, 60];
@@ -170,6 +171,25 @@ export function renderChoreSheet(chore, opts = {}) {
       </div>
     </div>`;
 
+  const subjectChips = subjects.map((s, i) =>
+    `<div class="indicator-chip-row" data-subject-index="${i}">
+      <input type="text" class="subject-label-input input" data-subject-index="${i}"
+        value="${escapeHTML(s)}" placeholder="e.g. 👶 Alice" maxlength="30" />
+      <button type="button" class="indicator-remove-btn"
+        data-action="remove-subject-label" data-subject-index="${i}"
+        aria-label="Remove subject">×</button>
+    </div>`
+  ).join("");
+  const subjectSection = `
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">
+        Subjects
+        <span class="chore-edit-hint">Optional tags to distinguish who a log is about (e.g. twins)</span>
+      </label>
+      <div id="subject-labels-list">${subjectChips}</div>
+      <button type="button" class="btn-add-indicator" data-action="add-subject-label">+ Add subject</button>
+    </div>`;
+
   const defaultsSet = new Set(indicatorDefaults);
   const indicatorChips = indicatorLabels.map((label, i) =>
     `<div class="indicator-chip-row" data-index="${i}">
@@ -228,6 +248,8 @@ export function renderChoreSheet(chore, opts = {}) {
     </div>
 
     ${metricSection}
+
+    ${subjectSection}
 
     <div class="chore-edit-field">
       <label class="chore-edit-label">

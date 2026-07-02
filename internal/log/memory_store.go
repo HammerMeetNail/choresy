@@ -67,6 +67,7 @@ func (s *MemoryStore) UpdateLog(_ context.Context, log ChoreLog) error {
 	existing.Title = log.Title
 	existing.Rating = log.Rating
 	existing.DurationSeconds = log.DurationSeconds
+	existing.Subject = log.Subject
 	s.logs[log.ID] = existing
 	return nil
 }

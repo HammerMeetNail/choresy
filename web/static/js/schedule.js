@@ -484,6 +484,20 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       <p class="sheet-hint">Records elapsed time. Stop from the timer chip up top.</p>
     </div>` : "";
 
+  // Subject picker (Phase 5.5): single-select chips for chores with subjects.
+  const subjectSection = ((chore.subjects || []).length > 0) ? (() => {
+    const current = log?.subject ?? null;
+    const chips = chore.subjects.map(s => {
+      const on = current === s;
+      return `<button type="button" class="log-chip subject-chip${on ? " log-chip--on" : ""}"
+        data-action="pick-subject" data-subject="${escapeHTML(s)}" aria-pressed="${on}">${escapeHTML(s)}</button>`;
+    }).join("");
+    return `<div class="sheet-subject-row">
+      <p class="field-label">Who</p>
+      <div class="chip-list">${chips}</div>
+    </div>`;
+  })() : "";
+
   const selectedMemberId = log?.userId ?? (currentUserId || null);
   const memberSection = renderMemberSelect(members, currentUserId, selectedMemberId, "log");
 
@@ -595,6 +609,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         <button type="button" class="sheet-manage-btn" data-action="chore-edit" data-chore-id="${chore.id}" aria-label="Manage ${escapeHTML(chore.name)}" title="Manage chore">${MANAGE_ICON}</button>
       </div>
       ${whenSection}
+      ${subjectSection}
       ${recentVolumeSection}
       ${indicatorSection}
       ${volumeOnlySection}
