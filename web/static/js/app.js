@@ -281,7 +281,7 @@ async function refreshActiveTab() {
   const route = state.currentRoute || window.location.pathname || "/";
   try {
     if (route === "/activity") {
-      const data = await loadHistory(state.historySearch);
+      const [data] = await Promise.all([loadHistory(state.historySearch), loadDayNotesData()]);
       state.historyLogs = data?.logs || [];
       state.historyHasMore = data?.hasMore || false;
       state.historyBefore = data?.start || null;
@@ -371,8 +371,34 @@ function renderActivityView() {
   return renderHistoryView();
 }
 
+function renderDayNoteSheet() {
+  const { date } = state.activeSheetData || {};
+  const existing = (state.dayNotes || {})[date] || "";
+  const label = (() => {
+    const d = new Date(date + "T00:00:00");
+    return isNaN(d.getTime()) ? date : d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  })();
+  return `<div class="bottom-sheet day-note-sheet" role="dialog" aria-modal="true" aria-label="Day note">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h2 class="sheet-title">${escapeHTML(label)}</h2>
+    <div class="sheet-note-row">
+      <label for="day-note-input" class="field-label">Note for this day (shared)</label>
+      <textarea id="day-note-input" class="text-input" rows="3" maxlength="500" placeholder="e.g. first solid food!">${escapeHTML(existing)}</textarea>
+    </div>
+    <button type="button" class="btn btn-primary btn-full" data-action="save-day-note" data-date="${escapeHTML(date)}">Save</button>
+    <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">Cancel</button>
+  </div>`;
+}
+
 function renderHistoryView() {
   const mainView = renderHistoryPage(state);
+  if (state.activeSheet === "day-note") {
+    return `<div class="sheet-overlay-wrapper">
+      ${mainView}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${renderDayNoteSheet()}
+    </div>`;
+  }
   if (state.activeSheet === "log") {
     const { choreId, logId, date } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
@@ -1029,6 +1055,20 @@ async function loadLatestLogsData() {
     const data = await loadLatestLogs();
     state.latestLogs = data?.latestLogs || {};
   } catch {}
+}
+
+// loadDayNotesData fetches the household's per-day diary notes (Phase 5.4) and
+// indexes them by date for the Activity day headers.
+async function loadDayNotesData() {
+  if (!state.household) return;
+  try {
+    const { data } = await apiFetch("/api/day-notes");
+    const map = {};
+    (data?.notes || []).forEach(n => { if (n.note) map[n.date] = n.note; });
+    state.dayNotes = map;
+  } catch {
+    state.dayNotes = state.dayNotes || {};
+  }
 }
 
 async function loadNotifData() {
@@ -2471,6 +2511,37 @@ export async function init() {
           }
         });
         actionEl.classList.add("volume-recent-chip--active");
+        break;
+      }
+
+      // ── Per-day diary notes (Phase 5.4) ──────────────────────────────────
+
+      case "edit-day-note": {
+        e.preventDefault();
+        const date = actionEl.dataset.date;
+        if (!date) break;
+        state.activeSheet = "day-note";
+        state.activeSheetData = { date };
+        render(app);
+        break;
+      }
+
+      case "save-day-note": {
+        e.preventDefault();
+        const date = actionEl.dataset.date;
+        const note = (document.querySelector("#day-note-input")?.value || "").trim();
+        apiFetch(`/api/day-notes/${date}`, {
+          method: "PUT",
+          body: JSON.stringify({ note }),
+        }).then(({ response }) => {
+          if (!response.ok) { showToast("Failed to save note", "error"); return; }
+          state.dayNotes = state.dayNotes || {};
+          if (note) state.dayNotes[date] = note;
+          else delete state.dayNotes[date];
+          state.activeSheet = null;
+          state.activeSheetData = {};
+          render(app);
+        }).catch(() => showToast("Failed to save note", "error"));
         break;
       }
 

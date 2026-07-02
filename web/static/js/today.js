@@ -387,7 +387,11 @@ export function renderHistoryView(state) {
           </div>
         </button>`;
       }).join('');
-      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span></div>${rows}`;
+      const dayNote = (state.dayNotes || {})[g.date] || "";
+      const noteHTML = dayNote
+        ? `<button type="button" class="hist-day-note" data-action="edit-day-note" data-date="${g.date}">📝 ${escapeHTML(dayNote)}</button>`
+        : `<button type="button" class="hist-day-note hist-day-note--empty" data-action="edit-day-note" data-date="${g.date}" aria-label="Add a note for ${escapeHTML(g.label)}">＋ note</button>`;
+      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span>${noteHTML}</div>${rows}`;
     }).join('');
     return `<div class="hist-chunk">
       <div class="hist-chunk-header">${chunk.label}</div>

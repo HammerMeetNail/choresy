@@ -18,6 +18,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/config"
 	"github.com/HammerMeetNail/nabu/internal/database"
+	"github.com/HammerMeetNail/nabu/internal/daynote"
 	"github.com/HammerMeetNail/nabu/internal/handlers"
 	"github.com/HammerMeetNail/nabu/internal/household"
 	logsvc "github.com/HammerMeetNail/nabu/internal/log"
@@ -69,6 +70,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var userPrefsStore userprefs.Store
 	var notifStore notification.Store
 	var pushStore push.Store
+	var dayNoteStore daynote.Store
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
@@ -78,6 +80,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		userPrefsStore = userprefs.NewPostgresStore(db)
 		notifStore = notification.NewPostgresStore(db)
 		pushStore = push.NewPostgresStore(db)
+		dayNoteStore = daynote.NewPostgresStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
@@ -86,6 +89,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		userPrefsStore = userprefs.NewMemoryStore()
 		notifStore = notification.NewMemoryStore()
 		pushStore = push.NewMemoryStore()
+		dayNoteStore = daynote.NewMemoryStore()
 	}
 
 	authService := auth.NewService(authStore)
@@ -158,6 +162,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore)
+	dayNoteService := daynote.NewService(dayNoteStore)
+	dayNoteHandler := handlers.NewDayNoteHandler(dayNoteService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 
@@ -358,6 +364,9 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
+
+	mux.HandleFunc("/api/day-notes", method(http.MethodGet, middleware.RequireAuth(dayNoteHandler.List)))
+	mux.HandleFunc("/api/day-notes/{date}", method(http.MethodPut, middleware.RequireAuth(dayNoteHandler.Set)))
 
 	mux.HandleFunc("/api/schedules", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

@@ -4430,3 +4430,27 @@ details[open] .chore-stat-chevron {
   outline: 2px solid var(--accent, #2E86AB);
   outline-offset: 1px;
 }
+
+/* ── Per-day diary notes (Phase 5.4) ───────────────────────────────────────── */
+.hist-day-note {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2, #f0f0f0);
+  color: var(--text, #333);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.hist-day-note--empty {
+  color: var(--text-secondary, #888);
+  background: transparent;
+  opacity: 0.75;
+}
+.hist-day-note:hover { background: var(--surface-3, #e6e6e6); }
