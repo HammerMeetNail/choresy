@@ -459,3 +459,35 @@ describe("Service Worker: update toast", () => {
   });
 });
 
+describe("Stats: colorForIndicator", () => {
+  it("keeps the four predefined labels at their historical colors", async () => {
+    const { colorForIndicator } = await import("../stats.js");
+    assert.equal(colorForIndicator("🍼 formula"), "#EC4899");
+    assert.equal(colorForIndicator("🤱 breast"), "#F59E0B");
+    assert.equal(colorForIndicator("💩 poo"), "#8B4513");
+    assert.equal(colorForIndicator("💛 pee"), "#FACC15");
+  });
+
+  it("assigns a stable color from the palette for custom labels", async () => {
+    const { colorForIndicator } = await import("../stats.js");
+    const a = colorForIndicator("🌙 night");
+    const b = colorForIndicator("🌙 night");
+    assert.equal(a, b); // stable across calls
+    assert.match(a, /^#[0-9A-Fa-f]{6}$/);
+  });
+
+  it("does not collapse two distinct custom labels to the same gray", async () => {
+    const { colorForIndicator } = await import("../stats.js");
+    // Regression: previously both fell through to a single "#6B7280" gray.
+    const c1 = colorForIndicator("💊 vitamin");
+    const c2 = colorForIndicator("🌡️ temp");
+    assert.notEqual(c1, c2);
+  });
+
+  it("never returns undefined for null/empty labels", async () => {
+    const { colorForIndicator } = await import("../stats.js");
+    assert.match(colorForIndicator(null), /^#[0-9A-Fa-f]{6}$/);
+    assert.match(colorForIndicator(""), /^#[0-9A-Fa-f]{6}$/);
+  });
+});
+

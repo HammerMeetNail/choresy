@@ -108,7 +108,8 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | APNs (native iOS) | N/A (iOS only) | `API/RequestModels.swift` (structs only) | `/api/mobile/apns/register`, `/api/mobile/apns/unregister` (not routed) | **Not built** | `APNsRegisterRequest`/`Unregister` structs are defined but referenced nowhere; no `registerForRemoteNotifications`/`UNUserNotificationCenter` client code; backend does not route `/api/mobile/apns/*`. Non-functional end-to-end. See `docs/apns-implementation-plan.md` |
 | **Stats** |
 | Overview | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/overview` | Built | |
-| Heatmap | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/heatmap` | Built | |
+| Heatmap | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/heatmap` | Built | PWA charts/heatmap now use CSS chart tokens (`--chart-*`, `--heatmap-*`) with a dark-mode override; iOS should source equivalent colors from asset-catalog semantic colors for dark-mode parity |
+| Chart color tokens & label palette | `stats.js` (`colorForIndicator`), `runner.js` | `Views/StatsView.swift` (pending) | N/A (client render) | **iOS pending** | PWA assigns indicator/stack colors via a stable hash→palette (`colorForIndicator`) so custom chore labels get distinct colors, with the four baby labels pinned to historical colors. iOS should port the same mapping so charts match across clients |
 | Busy hours | `stats.js`, `stats-busy-hours-filter.spec.js` | `Views/StatsView.swift` | `/api/stats/busy-hours` | Built | |
 | Leaderboard | `stats.js`, `stats-leaderboard.spec.js` | `Views/StatsView.swift` | `/api/stats/leaderboard` | Built | |
 | Top chores | `stats.js`, `stats-top-chores.spec.js` | `Views/StatsView.swift` | `/api/stats/top-chores` | Built | |

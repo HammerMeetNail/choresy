@@ -23,7 +23,7 @@ This is an implementation plan for a later Opus session. Items are grouped into 
 
 ## 1. Phase 1 — Visual/correctness fixes (small, high confidence)
 
-### 1.1 Dark-mode breaks in Stats charts and Home header
+### 1.1 Dark-mode breaks in Stats charts and Home header ✅ DONE
 All SVG charts hard-code light-theme hex colors, so in dark mode gridlines glow and empty heatmap cells render as light tiles:
 
 - Heatmap: empty-cell color `#e8e5df` and the GitHub-green ramp are hard-coded (`stats.js:334-341 heatmapColor`). On dark backgrounds the empty cell is a bright tile.
@@ -33,7 +33,7 @@ All SVG charts hard-code light-theme hex colors, so in dark mode gridlines glow 
 **Fix:** introduce chart color tokens (`--chart-grid`, `--chart-axis`, `--chart-label`, `--heatmap-empty`, heatmap ramp steps) in `:root` + dark override, and reference them from the SVG builders (SVG accepts `fill="var(--chart-grid)"`). Replace `--color-surface`/`--color-text*` with the real tokens.
 *iOS note: StatsView colors should come from asset-catalog semantic colors; verify parity.*
 
-### 1.2 Hard-coded indicator colors keyed on exact label text
+### 1.2 Hard-coded indicator colors keyed on exact label text ✅ DONE
 Chart stack colors are dictionaries keyed on literal strings `"🍼 formula"`, `"🤱 breast"`, `"💩 poo"`, `"💛 pee"` (`stats.js:892,1027`). Any user-customized label (the chore editor allows arbitrary labels, `chores.js:143-156`) falls through to gray, and two custom labels get the *same* gray, making stacked bars unreadable.
 
 **Fix:** assign colors per label from a stable palette (hash of label → palette index), with the four known labels keeping their current colors for continuity. This also unblocks Phase 3 (generalized metrics for any chore).

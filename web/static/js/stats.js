@@ -331,13 +331,46 @@ function renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, u
   </div>`;
 }
 
+// Stable colors for indicator/stack labels. The four predefined baby-care
+// labels keep their historical colors for continuity; any other label
+// (including user-defined chore indicator labels) gets a stable color from a
+// distinct palette via a hash of the label text, so two custom labels never
+// collapse to the same gray. Kept in sync with the iOS `IndicatorColor`
+// mapping — see docs/plans/client-parity.md.
+const KNOWN_INDICATOR_COLORS = {
+  "🍼 formula": "#EC4899",
+  "🤱 breast": "#F59E0B",
+  "💩 poo": "#8B4513",
+  "💛 pee": "#FACC15",
+};
+
+const INDICATOR_PALETTE = [
+  "#2E86AB", "#A23B72", "#F18F01", "#386641", "#8B5CF6",
+  "#0EA5E9", "#DB2777", "#65A30D", "#D97706", "#0D9488",
+  "#7C3AED", "#059669",
+];
+
+function hashLabel(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+export function colorForIndicator(label) {
+  if (label == null) return INDICATOR_PALETTE[0];
+  if (KNOWN_INDICATOR_COLORS[label]) return KNOWN_INDICATOR_COLORS[label];
+  return INDICATOR_PALETTE[hashLabel(String(label)) % INDICATOR_PALETTE.length];
+}
+
 function heatmapColor(count, maxCount) {
-  if (count === 0) return "#e8e5df";
+  if (count === 0) return "var(--heatmap-empty)";
   const intensity = maxCount > 0 ? count / maxCount : 0;
-  if (intensity <= 0.25) return "#c6e48b";
-  if (intensity <= 0.5) return "#7bc96f";
-  if (intensity <= 0.75) return "#239a3b";
-  return "#196127";
+  if (intensity <= 0.25) return "var(--heatmap-1)";
+  if (intensity <= 0.5) return "var(--heatmap-2)";
+  if (intensity <= 0.75) return "var(--heatmap-3)";
+  return "var(--heatmap-4)";
 }
 
 function renderHeatmapGrid(heatmap) {
@@ -730,9 +763,9 @@ function renderClusterGapScatter(gaps) {
 
   for (let m = 0; m <= maxY; m += 60) {
     const y = yPos(m);
-    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="var(--chart-grid)" stroke-width="0.5"/>`;
     const label = m === 0 ? "0" : `${m / 60}h`;
-    svg += `<text x="${leftM - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
+    svg += `<text x="${leftM - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${label}</text>`;
   }
 
   const twoHY = yPos(120);
@@ -740,10 +773,10 @@ function renderClusterGapScatter(gaps) {
 
   for (let h = 0; h < 24; h += 3) {
     const x = xCenter(h);
-    svg += `<text x="${x}" y="${topM + chartH + 12}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${formatHour(h)}</text>`;
+    svg += `<text x="${x}" y="${topM + chartH + 12}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${formatHour(h)}</text>`;
   }
 
-  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="var(--chart-axis)" stroke-width="1"/>`;
 
   gaps.forEach((g, i) => {
     const isPrecedingTopOff = i > 0 && smallTopOff(gaps[i - 1]);
@@ -801,11 +834,11 @@ function renderClusterGapScatter(gaps) {
 
   const legendY = topM + chartH + 24;
   svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="4" fill="#2E86AB" opacity="0.6"/>`;
-  svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
+  svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="var(--chart-label-strong)" font-family="system-ui, sans-serif">full feed</text>`;
   svg += `<circle cx="${leftM + 80}" cy="${legendY - 2}" r="4" fill="#F97316" opacity="0.6"/>`;
-  svg += `<text x="${leftM + 87}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">close feed</text>`;
+  svg += `<text x="${leftM + 87}" y="${legendY}" font-size="8" fill="var(--chart-label-strong)" font-family="system-ui, sans-serif">close feed</text>`;
   svg += `<circle cx="${leftM + 160}" cy="${legendY - 2}" r="4" fill="#EC4899" opacity="0.6"/>`;
-  svg += `<text x="${leftM + 167}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
+  svg += `<text x="${leftM + 167}" y="${legendY}" font-size="8" fill="var(--chart-label-strong)" font-family="system-ui, sans-serif">small top-off</text>`;
 
   svg += `</svg>`;
   return svg;
@@ -883,13 +916,12 @@ function renderVolumeChart(periods, period) {
 
   ticks.forEach(t => {
     const y = topM + chartH - Math.round((t / maxML) * chartH);
-    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
-    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${t}</text>`;
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="var(--chart-grid)" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${t}</text>`;
   });
 
-  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">mL</text>`;
+  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">mL</text>`;
 
-  const stackColors = { "🍼 formula": "#EC4899", "🤱 breast": "#F59E0B" };
   const stackKeys = [];
 
   periods.forEach(p => {
@@ -941,13 +973,13 @@ function renderVolumeChart(periods, period) {
         const ml = p.volumeByIndicator?.[key] || 0;
         if (ml <= 0) return;
         const segH = Math.round((ml / maxML) * chartH);
-        const color = stackColors[key] || "#6B7280";
+        const color = colorForIndicator(key);
         svg += `<rect x="${x + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" fill="${color}" opacity="0.85"/>`;
         offset += segH;
       });
       if (unlabeledML > 0) {
         const segH = Math.round((unlabeledML / maxML) * chartH);
-        svg += `<rect x="${x + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" rx="2" fill="#d1d5db" opacity="0.6"/>`;
+        svg += `<rect x="${x + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" rx="2" fill="var(--chart-axis)" opacity="0.6"/>`;
       }
     } else {
       svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="#EC4899" opacity="0.85"/>`;
@@ -960,15 +992,15 @@ function renderVolumeChart(periods, period) {
     const labelInt = period === "daily" ? 2 : 1;
     if (i % labelInt === 0) {
       const xl = formatXLabel(p, period);
-      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${xl}</text>`;
+      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${xl}</text>`;
     }
   });
 
   labelData.forEach(d => {
-    svg += `<text class="chart-bar-val" data-bar="${d.i}" x="${d.labelX}" y="${d.labelY}" text-anchor="${d.labelAnchor}" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${d.valText}</text>`;
+    svg += `<text class="chart-bar-val" data-bar="${d.i}" x="${d.labelX}" y="${d.labelY}" text-anchor="${d.labelAnchor}" font-size="10" fill="#fff" stroke="var(--chart-bar-outline)" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${d.valText}</text>`;
   });
 
-  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="var(--chart-axis)" stroke-width="1"/>`;
 
   const formulaTotal = periods.reduce((s, p) => s + (p.indicators?.["🍼 formula"] || 0), 0);
   const breastTotal = periods.reduce((s, p) => s + (p.indicators?.["🤱 breast"] || 0), 0);
@@ -985,17 +1017,17 @@ function renderVolumeChart(periods, period) {
     let lx = leftM;
     if (formulaTotal > 0) {
       svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🍼 ${formulaTotal} total</text>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="var(--chart-label-strong)" font-family="system-ui, sans-serif">🍼 ${formulaTotal} total</text>`;
       lx += 72;
     }
     if (breastTotal > 0) {
       svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="#F59E0B" opacity="0.85"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🤱 ${breastTotal} total</text>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="var(--chart-label-strong)" font-family="system-ui, sans-serif">🤱 ${breastTotal} total</text>`;
       lx += 72;
     }
     if (unlabeledTotalML > 0) {
-      svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="#d1d5db" opacity="0.6"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">unlabeled ${unlabeledTotalML}mL</text>`;
+      svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="var(--chart-axis)" opacity="0.6"/>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">unlabeled ${unlabeledTotalML}mL</text>`;
     }
   }
 
@@ -1024,8 +1056,6 @@ function renderIndicatorChart(periods, period) {
     return sum;
   }));
 
-  const indicatorColors = { "💩 poo": "#8B4513", "💛 pee": "#FACC15", "🍼 formula": "#EC4899", "🤱 breast": "#F59E0B" };
-
   const leftM = 38;
   const rightM = 6;
   const topM = 8;
@@ -1044,11 +1074,11 @@ function renderIndicatorChart(periods, period) {
 
   ticks.forEach(t => {
     const y = topM + chartH - Math.round((t / maxCount) * chartH);
-    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
-    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${t}</text>`;
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="var(--chart-grid)" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${t}</text>`;
   });
 
-  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">count</text>`;
+  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">count</text>`;
 
   const ilabelData = [];
 
@@ -1084,7 +1114,7 @@ function renderIndicatorChart(periods, period) {
         const count = p.indicators?.[key] || 0;
         if (count <= 0) return;
         const segH = Math.round((count / maxCount) * chartH);
-        const color = indicatorColors[key] || "#6B7280";
+        const color = colorForIndicator(key);
         svg += `<rect x="${leftM + i * colW + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" fill="${color}" opacity="0.85"/>`;
         offset += segH;
       });
@@ -1092,7 +1122,7 @@ function renderIndicatorChart(periods, period) {
       const key = indicatorKeys[0];
       const count = p.indicators?.[key] || 0;
       const segH = Math.round((count / maxCount) * chartH);
-      const color = indicatorColors[key] || "#6B7280";
+      const color = colorForIndicator(key);
       svg += `<rect x="${leftM + i * colW + 2}" y="${baseY - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" rx="2" fill="${color}" opacity="0.85"/>`;
     }
 
@@ -1103,24 +1133,24 @@ function renderIndicatorChart(periods, period) {
     const labelInt = period === "daily" ? 2 : 1;
     if (i % labelInt === 0) {
       const xl = formatXLabel(p, period);
-      svg += `<text x="${leftM + i * colW + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${xl}</text>`;
+      svg += `<text x="${leftM + i * colW + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${xl}</text>`;
     }
   });
 
   ilabelData.forEach(d => {
-    svg += `<text class="chart-bar-val" data-bar="${d.i}" x="${d.labelX}" y="${d.labelY}" text-anchor="${d.labelAnchor}" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${d.valText}</text>`;
+    svg += `<text class="chart-bar-val" data-bar="${d.i}" x="${d.labelX}" y="${d.labelY}" text-anchor="${d.labelAnchor}" font-size="10" fill="#fff" stroke="var(--chart-bar-outline)" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${d.valText}</text>`;
   });
 
-  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="var(--chart-axis)" stroke-width="1"/>`;
 
   if (indicatorKeys.length > 0) {
     const ly = totalH - legendH + 14;
     indicatorKeys.forEach((key, ki) => {
       const lx = leftM + ki * 90;
-      const color = indicatorColors[key] || "#6B7280";
+      const color = colorForIndicator(key);
       const total = periods.reduce((s, p) => s + (p.indicators?.[key] || 0), 0);
       svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="${color}" opacity="0.85"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">${escapeHTML(key)} ${total} total</text>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="var(--chart-label-strong)" font-family="system-ui, sans-serif">${escapeHTML(key)} ${total} total</text>`;
     });
   }
 
