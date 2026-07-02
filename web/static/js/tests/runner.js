@@ -757,6 +757,42 @@ describe("Stats: user-defined widgets (Phase 4)", () => {
 
 });
 
+describe("Utils: escapeHTML (attribute-safe)", () => {
+  it("escapes angle brackets, ampersand, and quotes", async () => {
+    const { escapeHTML } = await import("../utils.js");
+    assert.equal(escapeHTML(`<b>&"'`), "&lt;b&gt;&amp;&quot;&#39;");
+  });
+
+  it("a double quote cannot break out of an attribute value", async () => {
+    const { escapeHTML } = await import("../utils.js");
+    const evil = `x" onmouseover="alert(1)`;
+    const attr = `data-subject="${escapeHTML(evil)}"`;
+    // The injected quote is neutralized, so no second attribute can appear.
+    assert.ok(!attr.includes(`data-subject="x" onmouseover`));
+    assert.ok(attr.includes("&quot;"));
+  });
+
+  it("preserves falsy handling (0/false/null -> empty)", async () => {
+    const { escapeHTML } = await import("../utils.js");
+    assert.equal(escapeHTML(0), "");
+    assert.equal(escapeHTML(false), "");
+    assert.equal(escapeHTML(null), "");
+    assert.equal(escapeHTML("0"), "0");
+    assert.equal(escapeHTML(123), "123");
+  });
+});
+
+describe("Subject tagging: attribute XSS is inert", () => {
+  it("a subject containing a quote does not break out of the chip attribute", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const chore = { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: [`x" onmouseover="alert(1)`] };
+    const html = renderLogSheet(chore, null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    // The raw handler injection must not appear as real markup.
+    assert.ok(!html.includes(`" onmouseover="alert(1)"`));
+    assert.ok(html.includes("&quot;"));
+  });
+});
+
 describe("Utils: volume units", () => {
   it("formatVolume renders mL and oz", async () => {
     const { formatVolume } = await import("../utils.js");

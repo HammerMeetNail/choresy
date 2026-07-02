@@ -1,7 +1,18 @@
+// escapeHTML escapes a string for safe interpolation into HTML — including
+// inside double/single-quoted attribute values. The previous implementation
+// (textContent -> innerHTML) only escaped &, <, > (text-node escaping) and left
+// quotes intact, so user content placed in an attribute (e.g. a chore subject
+// in data-subject="...") could break out of the attribute and inject an event
+// handler. Escaping the quotes too closes every attribute sink at the source
+// and is harmless in text contexts (&quot;/&#39; render as "/'). The `|| ""`
+// preserves the old falsy handling (0/false/null -> "").
 export function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str || "";
-  return div.innerHTML;
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export function localDateStr(d) {

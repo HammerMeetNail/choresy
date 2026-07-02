@@ -52,4 +52,27 @@ test.describe('Subject tagging (Phase 5.5)', () => {
     await page.waitForSelector('.history-view');
     await expect(page.locator('.hist-subject')).toContainText('Bob');
   });
+
+  test('a subject with a quote cannot inject script (attribute XSS is inert)', async ({ page }) => {
+    const { csrf } = await setupWithSubjectChore(page);
+    // A chore whose subject tries to break out of the chip's data-subject attr.
+    const res = await page.request.post('/api/chores', {
+      data: { name: 'Twins', icon: '👶', color: '#8B5CF6', subjects: [`x" onmouseover="window.__xss=1`] },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const evilChore = (await res.json()).chore;
+    await page.reload();
+    await page.click(`.home-chore-card[data-home-chore-id="${evilChore.id}"]`);
+    await page.waitForSelector('.subject-chip');
+    // Hover + click the chip to trigger any injected handler.
+    await page.locator('.subject-chip').first().hover();
+    await page.locator('.subject-chip').first().click();
+    await page.waitForTimeout(200);
+    const xss = await page.evaluate(() => window.__xss);
+    expect(xss).toBeUndefined();
+    // The subject round-trips correctly as data (browser-decoded), proving the
+    // value is stored/escaped rather than parsed as markup.
+    const subj = await page.locator('.subject-chip').first().getAttribute('data-subject');
+    expect(subj).toBe(`x" onmouseover="window.__xss=1`);
+  });
 });
