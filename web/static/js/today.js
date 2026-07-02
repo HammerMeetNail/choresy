@@ -1,6 +1,12 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, formatVolume } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
+import { enqueueLog } from "./offline-queue.js";
+
+function newIdempotencyKey() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function formatLocalISODate(d) {
   const year = d.getFullYear();
@@ -23,7 +29,7 @@ function shiftDate(iso, offset) {
 
 function fmtDate(iso) {
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 export async function loadToday(date) {
@@ -37,8 +43,10 @@ export async function loadWeek(start) {
   return data;
 }
 
-export async function loadHistory() {
-  const { data } = await apiFetch("/api/logs/history");
+export async function loadHistory(query = "") {
+  const q = (query || "").trim();
+  const url = q ? `/api/logs/history?q=${encodeURIComponent(q)}` : "/api/logs/history";
+  const { data } = await apiFetch(url);
   return data;
 }
 
@@ -59,11 +67,29 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (followUpTime) body.followUpTime = followUpTime;
   if (rating !== null) body.rating = rating;
   if (title) body.title = title;
-  const { data } = await apiFetch("/api/logs", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return data;
+  // Idempotency key so an offline replay can't create a duplicate.
+  body.idempotencyKey = newIdempotencyKey();
+  try {
+    const { data } = await apiFetch("/api/logs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return data;
+  } catch (err) {
+    // Network failure (offline / flaky). Queue the log so it (and its
+    // timestamp) is not lost, then report it as queued instead of failing.
+    // Capture completedAt now if it wasn't set, so the time is preserved.
+    if (!body.completedAt) body.completedAt = new Date().toISOString();
+    try {
+      await enqueueLog(body);
+      if (typeof window !== "undefined" && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent("nabu-log-queued"));
+      }
+      return { log: null, queued: true };
+    } catch {
+      throw err; // couldn't even queue — surface the original error
+    }
+  }
 }
 
 export async function undoLog(logId) {
@@ -178,21 +204,39 @@ export function renderHistoryFilter(state) {
   return html;
 }
 
+export function renderHistorySearchBar(state) {
+  const q = state.historySearch || "";
+  return `<div class="hist-search">
+    <input type="search" id="history-search-input" class="hist-search-input"
+      placeholder="Search notes &amp; titles…" value="${escapeHTML(q)}"
+      data-action="history-search" aria-label="Search activity" autocomplete="off">
+  </div>`;
+}
+
 export function renderHistoryView(state) {
   const logs = state.historyLogs || [];
   const chores = state.chores || [];
   const filter = state.historyChoreFilter;
-  const filterFab = chores.length > 0 ? renderHistoryFilter(state) : '';
+  const searching = !!(state.historySearch && state.historySearch.trim());
+  // Chore chips filter the loaded (windowed) pages; they don't apply to a
+  // flat text search, so hide the filter FAB while searching.
+  const filterFab = (chores.length > 0 && !searching) ? renderHistoryFilter(state) : '';
+  const searchBar = renderHistorySearchBar(state);
 
   if (logs.length === 0) {
+    const emptyMsg = searching
+      ? '<p class="text-secondary">No activity matches your search.</p>'
+      : '<p class="text-secondary">No completed chores yet.</p>';
     return `<div class="history-view">
-      <p class="text-secondary">No completed chores yet.</p>
+      ${searchBar}
+      ${emptyMsg}
       ${filterFab}
     </div>`;
   }
   const members = state.members || [];
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
+  const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
 
   const pad = n => String(n).padStart(2, '0');
 
@@ -207,7 +251,7 @@ export function renderHistoryView(state) {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h % 12 || 12;
     const timeStr = `${h12}:${pad(d.getMinutes())} ${ampm}`;
-    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const dayLabel = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
     if (dateKey !== currentDate) {
       currentDate = dateKey;
@@ -263,6 +307,7 @@ export function renderHistoryView(state) {
       emptyMsg = '<p class="text-secondary">No activity matches the selected chores.</p>';
     }
     return `<div class="history-view">
+      ${searchBar}
       ${filterFab}
       ${emptyMsg}
       ${loadMore}
@@ -321,10 +366,10 @@ export function renderHistoryView(state) {
       const rows = g.rows.map(r => {
         const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
           const icon = escapeHTML(label.split(' ')[0]);
-          return `${icon} ${ml}mL`;
+          return `${icon} ${formatVolume(ml, volumeUnit)}`;
         });
         const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
-        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${r.volumeML}mL` : '';
+        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${formatVolume(r.volumeML, volumeUnit)}` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
         const titleStr = r.title ? `<span class="hist-title">${escapeHTML(r.title)}</span>` : '';
@@ -342,7 +387,7 @@ export function renderHistoryView(state) {
           </div>
         </button>`;
       }).join('');
-      return `<div class="hist-date-header">${g.label}</div>${rows}`;
+      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span></div>${rows}`;
     }).join('');
     return `<div class="hist-chunk">
       <div class="hist-chunk-header">${chunk.label}</div>
@@ -350,8 +395,18 @@ export function renderHistoryView(state) {
     </div>`;
   }).join('');
 
+  // Sentinel for infinite scroll: when it scrolls into view an
+  // IntersectionObserver (app.js) auto-loads the next page. The Load more
+  // button stays as an explicit fallback. Only present when more pages exist
+  // and we're not in flat-search mode.
+  const sentinel = (state.historyHasMore && !searching)
+    ? '<div class="hist-sentinel" data-history-sentinel aria-hidden="true"></div>'
+    : '';
+
   return `<div class="history-view">
+    ${searchBar}
     ${html}
+    ${sentinel}
     ${loadMore}
     ${filterFab}
   </div>`;
@@ -359,11 +414,13 @@ export function renderHistoryView(state) {
 
 function renderStarRatingDisplay(rating) {
   const stars = rating / 10;
-  return `${stars} ⭐`;
+  // Mirror the half-star semantics from the rating input's aria-valuetext so
+  // screen readers announce e.g. "4.5 out of 5 stars", not a bare "4.5 ⭐".
+  return `<span aria-label="${stars} out of 5 stars">${stars} ⭐</span>`;
 }
 
 function fmtChunkRange(start, end) {
   const opts = { month: 'short', day: 'numeric' };
-  return `${start.toLocaleDateString('en-US', opts)} - ${end.toLocaleDateString('en-US', opts)}`;
+  return `${start.toLocaleDateString(undefined, opts)} - ${end.toLocaleDateString(undefined, opts)}`;
 }
 

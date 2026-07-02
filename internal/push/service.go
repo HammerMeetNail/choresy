@@ -3,6 +3,7 @@ package push
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -28,6 +29,14 @@ func NewService(store Store, signer *VAPIDSigner) *Service {
 // for the given userID.  Errors for individual endpoints are logged but not
 // returned so that one stale subscription does not block all others.
 func (s *Service) SendPushToUser(ctx context.Context, userID int64, title, body string) error {
+	return s.SendPushToUserWithData(ctx, userID, title, body, nil)
+}
+
+// SendPushToUserWithData is like SendPushToUser but merges extra fields (e.g.
+// choreId, type) into the notification payload so the service worker can add
+// action buttons and deep-link. Unknown to the shared PushSender interface;
+// callers type-assert for it.
+func (s *Service) SendPushToUserWithData(ctx context.Context, userID int64, title, body string, data map[string]any) error {
 	if s.signer == nil {
 		return nil // push disabled (no VAPID keys configured)
 	}
@@ -41,7 +50,17 @@ func (s *Service) SendPushToUser(ctx context.Context, userID int64, title, body 
 		return nil
 	}
 
-	payload := []byte(fmt.Sprintf(`{"title":%q,"body":%q}`, title, body))
+	fields := map[string]any{"title": title, "body": body}
+	for k, v := range data {
+		if k == "title" || k == "body" {
+			continue
+		}
+		fields[k] = v
+	}
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
 
 	for _, sub := range subs {
 		encrypted, err := EncryptPayload(payload, sub.P256DH, sub.Auth)

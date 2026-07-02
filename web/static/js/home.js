@@ -35,6 +35,27 @@ export function formatTimeAgo(iso) {
 }
 
 /**
+ * Update the "X ago" labels on the home grid in place, without a full
+ * re-render (which could disrupt an open sheet or scroll). Called on a timer
+ * while the home tab is visible so "3h ago" ticks over to "4h ago" without a
+ * navigation.
+ * @param {object} state  App state
+ */
+export function refreshHomeCardTimes(state) {
+  const latestLogs = state.latestLogs || {};
+  document.querySelectorAll(".home-chore-card[data-home-chore-id]").forEach(card => {
+    const id = parseInt(card.dataset.homeChoreId, 10);
+    const span = card.querySelector(".home-card-time");
+    if (!span) return;
+    const latest = latestLogs[id];
+    if (latest && latest.completedAt) {
+      span.textContent = formatTimeAgo(latest.completedAt);
+      span.classList.remove("home-card-time--never");
+    }
+  });
+}
+
+/**
  * Render the home header bar with Log / Manage toggle.
  * @param {object} state  App state
  * @returns {string}  HTML string

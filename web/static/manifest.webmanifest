@@ -1,11 +1,36 @@
 {
+  "id": "/?source=pwa",
   "name": "Nabu — Household Chore Tracker",
   "short_name": "Nabu",
+  "description": "Track baby care and household chores together — fast logging, reminders, and shared stats for your household.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F4EFE7",
   "theme_color": "#19323C",
+  "shortcuts": [
+    {
+      "name": "Log feed",
+      "short_name": "Feed",
+      "description": "Open the log sheet for Feed Baby",
+      "url": "/?quicklog=feed-baby",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Log chore",
+      "short_name": "Chore",
+      "description": "Jump to the home grid to log a chore",
+      "url": "/?quicklog=chore",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Activity",
+      "short_name": "Activity",
+      "description": "View recent activity history",
+      "url": "/?quicklog=activity",
+      "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "icons": [
     {
       "src": "/static/icons/icon-192.png",

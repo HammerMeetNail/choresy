@@ -19,6 +19,20 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-lg: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Chart/stats tokens (referenced from inline SVG via var()) */
+  --chart-grid: #e5e7eb;
+  --chart-axis: #d1d5db;
+  --chart-label: #9ca3af;
+  --chart-label-strong: #6b7280;
+  --chart-bar-outline: #374151;
+  --heatmap-empty: #e8e5df;
+  --heatmap-1: #c6e48b;
+  --heatmap-2: #7bc96f;
+  --heatmap-3: #239a3b;
+  --heatmap-4: #196127;
+  /* Home segmented control (Log/Manage) */
+  --segment-track: #E8E2D6;
+  --segment-active: #FFFFFF;
 }
 
 /* Reset */
@@ -310,6 +324,64 @@ input:focus, select:focus, textarea:focus {
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+
+/* Generic settings preference row + segmented control (reuses notif-pref look) */
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.pref-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pref-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.pref-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.segmented {
+  display: inline-flex;
+  background: var(--segment-track);
+  border-radius: 9px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.segmented-btn {
+  min-width: 48px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.segmented-btn--active {
+  background: var(--segment-active);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
 .notif-pref-row:last-child {
@@ -743,6 +815,90 @@ input:focus, select:focus, textarea:focus {
   padding: 10px 12px 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.hist-day-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 9px;
+  background: var(--segment-track);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0;
+}
+
+/* History text search */
+.hist-search {
+  padding: 8px 4px 4px;
+}
+
+.hist-search-input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.hist-search-input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.hist-sentinel {
+  height: 1px;
+}
+
+/* ─── Pull-to-refresh ────────────────────────────────────────────────────── */
+.ptr-indicator {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  left: 50%;
+  z-index: 60;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%) translateY(-100%);
+  opacity: 0;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.ptr-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+}
+
+.ptr-indicator--ready .ptr-spinner {
+  border-top-color: var(--success);
+}
+
+.ptr-indicator--active .ptr-spinner {
+  animation: ptr-spin 0.7s linear infinite;
+}
+
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ptr-indicator { transition: none; }
+  .ptr-indicator--active .ptr-spinner { animation-duration: 1.4s; }
 }
 
 .hist-row {
@@ -1310,6 +1466,59 @@ details[open] .member-chevron {
   gap: 8px;
 }
 
+/* ─── Last done list (Stats) ─────────────────────────────────────────────── */
+.last-done-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.last-done-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.last-done-row:last-child {
+  border-bottom: none;
+}
+
+.last-done-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 16px;
+  background: color-mix(in srgb, var(--chore-color, var(--primary)) 18%, transparent);
+  flex-shrink: 0;
+}
+
+.last-done-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.last-done-ago {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.last-done-ago--never {
+  opacity: 0.6;
+  font-weight: 500;
+}
+
 .overview-card {
   background: var(--surface);
   border-radius: var(--radius-card);
@@ -1612,7 +1821,63 @@ details[open] .member-chevron {
   margin-bottom: 0;
 }
 
+.feeding-gaps-legend {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.feeding-gaps-legend td {
+  padding: 3px 6px 3px 0;
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+.feeding-gaps-legend td:nth-child(2) {
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.fg-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 2px;
+}
+
 /* Heatmap */
+.heatmap-wrap {
+  position: relative;
+}
+
+.heatmap-tooltip {
+  position: absolute;
+  z-index: 5;
+  transform: translate(-50%, -100%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+}
+
+.heatmap-tooltip--visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.heatmap-cell[data-action="heatmap-tap"] {
+  cursor: pointer;
+}
+
 .heatmap-grid {
   display: flex;
   flex-direction: column;
@@ -3023,6 +3288,18 @@ details[open] .chore-stat-chevron {
     --border: #2A3042;
     --shadow: 0 1px 3px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.25);
     --shadow-lg: 0 4px 6px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.28);
+    --chart-grid: #2A3042;
+    --chart-axis: #3A4258;
+    --chart-label: #8B949E;
+    --chart-label-strong: #A9B2BD;
+    --chart-bar-outline: #0E1117;
+    --heatmap-empty: #23283A;
+    --heatmap-1: #0E4429;
+    --heatmap-2: #006D32;
+    --heatmap-3: #26A641;
+    --heatmap-4: #39D353;
+    --segment-track: #10141C;
+    --segment-active: #2A3042;
   }
 
   /* Stronger drop-target highlight on dark backgrounds */
@@ -3071,7 +3348,7 @@ details[open] .chore-stat-chevron {
 
 .home-header-tabs {
   display: flex;
-  background: var(--color-surface, #E8E2D6);
+  background: var(--segment-track);
   border-radius: 10px;
   padding: 3px;
   gap: 2px;
@@ -3082,7 +3359,7 @@ details[open] .chore-stat-chevron {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--color-text-secondary, #6B7280);
+  color: var(--text-secondary);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -3090,8 +3367,8 @@ details[open] .chore-stat-chevron {
 }
 
 .home-header-tab--active {
-  background: #fff;
-  color: var(--color-text, #1F2937);
+  background: var(--segment-active);
+  color: var(--text);
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 

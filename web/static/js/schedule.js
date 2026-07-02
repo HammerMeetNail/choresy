@@ -1,7 +1,7 @@
 // web/static/js/schedule.js
 
 import { apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, volumeOptions } from "./utils.js";
 
 const MANAGE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
 
@@ -114,7 +114,7 @@ function fmtTime(hhmm) {
 function fmtDateShort(isoDate) {
   // isoDate is "YYYY-MM-DD"
   const d = new Date(isoDate.slice(0, 10) + "T00:00:00");
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function fmtHour(h) {
@@ -374,11 +374,11 @@ export function renderConfigureScheduleSheet(chore, date, hour, presetTime, pres
 
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
-function renderIndicatorVolumeRow(label, on, selectedML = null) {
-  const options = Array.from({ length: 41 }, (_, i) => i * 5);
-  const optsHTML = options.map(v => {
-    const sel = selectedML === v ? " selected" : "";
-    return `<option value="${v}"${sel}>${v} mL</option>`;
+function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml") {
+  // Option values are always canonical mL; only the labels change by unit.
+  const optsHTML = volumeOptions(unit, selectedML).map(o => {
+    const sel = selectedML === o.ml ? " selected" : "";
+    return `<option value="${o.ml}"${sel}>${escapeHTML(o.label)}</option>`;
   }).join("");
   return `<div class="indicator-row">
     <button type="button"
@@ -416,6 +416,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   const activeIndicators = new Set(log?.indicators || (chore.indicatorDefaults || []));
   const logIndicatorVolumes = log?.indicatorVolumes || {};
   const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
+  const volumeUnit = opts.volumeUnit === "oz" ? "oz" : "ml";
 
   const indicatorSection = (() => {
     const labels = chore.indicatorLabels || [];
@@ -426,7 +427,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         const on = activeIndicators.has(label);
         const volume = log ? (logIndicatorVolumes[label] ?? null)
           : ((cachedIndicatorVolumes?.[label]) ?? null);
-        return renderIndicatorVolumeRow(label, on, volume);
+        return renderIndicatorVolumeRow(label, on, volume, volumeUnit);
       }).join("");
       return `<div class="sheet-indicator-row">
         <p class="field-label">Type</p>
@@ -487,7 +488,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       const pct = (rating / 50) * 100;
       return `<div class="star-rating-row">
         <label class="field-label">Rating</label>
-        <div class="star-rating" data-action="set-rating" data-rating="${rating}" role="slider" aria-valuemin="0" aria-valuemax="50" aria-valuenow="${rating}" aria-valuetext="${rating / 10} stars">
+        <div class="star-rating" data-action="set-rating" data-rating="${rating}" role="slider" tabindex="0" aria-label="Rating" aria-valuemin="0" aria-valuemax="50" aria-valuenow="${rating}" aria-valuetext="${rating / 10} stars">
           <span class="star-rating-bg">☆☆☆☆☆</span>
           <span class="star-rating-fg" style="width:${pct}%">★★★★★</span>
         </div>
@@ -675,11 +676,10 @@ export function renderRecurrencePicker(sch) {
     </div>`;
 }
 
-export function renderVolumeSelect(selectedML = null) {
-  const options = Array.from({ length: 41 }, (_, i) => i * 5);
-  const optsHTML = options.map(v => {
-    const sel = selectedML === v ? " selected" : "";
-    return `<option value="${v}"${sel}>${v} mL</option>`;
+export function renderVolumeSelect(selectedML = null, unit = "ml") {
+  const optsHTML = volumeOptions(unit, selectedML).map(o => {
+    const sel = selectedML === o.ml ? " selected" : "";
+    return `<option value="${o.ml}"${sel}>${escapeHTML(o.label)}</option>`;
   }).join("");
   return `<div class="sheet-volume-row">
     <label for="log-volume" class="field-label">Volume</label>

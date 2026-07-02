@@ -20,6 +20,7 @@ export function createAppState() {
     activeSheetData: {},
     choreOrder: [],            // per-user preferred chore order (array of chore IDs)
     hiddenHomeChoreIDs: [],    // chore IDs hidden from the Home tab grid
+    volumeUnit: "ml",          // per-user volume display/input unit ("ml" | "oz")
     jiggleMode: false,         // home grid reorder mode
     homeView: "log",           // "log" | "manage"
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
@@ -28,6 +29,7 @@ export function createAppState() {
     choreReminderPrefs: [],     // array of {userId, choreId, enabled, leadMinutes}
     historyChoreFilter: null,  // null = show all, []string = filtered chore IDs
     historyFilterOpen: false,  // filter dropdown starts closed
+    historySearch: "",         // text search across note/title (empty = off)
     stats: {
       sectionOrder: [],       // ordered array of section keys (user pref)
       sectionHidden: [],      // array of hidden section keys (user pref)
@@ -56,6 +58,7 @@ export function resetAuthedState(state) {
   state.activeSheetData = {};
   state.choreOrder = [];
   state.hiddenHomeChoreIDs = [];
+  state.volumeUnit = "ml";
   state.jiggleMode = false;
   state.homeView = "log";
   state.latestLogs = {};
@@ -64,6 +67,7 @@ export function resetAuthedState(state) {
 	state.choreReminderPrefs = [];
 	state.historyChoreFilter = null;
 	state.historyFilterOpen = false;
+	state.historySearch = "";
 	state.stats = {
 		sectionOrder: [],
 		sectionHidden: [],

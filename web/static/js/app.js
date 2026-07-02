@@ -1,6 +1,7 @@
 import { createAppState, resetAuthedState } from "./state.js";
 import { morphInnerHTML } from "./morph.js";
 import { apiMe, apiFetch } from "./api.js";
+import { replayQueue, queuedCount } from "./offline-queue.js";
 import { escapeHTML, localDateStr } from "./utils.js";
 import {
   loadSession,
@@ -24,8 +25,8 @@ import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHist
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone } from "./preferences.js";
-import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit } from "./preferences.js";
+import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
@@ -229,6 +230,129 @@ export function render(root) {
       wrapper.scrollTop = Math.min(Math.max(7, h - 2), 11) * ROW_HEIGHT;
     }
   }
+
+  observeHistorySentinel(root);
+}
+
+// IntersectionObserver-driven infinite scroll for the history list. The
+// sentinel is re-created on each render, so we (re)observe the current one
+// after every render. When it scrolls into view we trigger the same
+// load-more path as the button (which remains as a fallback).
+let _historyObserver = null;
+function observeHistorySentinel(root) {
+  const sentinel = root.querySelector(".hist-sentinel");
+  if (!_historyObserver && typeof IntersectionObserver !== "undefined") {
+    _historyObserver = new IntersectionObserver((entries) => {
+      // Only auto-load once the user has actually scrolled the list. On a
+      // short page the sentinel is already on-screen at scrollTop 0; without
+      // this guard we'd drain every page on first paint. Real infinite scroll
+      // (scroll down → reach the sentinel) still works; the Load-more button
+      // remains the affordance for unscrolled short pages.
+      const scroller = document.querySelector(".app-shell");
+      if (scroller && scroller.scrollTop <= 0) return;
+      for (const entry of entries) {
+        if (entry.isIntersecting && state.historyHasMore && !state._historyLoadingMore) {
+          loadMoreHistoryPage();
+        }
+      }
+    }, { rootMargin: "200px" });
+  }
+  if (_historyObserver) {
+    _historyObserver.disconnect();
+    if (sentinel) _historyObserver.observe(sentinel);
+  }
+}
+
+function loadMoreHistoryPage() {
+  if (state._historyLoadingMore || !state.historyBefore) return;
+  state._historyLoadingMore = true;
+  loadMoreHistory(state.historyBefore).then(data => {
+    state.historyLogs = [...(state.historyLogs || []), ...(data?.logs || [])];
+    state.historyHasMore = data?.hasMore || false;
+    state.historyBefore = data?.start || null;
+    state._historyLoadingMore = false;
+    render(document.querySelector("#app"));
+  }).catch(() => { state._historyLoadingMore = false; });
+}
+
+// Refetch the data backing the currently-active tab, then re-render. Used by
+// pull-to-refresh.
+async function refreshActiveTab() {
+  const route = state.currentRoute || window.location.pathname || "/";
+  try {
+    if (route === "/activity") {
+      const data = await loadHistory(state.historySearch);
+      state.historyLogs = data?.logs || [];
+      state.historyHasMore = data?.hasMore || false;
+      state.historyBefore = data?.start || null;
+    } else if (route === "/stats") {
+      await Promise.all([loadStatsData(), loadAllStatsData()]);
+    } else if (route === "/schedule") {
+      state.schedules = await loadSchedules();
+      await loadTodayData();
+    } else if (route === "/settings") {
+      await loadHouseholdData();
+    } else {
+      await Promise.all([loadTodayData(), loadLatestLogsData(), loadNotifData()]);
+    }
+  } catch {}
+  render(document.querySelector("#app"));
+}
+
+function setupPullToRefresh() {
+  const shell = document.querySelector(".app-shell");
+  if (!shell) return;
+  const ptr = document.createElement("div");
+  ptr.className = "ptr-indicator";
+  ptr.innerHTML = '<div class="ptr-spinner" aria-hidden="true"></div>';
+  document.body.appendChild(ptr);
+
+  const THRESHOLD = 70;
+  const reduceMotion = typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let startY = 0, pulling = false, ready = false, refreshing = false;
+
+  const reset = () => {
+    pulling = false; ready = false;
+    ptr.classList.remove("ptr-indicator--ready", "ptr-indicator--active");
+    ptr.style.transition = reduceMotion ? "none" : "";
+    ptr.style.transform = "translateX(-50%) translateY(-100%)";
+    ptr.style.opacity = "0";
+  };
+
+  shell.addEventListener("touchstart", (e) => {
+    if (refreshing || state.activeSheet) { pulling = false; return; }
+    if (shell.scrollTop <= 0) {
+      startY = e.touches[0].clientY;
+      pulling = true; ready = false;
+    } else {
+      pulling = false;
+    }
+  }, { passive: true });
+
+  shell.addEventListener("touchmove", (e) => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || shell.scrollTop > 0) { reset(); return; }
+    const pull = Math.min(dy, 120);
+    ready = pull >= THRESHOLD;
+    ptr.style.transition = "none";
+    ptr.style.transform = `translateX(-50%) translateY(${Math.min(pull - 40, 24)}px)`;
+    ptr.style.opacity = String(Math.min(pull / THRESHOLD, 1));
+    ptr.classList.toggle("ptr-indicator--ready", ready);
+  }, { passive: true });
+
+  shell.addEventListener("touchend", () => {
+    if (!pulling) return;
+    pulling = false;
+    if (!ready) { reset(); return; }
+    refreshing = true;
+    ptr.style.transition = reduceMotion ? "none" : "";
+    ptr.style.transform = "translateX(-50%) translateY(24px)";
+    ptr.style.opacity = "1";
+    ptr.classList.add("ptr-indicator--active");
+    refreshActiveTab().finally(() => { refreshing = false; reset(); });
+  });
 }
 
 function renderActivityView() {
@@ -255,7 +379,7 @@ function renderHistoryView() {
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -279,7 +403,7 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -392,7 +516,7 @@ function renderCalendarView() {
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -477,7 +601,7 @@ function renderScheduleView() {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -592,6 +716,28 @@ function renderSettingsView() {
     </div>`;
   }
 
+  const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
+  const prefsCard = `<div class="card mt-3">
+    <h3>Preferences</h3>
+    <div class="pref-row">
+      <label class="pref-label">
+        <span class="pref-title">Feed volume unit</span>
+        <span class="pref-desc">How bottle volumes are shown and entered</span>
+      </label>
+      <div class="segmented" role="group" aria-label="Feed volume unit">
+        <button type="button" class="segmented-btn${volumeUnit === "ml" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="ml" aria-pressed="${volumeUnit === "ml"}">mL</button>
+        <button type="button" class="segmented-btn${volumeUnit === "oz" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="oz" aria-pressed="${volumeUnit === "oz"}">oz</button>
+      </div>
+    </div>
+    <div class="pref-row">
+      <label class="pref-label">
+        <span class="pref-title">Export logs</span>
+        <span class="pref-desc">Download all activity as a CSV spreadsheet</span>
+      </label>
+      <a class="btn btn-secondary btn-sm" href="/api/logs/export?start=2000-01-01" download="nabu-logs.csv">Export CSV</a>
+    </div>
+  </div>`;
+
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
     <div class="card mt-3">
@@ -612,9 +758,9 @@ function renderSettingsView() {
     </div>` : "";
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
 }
 
 async function loadStatsData() {
@@ -854,6 +1000,9 @@ function getChoreReminderPref(choreId) {
 }
 
 function showToastWithUndo(message, logId) {
+  // Haptic tick on a successful log where supported (Android; harmless no-op
+  // on iOS). This is the shared success path for logging a chore.
+  if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
   const container = document.querySelector("#toast-container");
   if (!container) return;
   const toast = document.createElement("div");
@@ -876,6 +1025,68 @@ function showToastWithUndo(message, logId) {
   toast.appendChild(undoBtn);
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);
+}
+
+// Find a full log record by id across the loaded view collections, so a
+// removed log can be faithfully re-created if the user taps Undo.
+function findLogById(id) {
+  for (const pool of [state.historyLogs, state.todayLogs, state.weekLogs]) {
+    const found = (pool || []).find(l => l.id === id);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Toast shown after removing a log, whose Undo re-creates the log from its
+// captured data (a new id, but identical fields/timing). Mirrors the
+// create-then-undo affordance so removals are equally reversible.
+function showToastWithRestore(message, log) {
+  const container = document.querySelector("#toast-container");
+  if (!container || !log) { showToast(message, "success"); return; }
+  const toast = document.createElement("div");
+  toast.className = "toast toast-success";
+  toast.style.cssText = "display:flex;align-items:center;gap:8px;";
+  const label = document.createElement("span");
+  label.textContent = message;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Undo";
+  btn.style.cssText = "background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-left:auto;min-height:32px;";
+  btn.addEventListener("click", () => {
+    toast.remove();
+    const d = new Date(log.completedAt);
+    const pad = n => String(n).padStart(2, "0");
+    const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    logChore(
+      log.choreId, log.note || "", dateStr, log.indicators || [],
+      (log.slotHour ?? null), log.completedAt,
+      (log.volumeML ?? null), log.userId ?? state.user?.id,
+      log.indicatorVolumes || {}, 0, null,
+      (log.rating ?? null), log.title ?? null,
+    ).then(async () => {
+      await Promise.all([reloadViewData(), loadLatestLogsData()]);
+      render(document.querySelector("#app"));
+    }).catch(() => showToast("Failed to restore log", "error"));
+  });
+  toast.appendChild(label);
+  toast.appendChild(btn);
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
+// setStarRatingValue applies a rating (0–50, in half-star increments of 5)
+// to a `.star-rating` slider widget, updating its fill and ARIA state. Shared
+// by the pointer (click) and keyboard (arrow-key) paths.
+function setStarRatingValue(container, starTenths) {
+  starTenths = Math.max(0, Math.min(50, Math.round(starTenths / 5) * 5));
+  const fg = container.querySelector(".star-rating-fg");
+  if (fg) fg.style.width = (starTenths * 2) + "%";
+  container.dataset.rating = starTenths;
+  const stars = starTenths / 10;
+  container.setAttribute("aria-valuenow", starTenths);
+  container.setAttribute("aria-valuetext", stars + " stars");
+  const clearBtn = container.parentElement?.querySelector(".star-clear-btn");
+  if (clearBtn) clearBtn.style.display = starTenths > 0 ? "" : "none";
 }
 
 function updateTabs(route) {
@@ -1195,6 +1406,23 @@ export async function init() {
     setInterval(() => {
       if (window.__swReg) window.__swReg.update().catch(() => {});
     }, 300000);
+
+    // A "Log now" notification action on an already-open app posts a message
+    // (rather than opening a new window). Open the pre-filled log sheet.
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (msg && msg.type === "quicklog" && msg.choreId && state.user) {
+        const chore = (state.chores || []).find(c => c.id === msg.choreId);
+        if (chore) {
+          state.currentRoute = "/";
+          state.homeView = "log";
+          state.activeSheet = "home-log";
+          state.activeSheetData = { choreId: chore.id };
+          const appEl = document.querySelector("#app");
+          if (appEl) render(appEl);
+        }
+      }
+    });
   }
 
   try {
@@ -1232,6 +1460,11 @@ export async function init() {
     }
 
     const actionEl = e.target.closest("[data-action]");
+
+    // Dismiss any open heatmap tap-tooltip when tapping away from a cell.
+    if (!e.target.closest("[data-action=\"heatmap-tap\"]")) {
+      document.querySelectorAll(".heatmap-tooltip--visible").forEach(el => el.classList.remove("heatmap-tooltip--visible"));
+    }
 
     // data-nav SPA navigation: check first so it works without data-action
     if (navEl) {
@@ -1314,13 +1547,7 @@ export async function init() {
       const x = e.clientX - rect.left;
       const pct = x / rect.width;
       const starTenths = Math.round(pct * 50 / 5) * 5;
-      container.querySelector(".star-rating-fg").style.width = (starTenths * 2) + "%";
-      container.dataset.rating = starTenths;
-      const stars = starTenths / 10;
-      container.setAttribute("aria-valuenow", starTenths);
-      container.setAttribute("aria-valuetext", stars + " stars");
-      const clearBtn = container.parentElement?.querySelector(".star-clear-btn");
-      if (clearBtn) clearBtn.style.display = starTenths > 0 ? "" : "none";
+      setStarRatingValue(container, starTenths);
       return;
     }
 
@@ -1597,12 +1824,15 @@ export async function init() {
       case "undo-chore": {
         e.preventDefault();
         const uLogId = parseInt(actionEl.dataset.logId);
+        // Capture the log before deleting so removal is undoable (2.3).
+        const removedLog = findLogById(uLogId);
         undoLog(uLogId).then(async () => {
           state.activeSheet     = null;
           state.activeSheetData = {};
           state.historyLogs = (state.historyLogs || []).filter(l => l.id !== uLogId);
           await reloadViewData();
           render(app);
+          showToastWithRestore("Log removed", removedLog);
         }).catch((err) => {
           console.error('undo-chore failed:', err);
           state.activeSheet     = null;
@@ -2197,7 +2427,8 @@ export async function init() {
       case "load-more-history": {
         e.preventDefault();
         const before = state.historyBefore;
-        if (!before) break;
+        if (!before || state._historyLoadingMore) break;
+        state._historyLoadingMore = true;
         const btn = actionEl;
         btn.disabled = true;
         btn.textContent = "Loading...";
@@ -2205,8 +2436,10 @@ export async function init() {
           state.historyLogs = [...(state.historyLogs || []), ...(data.logs || [])];
           state.historyHasMore = data.hasMore;
           state.historyBefore = data.start || null;
+          state._historyLoadingMore = false;
           render(app);
         }).catch(() => {
+          state._historyLoadingMore = false;
           btn.disabled = false;
           btn.textContent = "Load more";
         });
@@ -2354,6 +2587,44 @@ export async function init() {
         const visible = tip.classList.contains("scatter-tooltip--visible");
         document.querySelectorAll(".scatter-tooltip--visible").forEach(el => el.classList.remove("scatter-tooltip--visible"));
         if (!visible) tip.classList.add("scatter-tooltip--visible");
+        break;
+      }
+
+      case "set-volume-unit": {
+        e.preventDefault();
+        const unit = actionEl.dataset.unit === "oz" ? "oz" : "ml";
+        if (unit === state.volumeUnit) break;
+        // saveVolumeUnit updates state optimistically (and rolls back on
+        // failure); render now for snappy feedback and again on completion.
+        saveVolumeUnit(state, unit).then(() => render(app));
+        render(app);
+        break;
+      }
+
+      case "heatmap-tap": {
+        // Touch devices can't hover the cell's title attribute, so reveal a
+        // positioned tooltip on tap. Tapping the same cell again, or anywhere
+        // else, dismisses it (see the top-of-handler dismissal below).
+        e.preventDefault();
+        const cell = e.target.closest("[data-action=\"heatmap-tap\"]");
+        if (!cell) break;
+        const wrap = cell.closest(".heatmap-wrap");
+        const tip = wrap?.querySelector(".heatmap-tooltip");
+        if (!tip) break;
+        const alreadyFor = tip.dataset.date === cell.dataset.date;
+        const wasVisible = tip.classList.contains("heatmap-tooltip--visible");
+        if (alreadyFor && wasVisible) {
+          tip.classList.remove("heatmap-tooltip--visible");
+          break;
+        }
+        const label = `${new Date(cell.dataset.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${cell.dataset.count} chore${cell.dataset.count === "1" ? "" : "s"}`;
+        tip.textContent = label;
+        tip.dataset.date = cell.dataset.date;
+        const wrapRect = wrap.getBoundingClientRect();
+        const cellRect = cell.getBoundingClientRect();
+        tip.style.left = `${cellRect.left - wrapRect.left + cellRect.width / 2}px`;
+        tip.style.top = `${cellRect.top - wrapRect.top - 4}px`;
+        tip.classList.add("heatmap-tooltip--visible");
         break;
       }
 
@@ -2544,6 +2815,51 @@ export async function init() {
       e.stopPropagation();
     }
   }, { capture: true });
+
+  // ── Star rating keyboard support (a11y) ────────────────────────────────────
+  // The rating widget is role="slider"; support arrow keys / Home / End so it
+  // is operable without a pointer. Increments are half-stars (5 tenths).
+  document.addEventListener("keydown", (e) => {
+    const container = e.target.closest?.(".star-rating");
+    if (!container) return;
+    const cur = parseInt(container.dataset.rating || "0", 10) || 0;
+    let next = cur;
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowUp":   next = cur + 5; break;
+      case "ArrowLeft":
+      case "ArrowDown": next = cur - 5; break;
+      case "Home":      next = 0; break;
+      case "End":       next = 50; break;
+      default: return;
+    }
+    e.preventDefault();
+    setStarRatingValue(container, next);
+  });
+
+  // ── History text search (debounced) ────────────────────────────────────────
+  let historySearchTimer = null;
+  document.addEventListener("input", (e) => {
+    const el = e.target.closest?.('[data-action="history-search"]');
+    if (!el) return;
+    state.historySearch = el.value || "";
+    clearTimeout(historySearchTimer);
+    historySearchTimer = setTimeout(() => {
+      loadHistory(state.historySearch).then(data => {
+        state.historyLogs = data?.logs || [];
+        state.historyHasMore = data?.hasMore || false;
+        state.historyBefore = data?.start || null;
+        render(app);
+        // Restore focus + caret after the morph re-render.
+        const input = document.querySelector("#history-search-input");
+        if (input) {
+          input.focus();
+          const end = input.value.length;
+          try { input.setSelectionRange(end, end); } catch {}
+        }
+      }).catch(() => {});
+    }, 300);
+  });
 
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
   // Uses "change" (not "click") because <select> fires "change" on selection.
@@ -2762,6 +3078,41 @@ export async function init() {
         initTasks.push(loadAllStatsData());
       }
       await Promise.all(initTasks);
+    }
+  } catch {}
+
+  // ── PWA manifest shortcuts (?quicklog=…) ───────────────────────────────────
+  // Long-pressing the home-screen icon exposes "Log feed", "Log chore", and
+  // "Activity" shortcuts that deep-link via a start_url query param. Handle it
+  // once here after bootstrap so the user lands one tap from logging.
+  try {
+    const quicklog = new URLSearchParams(window.location.search).get("quicklog");
+    if (quicklog && state.user && state.household) {
+      if (quicklog === "activity") {
+        state.currentRoute = "/activity";
+        state.activityView = "history";
+      } else {
+        state.currentRoute = "/";
+        state.homeView = "log";
+        const chores = state.chores || [];
+        let chore = null;
+        if (quicklog === "feed-baby") {
+          chore = chores.find(c => c.predefinedKey === "Feed Baby")
+            || chores.find(c => c.name === "Feed Baby");
+        } else if (quicklog.startsWith("chore:")) {
+          // Deep link from a "Log now" notification action.
+          const id = parseInt(quicklog.slice("chore:".length), 10);
+          chore = chores.find(c => c.id === id) || null;
+        }
+        if (chore) {
+          state.activeSheet = "home-log";
+          state.activeSheetData = { choreId: chore.id };
+        }
+        // quicklog=chore (or a missing Feed Baby chore) simply lands on the
+        // fast home grid, which is one tap from logging.
+      }
+      // Strip the query so a refresh doesn't reopen the sheet.
+      window.history.replaceState({}, "", window.location.pathname);
     }
   } catch {}
 
@@ -3242,6 +3593,48 @@ export async function init() {
     }
   });
   if (state.user) startNotifPoll();
+
+  // Tick the home grid's "X ago" labels once a minute while the home tab is
+  // visible, so relative times stay fresh without a navigation/re-render.
+  setInterval(() => {
+    if (document.hidden || !state.user) return;
+    const route = state.currentRoute || window.location.pathname || "/";
+    if (route === "/" || route === "/today") refreshHomeCardTimes(state);
+  }, 60000);
+
+  // ── Pull-to-refresh ────────────────────────────────────────────────────────
+  // In iOS standalone mode there is no browser refresh chrome. Add a light
+  // overscroll gesture on the scroll container: pulling down from the top
+  // past a threshold refetches the active tab's data. Honors
+  // prefers-reduced-motion (skips the transition, still refreshes).
+  setupPullToRefresh();
+
+  // ── Offline log queue: replay + messaging ───────────────────────────────────
+  // A log made while offline is queued (see today.js logChore / offline-queue).
+  // Tell the user it was saved, and replay the queue when we regain
+  // connectivity or the app is foregrounded (iOS Safari lacks Background Sync,
+  // so foreground replay is the primary mechanism there).
+  window.addEventListener("nabu-log-queued", () => {
+    showToast("Saved — will sync when online", "info");
+  });
+  const flushOfflineQueue = () => {
+    if (!state.user) return;
+    replayQueue(apiFetch).then(async (synced) => {
+      if (synced > 0) {
+        await Promise.all([loadLatestLogsData(), reloadViewData()]);
+        render(document.querySelector("#app"));
+        showToast(`Synced ${synced} log${synced === 1 ? "" : "s"}`, "success");
+      }
+    }).catch(() => {});
+  };
+  window.addEventListener("online", flushOfflineQueue);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) flushOfflineQueue();
+  });
+  // Replay anything left from a previous session on boot.
+  if (state.user && (typeof navigator === "undefined" || navigator.onLine !== false)) {
+    flushOfflineQueue();
+  }
 
   render(app);
 }

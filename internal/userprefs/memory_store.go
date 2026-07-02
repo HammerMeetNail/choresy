@@ -26,6 +26,7 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 			HiddenHomeChoreIDs:  []int64{},
 			StatsSectionOrder:   []string{},
 			StatsSectionHidden:  []string{},
+			VolumeUnit:          "ml",
 		}, nil
 	}
 	// Return a copy so callers can't mutate internal state.
@@ -35,6 +36,10 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 		Timezone:           p.Timezone,
 		StatsSectionOrder:  make([]string, len(p.StatsSectionOrder)),
 		StatsSectionHidden: make([]string, len(p.StatsSectionHidden)),
+		VolumeUnit:         p.VolumeUnit,
+	}
+	if out.VolumeUnit == "" {
+		out.VolumeUnit = "ml"
 	}
 	copy(out.ChoreOrder, p.ChoreOrder)
 	copy(out.HiddenHomeChoreIDs, p.HiddenHomeChoreIDs)
@@ -52,6 +57,10 @@ func (s *memoryStore) Upsert(ctx context.Context, userID int64, p Preferences) e
 		Timezone:           p.Timezone,
 		StatsSectionOrder:  make([]string, len(p.StatsSectionOrder)),
 		StatsSectionHidden: make([]string, len(p.StatsSectionHidden)),
+		VolumeUnit:         p.VolumeUnit,
+	}
+	if cp.VolumeUnit != "oz" {
+		cp.VolumeUnit = "ml"
 	}
 	copy(cp.ChoreOrder, p.ChoreOrder)
 	copy(cp.HiddenHomeChoreIDs, p.HiddenHomeChoreIDs)

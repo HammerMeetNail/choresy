@@ -54,15 +54,25 @@ self.addEventListener("push", (event) => {
   self.__diag = self.__diag || [];
   self.__diag.push({ type: "push-received", ts, decrypted, hasData });
   self.__badgeCount = (self.__badgeCount || 0) + 1;
+
+  // Chore reminders carry a choreId so we can offer a "Log now" action that
+  // deep-links straight to the pre-filled log sheet. Actions render on
+  // Android/Chromium and iOS 16.4+ web push.
+  const notifData = { choreId: data.choreId || null, type: data.type || null };
+  const options = {
+    body: body || "(tap to open)",
+    icon,
+    tag: "nabu",
+    requireInteraction: true,
+    vibrate: [200, 100, 200],
+    data: notifData,
+  };
+  if (data.type === "schedule_reminder" && data.choreId) {
+    options.actions = [{ action: "log-now", title: "✓ Log now" }];
+  }
   event.waitUntil(
     Promise.all([
-      self.registration.showNotification(title, {
-        body: body || "(tap to open)",
-        icon,
-        tag: "nabu",
-        requireInteraction: true,
-        vibrate: [200, 100, 200],
-      }),
+      self.registration.showNotification(title, options),
       setBadge(self.__badgeCount),
     ])
   );
@@ -111,17 +121,25 @@ async function clearBadge() {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const data = event.notification.data || {};
+  // "Log now" deep-links to the pre-filled log sheet for the reminder's chore.
+  // A plain body tap (no action) just opens/focuses the app.
+  const wantsLog = event.action === "log-now" && data.choreId;
+  const targetUrl = wantsLog ? `/?quicklog=chore:${data.choreId}` : "/";
   event.waitUntil(
     Promise.all([
       clearBadge(),
       self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
         for (const client of clientList) {
-          if (client.url && client.focus) {
+          if (client.focus) {
+            if (wantsLog && client.postMessage) {
+              client.postMessage({ type: "quicklog", choreId: data.choreId });
+            }
             return client.focus();
           }
         }
         if (self.clients.openWindow) {
-          return self.clients.openWindow("/");
+          return self.clients.openWindow(targetUrl);
         }
       }),
     ])

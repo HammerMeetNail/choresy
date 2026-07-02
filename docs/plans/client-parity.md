@@ -108,7 +108,9 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | APNs (native iOS) | N/A (iOS only) | `API/RequestModels.swift` (structs only) | `/api/mobile/apns/register`, `/api/mobile/apns/unregister` (not routed) | **Not built** | `APNsRegisterRequest`/`Unregister` structs are defined but referenced nowhere; no `registerForRemoteNotifications`/`UNUserNotificationCenter` client code; backend does not route `/api/mobile/apns/*`. Non-functional end-to-end. See `docs/apns-implementation-plan.md` |
 | **Stats** |
 | Overview | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/overview` | Built | |
-| Heatmap | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/heatmap` | Built | |
+| Last done section | `stats.js`, `stats-last-done.spec.js` | — | `/api/logs/latest-per-chore` (reuse) | **iOS pending** | New Stats section (registry key `last-done`) listing time-since-last-log per chore, most recent first. iOS should add a matching section |
+| Heatmap | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/heatmap` | Built | PWA charts/heatmap now use CSS chart tokens (`--chart-*`, `--heatmap-*`) with a dark-mode override; iOS should source equivalent colors from asset-catalog semantic colors for dark-mode parity |
+| Chart color tokens & label palette | `stats.js` (`colorForIndicator`), `runner.js` | `Views/StatsView.swift` (pending) | N/A (client render) | **iOS pending** | PWA assigns indicator/stack colors via a stable hash→palette (`colorForIndicator`) so custom chore labels get distinct colors, with the four baby labels pinned to historical colors. iOS should port the same mapping so charts match across clients |
 | Busy hours | `stats.js`, `stats-busy-hours-filter.spec.js` | `Views/StatsView.swift` | `/api/stats/busy-hours` | Built | |
 | Leaderboard | `stats.js`, `stats-leaderboard.spec.js` | `Views/StatsView.swift` | `/api/stats/leaderboard` | Built | |
 | Top chores | `stats.js`, `stats-top-chores.spec.js` | `Views/StatsView.swift` | `/api/stats/top-chores` | Built | |
@@ -120,12 +122,19 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Timezone sync | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
 | **Baby Care** |
 | Feed Baby volume | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift`, `Views/StatsView.swift` | `/api/logs` | Built | |
+| Offline log queue + idempotency | `today.js`, `offline-queue.js`, `offline-log-queue.spec.js` | — | `/api/logs` (`idempotencyKey`) | **iOS pending** | PWA queues offline log POSTs in IndexedDB and replays on reconnect/foreground; server de-dups on a client `idempotencyKey` (migration 035, unique per household). iOS should queue via its stores and send the same key |
+| CSV log export | `app.js` (Settings), `export-logs.spec.js` | — | `/api/logs/export?start&end&choreId` | **iOS pending** | New endpoint streams household logs as CSV (household-scoped, chore ownership-checked). iOS should add a share/export action |
 | Change Baby indicators | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | Volume prefill | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | **Preferences** |
 | Chore order | `preferences.js`, `home-jiggle-grid.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
 | Hidden home chores | `preferences.js`, `home-remove-chore.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
 | Timezone | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
+| Volume unit (mL/oz) | `preferences.js`, `utils.js`, `settings-volume-unit.spec.js` | — | `/api/preferences` (`volumeUnit`) | **iOS pending** | New per-user pref; volumes stored canonically in mL, converted at display/input. iOS must surface the toggle in Settings and respect it in LogSheet/StatsView/history |
+| History text search | `today.js`, `activity-search.spec.js` | — | `/api/logs/history?q=` | **iOS pending** | New `q` param returns a flat, capped, newest-first list matching note/title. iOS activity view should add a search field |
+| History infinite scroll + day counts | `today.js`, `app.js`, `history-pagination.spec.js` | — | `/api/logs/history` (reuse) | N/A | Client UX: PWA adds an IntersectionObserver sentinel (auto-load on scroll; Load-more button kept as fallback) and per-day count chips. iOS can mirror with its native list |
+| Pull-to-refresh | `app.js` (`setupPullToRefresh`) | — | N/A (client UX) | N/A | PWA overscroll gesture refetches the active tab. iOS gets pull-to-refresh natively via SwiftUI `.refreshable` |
+| PWA manifest shortcuts | `manifest.webmanifest`, `app.js` (`?quicklog=`) | — | N/A (PWA install surface) | N/A | PWA-only: home-screen icon long-press shortcuts (Log feed / Log chore / Activity). iOS uses native Home-Screen quick actions if/when built |
 | **Navigation** |
 | Five tabs | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | |
 | Tab order (Stats, Activity, Home, Schedule, Settings) | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | Same tab set/order as PWA |
@@ -136,6 +145,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIContractTests.swift` | All state-changing endpoints | Built | |
 | **Schedule Reminders** |
 | Schedule reminder notification type | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift`, `NotificationTests.swift` | `/api/notification-preferences` | Built | |
+| Reminder "Log now" action | `service-worker.js`, `app.js`, `quicklog-deeplink.spec.js` | — | push payload (`choreId`,`type`) | **iOS pending** | Web push notification gains a "Log now" action deep-linking to `/?quicklog=chore:<id>`; server includes choreId/type in the reminder push payload. iOS should add an APNs action category. Snooze action deferred (needs a reschedule endpoint) |
 | Per-chore reminder pref | `chores.js`, `app.js` | `Views/ChoreEditView.swift`, `ModelDecodingTests.swift` | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | Done | |
 | Default lead time in settings | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift` | `/api/notification-preferences` | Done | |
 | Schedule done visual (amber bg) | `schedule-tab.js`, `app.css` | `Views/ScheduleView.swift` | N/A (client rendering) | Done | |

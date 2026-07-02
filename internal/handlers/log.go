@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -104,7 +108,8 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Rating           *int           `json:"rating"`      // optional rating 0-50 (tenths of a star)
 		UserID           *int64         `json:"userId"`      // optional: log on behalf of another household member
 		FollowUpMinutes  int            `json:"followUpMinutes"`
-		FollowUpTime     string         `json:"followUpTime"` // local ISO datetime for schedule placement
+		FollowUpTime     string         `json:"followUpTime"`     // local ISO datetime for schedule placement
+		IdempotencyKey   string         `json:"idempotencyKey"`   // optional client token to de-dup offline replays
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -168,7 +173,12 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating)
+	idemKey := strings.TrimSpace(req.IdempotencyKey)
+	if len(idemKey) > 64 {
+		writeError(w, http.StatusBadRequest, "idempotencyKey too long")
+		return
+	}
+	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, idemKey)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -451,6 +461,26 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Text search across note/title spans all history and bypasses the
+	// windowed pagination — search results are a flat, capped, newest-first
+	// list.
+	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
+		if len(q) > 100 {
+			q = q[:100]
+		}
+		logs, err := h.service.SearchHistoryLogs(r.Context(), *user.HouseholdID, q, 100)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"logs":    logs,
+			"hasMore": false,
+			"query":   q,
+		})
+		return
+	}
+
 	var before time.Time
 	beforeStr := r.URL.Query().Get("before")
 	if beforeStr != "" {
@@ -485,6 +515,139 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 func today() time.Time {
 	now := time.Now().UTC()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// Export streams the household's logs as CSV for a date range (and optional
+// chore). GET /api/logs/export?start=YYYY-MM-DD&end=YYYY-MM-DD&choreId=N.
+// Useful for pediatrician visits and spreadsheets.
+func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+	hid := *user.HouseholdID
+
+	parseDay := func(s string) (time.Time, bool) {
+		t, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			return time.Time{}, false
+		}
+		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), true
+	}
+	end := today().AddDate(0, 0, 1)
+	if s := r.URL.Query().Get("end"); s != "" {
+		if t, ok := parseDay(s); ok {
+			end = t.AddDate(0, 0, 1) // inclusive of the end day
+		} else {
+			writeError(w, http.StatusBadRequest, "invalid end date")
+			return
+		}
+	}
+	start := end.AddDate(0, 0, -30)
+	if s := r.URL.Query().Get("start"); s != "" {
+		if t, ok := parseDay(s); ok {
+			start = t
+		} else {
+			writeError(w, http.StatusBadRequest, "invalid start date")
+			return
+		}
+	}
+	if start.After(end) {
+		writeError(w, http.StatusBadRequest, "start must be before end")
+		return
+	}
+
+	var filterChoreID int64
+	if s := r.URL.Query().Get("choreId"); s != "" {
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid choreId")
+			return
+		}
+		// Ownership check: the chore must belong to the caller's household.
+		if h.choreStore != nil {
+			c, err := h.choreStore.GetChore(r.Context(), id)
+			if err != nil || c.HouseholdID != hid {
+				writeError(w, http.StatusForbidden, "chore does not belong to your household")
+				return
+			}
+		}
+		filterChoreID = id
+	}
+
+	logs, err := h.service.GetLogsInRange(r.Context(), hid, start, end)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Build id→name lookups for chores and members.
+	choreNames := map[int64]string{}
+	if h.choreStore != nil {
+		if chores, err := h.choreStore.ListChores(r.Context(), hid); err == nil {
+			for _, c := range chores {
+				choreNames[c.ID] = c.Name
+			}
+		}
+	}
+	memberNames := map[int64]string{}
+	if h.householdStore != nil {
+		if members, err := h.householdStore.GetMembers(r.Context(), hid); err == nil {
+			for _, m := range members {
+				name := m.DisplayName
+				if name == "" {
+					name = m.Email
+				}
+				memberNames[m.UserID] = name
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"nabu-logs.csv\"")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"date", "time", "chore", "member", "title", "note", "volume_ml", "indicators", "indicator_volumes", "rating"})
+	for _, l := range logs {
+		if filterChoreID != 0 && l.ChoreID != filterChoreID {
+			continue
+		}
+		ts := l.CompletedAt.UTC()
+		title := ""
+		if l.Title != nil {
+			title = *l.Title
+		}
+		vol := ""
+		if l.VolumeML != nil {
+			vol = strconv.Itoa(*l.VolumeML)
+		}
+		rating := ""
+		if l.Rating != nil {
+			rating = strconv.FormatFloat(float64(*l.Rating)/10.0, 'f', -1, 64)
+		}
+		indVol := ""
+		if len(l.IndicatorVolumes) > 0 {
+			parts := make([]string, 0, len(l.IndicatorVolumes))
+			for k, v := range l.IndicatorVolumes {
+				parts = append(parts, fmt.Sprintf("%s=%d", k, v))
+			}
+			sort.Strings(parts)
+			indVol = strings.Join(parts, "; ")
+		}
+		_ = cw.Write([]string{
+			ts.Format("2006-01-02"),
+			ts.Format("15:04"),
+			choreNames[l.ChoreID],
+			memberNames[l.UserID],
+			title,
+			l.Note,
+			vol,
+			strings.Join(l.Indicators, "; "),
+			indVol,
+			rating,
+		})
+	}
+	cw.Flush()
 }
 
 func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {

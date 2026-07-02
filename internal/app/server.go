@@ -299,6 +299,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))
 	mux.HandleFunc("/api/logs/history", method(http.MethodGet, middleware.RequireAuth(logHandler.History)))
+	mux.HandleFunc("/api/logs/export", method(http.MethodGet, middleware.RequireAuth(logHandler.Export)))
 	mux.HandleFunc("/api/logs/latest-per-chore", method(http.MethodGet, middleware.RequireAuth(logHandler.LatestPerChore)))
 
 	mux.HandleFunc("/api/notifications", method(http.MethodGet, middleware.RequireAuth(notifHandler.List)))

@@ -16,7 +16,7 @@ function fmtHour(h) {
 
 function fmtShortDate(iso) {
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
 }
 
 function formatLocalISODate(d) {
@@ -359,7 +359,7 @@ function isoMonday(iso) {
 
 function fmtLongDate(iso) {
   const d = new Date(iso + "T00:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 function fmtWeekRange(mondayISO) {
@@ -367,7 +367,7 @@ function fmtWeekRange(mondayISO) {
   const end   = new Date(mondayISO + "T00:00:00");
   end.setDate(end.getDate() + 6);
   const opts = { month: "short", day: "numeric" };
-  return `${start.toLocaleDateString("en-US", opts)} – ${end.toLocaleDateString("en-US", opts)}`;
+  return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, opts)}`;
 }
 
 function fmtTime12(hhmm) {

@@ -21,19 +21,22 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 	var tz string
 	var rawSecOrder []byte
 	var rawSecHidden []byte
+	var volumeUnit string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
-		        COALESCE(stats_section_hidden, '[]'::jsonb)
+		        COALESCE(stats_section_hidden, '[]'::jsonb),
+		        COALESCE(volume_unit, 'ml')
 		 FROM user_preferences WHERE user_id = $1`,
 		userID,
-	).Scan(&rawOrder, &rawHidden, &tz, &rawSecOrder, &rawSecHidden)
+	).Scan(&rawOrder, &rawHidden, &tz, &rawSecOrder, &rawSecHidden, &volumeUnit)
 	if err == sql.ErrNoRows {
 		return Preferences{
 			ChoreOrder:         []int64{},
 			HiddenHomeChoreIDs: []int64{},
 			StatsSectionOrder:  []string{},
 			StatsSectionHidden: []string{},
+			VolumeUnit:         "ml",
 		}, nil
 	}
 	if err != nil {
@@ -72,12 +75,17 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 		secHidden = []string{}
 	}
 
+	if volumeUnit != "oz" {
+		volumeUnit = "ml"
+	}
+
 	return Preferences{
 		ChoreOrder:         order,
 		HiddenHomeChoreIDs: hidden,
 		Timezone:           tz,
 		StatsSectionOrder:  secOrder,
 		StatsSectionHidden: secHidden,
+		VolumeUnit:         volumeUnit,
 	}, nil
 }
 
@@ -98,6 +106,10 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 	if secHidden == nil {
 		secHidden = []string{}
 	}
+	volumeUnit := p.VolumeUnit
+	if volumeUnit != "oz" {
+		volumeUnit = "ml"
+	}
 	rawOrder, err := json.Marshal(order)
 	if err != nil {
 		return err
@@ -116,16 +128,17 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO user_preferences (user_id, chore_order, hidden_home_chore_ids, timezone,
-		                               stats_section_order, stats_section_hidden, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		                               stats_section_order, stats_section_hidden, volume_unit, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 		ON CONFLICT (user_id)
 		DO UPDATE SET chore_order           = EXCLUDED.chore_order,
 		              hidden_home_chore_ids = EXCLUDED.hidden_home_chore_ids,
 		              timezone              = EXCLUDED.timezone,
 		              stats_section_order   = EXCLUDED.stats_section_order,
 		              stats_section_hidden  = EXCLUDED.stats_section_hidden,
+		              volume_unit           = EXCLUDED.volume_unit,
 		              updated_at            = EXCLUDED.updated_at`,
-		userID, rawOrder, rawHidden, p.Timezone, rawSecOrder, rawSecHidden,
+		userID, rawOrder, rawHidden, p.Timezone, rawSecOrder, rawSecHidden, volumeUnit,
 	)
 	return err
 }

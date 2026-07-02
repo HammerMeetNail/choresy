@@ -10,6 +10,93 @@ import (
 
 // ─── Service tests ────────────────────────────────────────────────────────────
 
+func TestLogService_SearchHistoryLogs(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	if _, err := svc.LogChore(ctx, 1, 10, 100, nil, "changed the water filter", nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+	if _, err := svc.LogChore(ctx, 1, 10, 101, nil, "fed the cats", nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+	// A log in a different household must never match.
+	if _, err := svc.LogChore(ctx, 2, 20, 200, nil, "filter for other house", nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+
+	got, err := svc.SearchHistoryLogs(ctx, 1, "FILTER", 50)
+	if err != nil {
+		t.Fatalf("SearchHistoryLogs: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(got))
+	}
+	if got[0].Note != "changed the water filter" {
+		t.Errorf("wrong match: %q", got[0].Note)
+	}
+
+	// Non-matching query returns empty (never nil).
+	none, err := svc.SearchHistoryLogs(ctx, 1, "zzz-nope", 50)
+	if err != nil {
+		t.Fatalf("SearchHistoryLogs: %v", err)
+	}
+	if none == nil || len(none) != 0 {
+		t.Fatalf("expected empty non-nil slice, got %#v", none)
+	}
+}
+
+func TestLogService_LogChoreIdempotent(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	// First call with a key creates the log.
+	l1, created1, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent: %v", err)
+	}
+	if !created1 {
+		t.Fatal("expected created=true on first call")
+	}
+
+	// Replay with the same key returns the SAME log and does not create a new one.
+	l2, created2, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent replay: %v", err)
+	}
+	if created2 {
+		t.Fatal("expected created=false on replay")
+	}
+	if l2.ID != l1.ID {
+		t.Fatalf("replay returned different log: %d vs %d", l2.ID, l1.ID)
+	}
+
+	// A different key creates a distinct log.
+	l3, created3, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-xyz")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent: %v", err)
+	}
+	if !created3 || l3.ID == l1.ID {
+		t.Fatal("expected a new distinct log for a different key")
+	}
+
+	// The same key in a DIFFERENT household must not collide.
+	l4, created4, err := svc.LogChoreIdempotent(ctx, 2, 20, 200, nil, "feed", nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	if err != nil {
+		t.Fatalf("LogChoreIdempotent: %v", err)
+	}
+	if !created4 || l4.ID == l1.ID {
+		t.Fatal("same key in another household must create a separate log")
+	}
+
+	// Empty key always creates.
+	_, createdA, _ := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, "")
+	_, createdB, _ := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, "")
+	if !createdA || !createdB {
+		t.Fatal("empty key must always create")
+	}
+}
+
 func TestLogService_LogChore_Basic(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()

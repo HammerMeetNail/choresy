@@ -12,6 +12,7 @@ export async function loadPreferences(state) {
     state.choreOrder = data?.preferences?.choreOrder ?? [];
     state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? [];
     state.timezone = data?.preferences?.timezone ?? "";
+    state.volumeUnit = data?.preferences?.volumeUnit ?? "ml";
     state.stats = state.stats || {};
     state.stats.sectionOrder = data?.preferences?.statsSectionOrder ?? [];
     state.stats.sectionHidden = data?.preferences?.statsSectionHidden ?? [];
@@ -19,9 +20,30 @@ export async function loadPreferences(state) {
     state.choreOrder = [];
     state.hiddenHomeChoreIDs = [];
     state.timezone = "";
+    state.volumeUnit = "ml";
     state.stats = state.stats || {};
     state.stats.sectionOrder = [];
     state.stats.sectionHidden = [];
+  }
+}
+
+/**
+ * Persist the user's preferred volume unit ("ml" | "oz") and update state.
+ *
+ * @param {object} state - The global app state (mutated in place).
+ * @param {string} unit  - "ml" or "oz".
+ */
+export async function saveVolumeUnit(state, unit) {
+  const prev = state.volumeUnit;
+  state.volumeUnit = unit;
+  try {
+    const { data } = await apiFetch("/api/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ volumeUnit: unit }),
+    });
+    state.volumeUnit = data?.preferences?.volumeUnit ?? unit;
+  } catch {
+    state.volumeUnit = prev; // roll back on failure
   }
 }
 
