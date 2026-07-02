@@ -736,11 +736,34 @@ describe("Stats: user-defined widgets (Phase 4)", () => {
     assert.ok(html.includes("Big number"));
   });
 
-  it("widgetGrain defaults to daily and honors weekly/monthly", async () => {
+  it("widgetGrain derives from period (month/all -> monthly)", async () => {
     const { widgetGrain } = await import("../stats.js");
     assert.equal(widgetGrain({}), "daily");
-    assert.equal(widgetGrain({ grain: "weekly" }), "weekly");
-    assert.equal(widgetGrain({ grain: "bogus" }), "daily");
+    assert.equal(widgetGrain({ period: "day" }), "daily");
+    assert.equal(widgetGrain({ period: "week" }), "daily");
+    assert.equal(widgetGrain({ period: "month" }), "monthly");
+    assert.equal(widgetGrain({ period: "all" }), "monthly");
+  });
+
+  it("a total widget honors its period instead of summing the whole window", async () => {
+    const { renderWidgetSection, widgetTotalBuckets } = await import("../stats.js");
+    assert.equal(widgetTotalBuckets({ period: "day" }), 1);
+    assert.equal(widgetTotalBuckets({ period: "week" }), 7);
+    assert.equal(widgetTotalBuckets({ period: "month" }), 1);
+    assert.equal(widgetTotalBuckets({ period: "all" }), Infinity);
+
+    // 10 daily buckets of count=1 each. A "day" total = 1, a "week" total = 7,
+    // an "all" total = 10 — NOT always 10 (the old bug).
+    const periods = Array.from({ length: 10 }, (_, i) => ({ start: `2026-06-${String(i + 1).padStart(2, "0")}`, count: 1 }));
+    const mk = (period) => ({
+      chores: [{ id: 1, name: "C", icon: "x", color: "#000" }],
+      members: [], latestLogs: {},
+      stats: { widgetData: { w: [{ ts: { periods } }] } },
+    });
+    const w = (period) => ({ id: "w", type: "total", metric: "count", period, choreIds: [1], title: "T" });
+    assert.ok(renderWidgetSection(w("day"), mk("day")).includes(">1<"));
+    assert.ok(renderWidgetSection(w("week"), mk("week")).includes(">7<"));
+    assert.ok(renderWidgetSection(w("all"), mk("all")).includes(">10<"));
   });
 });
 

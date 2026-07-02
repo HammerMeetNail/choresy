@@ -900,11 +900,25 @@ export function renderChoreAnalyticsSection(chore, ts, members) {
 
 // ─── User-defined widgets (Phase 4) ─────────────────────────────────────────
 
-// widgetGrain resolves the time-series grain a widget's data should be fetched
-// at. Widgets store an optional grain; default to daily.
+// widgetGrain resolves the time-series grain a widget's data is fetched at,
+// derived from its period so month/all pull enough history: day/week use the
+// daily series (14 days), month/all use the monthly series (6 months).
 export function widgetGrain(widget) {
-  const g = widget?.grain;
-  return g === "weekly" || g === "monthly" ? g : "daily";
+  const p = widget?.period;
+  return (p === "month" || p === "all") ? "monthly" : "daily";
+}
+
+// widgetTotalBuckets is how many trailing time-series buckets a "total" widget
+// should sum for its period (Infinity = the whole fetched range). Paired with
+// widgetGrain: day=1 daily bucket, week=7 daily, month=1 monthly, all=every
+// monthly bucket. Without this the total ignored the period entirely.
+export function widgetTotalBuckets(widget) {
+  switch (widget?.period) {
+    case "day": return 1;
+    case "month": return 1;
+    case "all": return Infinity;
+    default: return 7; // "week"
+  }
 }
 
 // widgetMetricValue extracts the numeric value for a widget's chosen metric
@@ -975,9 +989,12 @@ export function renderWidgetSection(widget, state) {
       fmt: v => `${v}${unit ? " " + unit : ""}`,
     });
   } else {
-    // "total" (and any other type) → a big-number aggregate over the window.
+    // "total" (and any other type) → a big-number aggregate over the period.
+    // Sum only the trailing buckets that fall within the widget's period
+    // (slice(-Infinity) yields the whole array, so "all" sums everything).
+    const n = widgetTotalBuckets(widget);
     let total = 0;
-    data.forEach(d => (d.ts?.periods || []).forEach(p => { total += widgetMetricValue(p, widget.metric); }));
+    data.forEach(d => (d.ts?.periods || []).slice(-n).forEach(p => { total += widgetMetricValue(p, widget.metric); }));
     const unit = data.length ? widgetMetricUnit(widget, data[0].ts) : "";
     bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
   }
