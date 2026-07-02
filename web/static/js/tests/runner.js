@@ -553,6 +553,35 @@ describe("Stats: generalized per-chore sections (Phase 3)", () => {
   });
 });
 
+describe("Log sheet: recent-value chips (Phase 5.3)", () => {
+  const chore = { id: 1, icon: "🍼", name: "Feed", color: "#000", hasVolumeML: true, indicatorLabels: ["🍼 formula"] };
+
+  it("renders recent-value chips when provided", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(chore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml", recentVolumes: [60, 90, 120],
+    });
+    assert.ok(html.includes("set-recent-volume"));
+    assert.ok(html.includes("60 mL"));
+    assert.ok(html.includes("90 mL"));
+  });
+
+  it("omits the recent row when there are no recent volumes", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(chore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml", recentVolumes: [],
+    });
+    assert.ok(!html.includes("set-recent-volume"));
+  });
+
+  it("shows a plain volume input for amount chores without indicators", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const amountChore = { id: 2, icon: "💧", name: "Water", color: "#000", hasVolumeML: true, indicatorLabels: [] };
+    const html = renderLogSheet(amountChore, null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.ok(html.includes("log-volume"));
+  });
+});
+
 describe("Stats: user-defined widgets (Phase 4)", () => {
   const baseState = () => ({
     chores: [{ id: 12, name: "Feed", icon: "🍼", color: "#000", metricType: "amount", metricUnit: "mL" }],

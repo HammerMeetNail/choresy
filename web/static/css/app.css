@@ -4423,3 +4423,10 @@ details[open] .chore-stat-chevron {
   gap: 8px;
   padding: 4px 0;
 }
+
+/* ── Recent-value volume chips (Phase 5.3) ─────────────────────────────────── */
+.sheet-recent-volume-row { margin-bottom: 8px; }
+.volume-recent-chip--active {
+  outline: 2px solid var(--accent, #2E86AB);
+  outline-offset: 1px;
+}
