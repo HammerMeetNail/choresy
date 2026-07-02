@@ -491,6 +491,308 @@ describe("Stats: colorForIndicator", () => {
   });
 });
 
+describe("Stats: generalized per-chore sections (Phase 3)", () => {
+  it("choreHasAnalytics: true for metric or indicators, false for plain/baby", async () => {
+    const { choreHasAnalytics } = await import("../stats.js");
+    assert.equal(choreHasAnalytics({ id: 1, name: "Naps", metricType: "duration" }), true);
+    assert.equal(choreHasAnalytics({ id: 2, name: "Meds", metricType: "none", indicatorLabels: ["am"] }), true);
+    assert.equal(choreHasAnalytics({ id: 3, name: "Vacuum", metricType: "none", indicatorLabels: [] }), false);
+    // Baby chores are covered by the dedicated baby section.
+    assert.equal(choreHasAnalytics({ id: 4, name: "Feed Baby", metricType: "amount" }), false);
+    assert.equal(choreHasAnalytics({ id: 5, name: "Change Baby", indicatorLabels: ["poo"] }), false);
+  });
+
+  it("eligibleChoreSectionKeys maps eligible chores to chore:<id> keys", async () => {
+    const { eligibleChoreSectionKeys } = await import("../stats.js");
+    const keys = eligibleChoreSectionKeys([
+      { id: 7, name: "Naps", metricType: "duration" },
+      { id: 8, name: "Vacuum", metricType: "none", indicatorLabels: [] },
+      { id: 9, name: "Meds", indicatorLabels: ["am", "pm"] },
+    ]);
+    assert.deepEqual(keys, ["chore:7", "chore:9"]);
+  });
+
+  it("resolveStatsLayout keeps valid dynamic keys and drops stale ones", async () => {
+    const { resolveStatsLayout } = await import("../stats.js");
+    const order = resolveStatsLayout(
+      ["overview", "chore:7", "chore:999"], // 999 no longer eligible
+      [],
+      ["chore:7", "chore:9"],
+    );
+    assert.ok(order.includes("chore:7"));
+    assert.ok(!order.includes("chore:999")); // dropped: not a valid dynamic key
+    assert.ok(order.includes("chore:9"));     // auto-appended eligible key
+    assert.ok(order.includes("overview"));
+  });
+
+  it("resolveStatsLayout excludes hidden dynamic keys", async () => {
+    const { resolveStatsLayout } = await import("../stats.js");
+    const order = resolveStatsLayout([], ["chore:7"], ["chore:7", "chore:9"]);
+    assert.ok(!order.includes("chore:7"));
+    assert.ok(order.includes("chore:9"));
+  });
+
+  it("renderChoreAnalyticsSection renders a card with chore name and chart", async () => {
+    const { renderChoreAnalyticsSection } = await import("../stats.js");
+    const chore = { id: 7, name: "Naps", icon: "😴", metricType: "duration" };
+    const ts = { byMember: [{ userId: 1, count: 3 }], periods: [
+      { start: "2026-07-01", end: "2026-07-02", count: 1, totalDuration: 1800 },
+    ] };
+    const html = renderChoreAnalyticsSection(chore, ts, [{ userId: 1, displayName: "A", avatarColor: "#000" }]);
+    assert.ok(html.includes("Naps"));
+    assert.ok(html.includes("baby-chart"));
+    assert.ok(html.includes("min")); // duration axis label
+  });
+
+  it("widget/chore key type guards", async () => {
+    const { isChoreSectionKey, isWidgetSectionKey } = await import("../stats.js");
+    assert.equal(isChoreSectionKey("chore:12"), true);
+    assert.equal(isChoreSectionKey("chore:x"), false);
+    assert.equal(isWidgetSectionKey("widget:abc-123_XY"), true);
+    assert.equal(isWidgetSectionKey("widget:bad key"), false);
+  });
+});
+
+describe("Offline pending log badge (Phase 2.1)", () => {
+  it("renders a pending row with a badge and no view-log action", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    const state = {
+      chores: [{ id: 1, name: "Feed", icon: "🍼", color: "#000" }],
+      members: [{ userId: 1, displayName: "Ann" }],
+      historyLogs: [],
+      pendingLogs: [{
+        id: "pending-1", choreId: 1, userId: 1, note: "", indicators: [],
+        completedAt: "2026-07-02T10:00:00Z", _pending: true,
+      }],
+    };
+    const html = renderHistoryView(state);
+    assert.ok(html.includes("hist-pending"));
+    assert.ok(html.includes("hist-row--pending"));
+    assert.ok(html.includes("Feed"));
+    // A pending row must not be a tappable view-log target.
+    assert.ok(!html.includes('data-action="view-log"\n          data-chore-id="1"\n          data-log-id="pending-1"'));
+  });
+
+  it("excludes pending rows while searching", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    const state = {
+      chores: [{ id: 1, name: "Feed", icon: "🍼", color: "#000" }],
+      members: [],
+      historySearch: "foo",
+      historyLogs: [],
+      pendingLogs: [{ id: "p", choreId: 1, completedAt: "2026-07-02T10:00:00Z", _pending: true }],
+    };
+    const html = renderHistoryView(state);
+    assert.ok(!html.includes("hist-pending"));
+  });
+});
+
+describe("Subject tagging (Phase 5.5)", () => {
+  it("chore sheet renders a subjects field with existing tags", async () => {
+    const { renderChoreSheet } = await import("../chores.js");
+    const html = renderChoreSheet({ id: 1, name: "Feed", icon: "🍼", color: "#000", subjects: ["👶 Alice", "👶 Bob"] });
+    assert.ok(html.includes("Subjects"));
+    assert.ok(html.includes("add-subject-label"));
+    assert.ok(html.includes("👶 Alice"));
+    assert.ok(html.includes("👶 Bob"));
+  });
+
+  it("log sheet renders subject chips only when the chore has subjects", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const withSubjects = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.ok(withSubjects.includes("pick-subject"));
+    assert.ok(withSubjects.includes("Alice"));
+
+    const without = renderLogSheet(
+      { id: 2, icon: "🧹", name: "Vacuum", color: "#000", subjects: [] },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.ok(!without.includes("pick-subject"));
+  });
+
+  it("log sheet preselects the existing log's subject", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      { id: 9, subject: "Bob", indicators: [] }, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    // The Bob chip should be pressed/on.
+    assert.match(html, /data-subject="Bob"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Bob"/);
+  });
+});
+
+describe("Duration timer (Phase 5.2)", () => {
+  it("formatElapsed renders m:ss and h:mm:ss", async () => {
+    const { formatElapsed } = await import("../timer.js");
+    assert.equal(formatElapsed(0), "0:00");
+    assert.equal(formatElapsed(65), "1:05");
+    assert.equal(formatElapsed(3725), "1:02:05");
+  });
+
+  it("elapsedSeconds computes whole seconds since start", async () => {
+    const { elapsedSeconds } = await import("../timer.js");
+    const t = { choreId: 1, startedAt: 10_000 };
+    assert.equal(elapsedSeconds(t, 10_000), 0);
+    assert.equal(elapsedSeconds(t, 95_500), 85);
+    assert.equal(elapsedSeconds(null), 0);
+  });
+
+  it("save/load round-trips a timer via localStorage", async () => {
+    const store = {};
+    globalThis.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+      removeItem: (k) => { delete store[k]; },
+    };
+    const { saveTimer, loadTimer } = await import("../timer.js");
+    saveTimer({ choreId: 7, choreName: "Nap", choreIcon: "😴", startedAt: 123 });
+    const t = loadTimer();
+    assert.equal(t.choreId, 7);
+    assert.equal(t.choreName, "Nap");
+    saveTimer(null);
+    assert.equal(loadTimer(), null);
+    delete globalThis.localStorage;
+  });
+
+  it("loadTimer rejects a corrupt value", async () => {
+    const store = { nabu_active_timer: "{not json" };
+    globalThis.localStorage = {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: () => {}, removeItem: () => {},
+    };
+    const { loadTimer } = await import("../timer.js");
+    assert.equal(loadTimer(), null);
+    delete globalThis.localStorage;
+  });
+});
+
+describe("Log sheet: recent-value chips (Phase 5.3)", () => {
+  const chore = { id: 1, icon: "🍼", name: "Feed", color: "#000", hasVolumeML: true, indicatorLabels: ["🍼 formula"] };
+
+  it("renders recent-value chips when provided", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(chore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml", recentVolumes: [60, 90, 120],
+    });
+    assert.ok(html.includes("set-recent-volume"));
+    assert.ok(html.includes("60 mL"));
+    assert.ok(html.includes("90 mL"));
+  });
+
+  it("omits the recent row when there are no recent volumes", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(chore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml", recentVolumes: [],
+    });
+    assert.ok(!html.includes("set-recent-volume"));
+  });
+
+  it("shows a plain volume input for amount chores without indicators", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const amountChore = { id: 2, icon: "💧", name: "Water", color: "#000", hasVolumeML: true, indicatorLabels: [] };
+    const html = renderLogSheet(amountChore, null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.ok(html.includes("log-volume"));
+  });
+});
+
+describe("Stats: user-defined widgets (Phase 4)", () => {
+  const baseState = () => ({
+    chores: [{ id: 12, name: "Feed", icon: "🍼", color: "#000", metricType: "amount", metricUnit: "mL" }],
+    members: [{ userId: 1, displayName: "Ann", avatarColor: "#000" }],
+    latestLogs: {},
+    stats: { widgetData: {} },
+  });
+
+  it("renders a total widget from the period-scoped summary", async () => {
+    const { renderWidgetSection } = await import("../stats.js");
+    const state = baseState();
+    const w = { id: "abc", type: "total", metric: "amount", period: "week", choreIds: [12], title: "Bottles" };
+    // The server bounds the total to the period; the client just reads it.
+    state.stats.widgetData["abc"] = [{ chore: state.chores[0], summary: { totalML: 150, metricUnit: "mL" } }];
+    const html = renderWidgetSection(w, state);
+    assert.ok(html.includes("Bottles"));
+    assert.ok(html.includes("150"));
+    assert.ok(html.includes("mL"));
+  });
+
+  it("member-split reads the period-scoped summary byMember", async () => {
+    const { renderWidgetSection } = await import("../stats.js");
+    const state = baseState();
+    state.members = [{ userId: 1, displayName: "Ann", avatarColor: "#000" }, { userId: 2, displayName: "Bo", avatarColor: "#111" }];
+    const w = { id: "ms", type: "member-split", metric: "count", period: "week", choreIds: [12], title: "Split" };
+    state.stats.widgetData["ms"] = [{ chore: state.chores[0], summary: { byMember: [{ userId: 1, count: 3 }, { userId: 2, count: 1 }] } }];
+    const html = renderWidgetSection(w, state);
+    assert.ok(html.includes("Ann"));
+    assert.ok(html.includes("Bo"));
+  });
+
+  it("escapes a malicious widget title so it renders inert", async () => {
+    const { renderWidgetSection } = await import("../stats.js");
+    const state = baseState();
+    const w = { id: "x1", type: "total", metric: "count", period: "week", choreIds: [], title: `<img src=x onerror="alert(1)">` };
+    const html = renderWidgetSection(w, state);
+    // The raw tag must not appear; it must be HTML-escaped so it renders inert.
+    assert.ok(!html.includes("<img src=x"));
+    assert.ok(html.includes("&lt;img"));
+  });
+
+  it("widget wizard lists chores and presentation options", async () => {
+    const { renderWidgetWizard } = await import("../stats.js");
+    const state = baseState();
+    const html = renderWidgetWizard(state, { type: "total", metric: "count", period: "week" });
+    assert.ok(html.includes("Add widget"));
+    assert.ok(html.includes("Feed"));
+    assert.ok(html.includes("widget-save"));
+    assert.ok(html.includes("Big number"));
+  });
+
+  it("widgetGrain derives from period (month/all -> monthly)", async () => {
+    const { widgetGrain } = await import("../stats.js");
+    assert.equal(widgetGrain({}), "daily");
+    assert.equal(widgetGrain({ period: "day" }), "daily");
+    assert.equal(widgetGrain({ period: "week" }), "daily");
+    assert.equal(widgetGrain({ period: "month" }), "monthly");
+    assert.equal(widgetGrain({ period: "all" }), "monthly");
+  });
+
+});
+
+describe("Utils: escapeHTML (attribute-safe)", () => {
+  it("escapes angle brackets, ampersand, and quotes", async () => {
+    const { escapeHTML } = await import("../utils.js");
+    assert.equal(escapeHTML(`<b>&"'`), "&lt;b&gt;&amp;&quot;&#39;");
+  });
+
+  it("a double quote cannot break out of an attribute value", async () => {
+    const { escapeHTML } = await import("../utils.js");
+    const evil = `x" onmouseover="alert(1)`;
+    const attr = `data-subject="${escapeHTML(evil)}"`;
+    // The injected quote is neutralized, so no second attribute can appear.
+    assert.ok(!attr.includes(`data-subject="x" onmouseover`));
+    assert.ok(attr.includes("&quot;"));
+  });
+
+  it("preserves falsy handling (0/false/null -> empty)", async () => {
+    const { escapeHTML } = await import("../utils.js");
+    assert.equal(escapeHTML(0), "");
+    assert.equal(escapeHTML(false), "");
+    assert.equal(escapeHTML(null), "");
+    assert.equal(escapeHTML("0"), "0");
+    assert.equal(escapeHTML(123), "123");
+  });
+});
+
+describe("Subject tagging: attribute XSS is inert", () => {
+  it("a subject containing a quote does not break out of the chip attribute", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const chore = { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: [`x" onmouseover="alert(1)`] };
+    const html = renderLogSheet(chore, null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    // The raw handler injection must not appear as real markup.
+    assert.ok(!html.includes(`" onmouseover="alert(1)"`));
+    assert.ok(html.includes("&quot;"));
+  });
+});
+
 describe("Utils: volume units", () => {
   it("formatVolume renders mL and oz", async () => {
     const { formatVolume } = await import("../utils.js");

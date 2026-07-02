@@ -18,6 +18,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/config"
 	"github.com/HammerMeetNail/nabu/internal/database"
+	"github.com/HammerMeetNail/nabu/internal/daynote"
 	"github.com/HammerMeetNail/nabu/internal/handlers"
 	"github.com/HammerMeetNail/nabu/internal/household"
 	logsvc "github.com/HammerMeetNail/nabu/internal/log"
@@ -69,6 +70,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var userPrefsStore userprefs.Store
 	var notifStore notification.Store
 	var pushStore push.Store
+	var dayNoteStore daynote.Store
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
@@ -78,6 +80,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		userPrefsStore = userprefs.NewPostgresStore(db)
 		notifStore = notification.NewPostgresStore(db)
 		pushStore = push.NewPostgresStore(db)
+		dayNoteStore = daynote.NewPostgresStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
@@ -86,6 +89,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		userPrefsStore = userprefs.NewMemoryStore()
 		notifStore = notification.NewMemoryStore()
 		pushStore = push.NewMemoryStore()
+		dayNoteStore = daynote.NewMemoryStore()
 	}
 
 	authService := auth.NewService(authStore)
@@ -157,7 +161,10 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
-	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
+	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore)
+	dayNoteService := daynote.NewService(dayNoteStore)
+	dayNoteHandler := handlers.NewDayNoteHandler(dayNoteService)
+	reminderSnoozeHandler := handlers.NewReminderSnoozeHandler(scheduleStore, choreStore, userPrefsStore)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 
@@ -345,6 +352,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/stats/chores", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreStats)))
 	mux.HandleFunc("/api/stats/chores/{id}", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreStatsByID)))
 	mux.HandleFunc("/api/stats/chores/{id}/time-series", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreTimeSeries)))
+	mux.HandleFunc("/api/stats/chores/{id}/summary", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreSummary)))
 	mux.HandleFunc("/api/stats/feeding-gaps", method(http.MethodGet, middleware.RequireAuth(statsHandler.FeedingGaps)))
 
 	mux.HandleFunc("/api/preferences", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +366,11 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
+
+	mux.HandleFunc("/api/day-notes", method(http.MethodGet, middleware.RequireAuth(dayNoteHandler.List)))
+	mux.HandleFunc("/api/day-notes/{date}", method(http.MethodPut, middleware.RequireAuth(dayNoteHandler.Set)))
+
+	mux.HandleFunc("/api/reminders/snooze", method(http.MethodPost, middleware.RequireAuth(reminderSnoozeHandler.Snooze)))
 
 	mux.HandleFunc("/api/schedules", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -551,7 +564,7 @@ func (a *choreStatsAdapter) GetChore(ctx context.Context, id int64) (stats.Chore
 	if err != nil {
 		return stats.ChoreInfo{}, err
 	}
-	return stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}, nil
+	return stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels}, nil
 }
 
 func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) ([]stats.ChoreInfo, error) {
@@ -561,7 +574,7 @@ func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) (
 	}
 	result := make([]stats.ChoreInfo, len(chores))
 	for i, c := range chores {
-		result[i] = stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}
+		result[i] = stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels}
 	}
 	return result, nil
 }

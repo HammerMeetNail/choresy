@@ -55,7 +55,7 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null, durationSeconds = null, subject = null) {
   const body = { choreId, note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
@@ -67,6 +67,8 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (followUpTime) body.followUpTime = followUpTime;
   if (rating !== null) body.rating = rating;
   if (title) body.title = title;
+  if (durationSeconds !== null) body.durationSeconds = durationSeconds;
+  if (subject !== null) body.subject = subject;
   // Idempotency key so an offline replay can't create a duplicate.
   body.idempotencyKey = newIdempotencyKey();
   try {
@@ -83,7 +85,8 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
     try {
       await enqueueLog(body);
       if (typeof window !== "undefined" && window.dispatchEvent) {
-        window.dispatchEvent(new CustomEvent("nabu-log-queued"));
+        // Include the queued body so the UI can synthesize a "pending" row.
+        window.dispatchEvent(new CustomEvent("nabu-log-queued", { detail: body }));
       }
       return { log: null, queued: true };
     } catch {
@@ -98,7 +101,7 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}, rating = null, title = null) {
+export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}, rating = null, title = null, subject = undefined) {
   const body = { note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (volumeML !== null) body.volumeML = volumeML;
@@ -108,6 +111,7 @@ export async function updateLog(logId, note, indicators = [], volumeML = null, u
   if (completedAt) body.completedAt = completedAt;
   if (rating !== null) body.rating = rating;
   if (title) body.title = title;
+  if (subject !== undefined) body.subject = subject;
   const { response, data } = await apiFetch(`/api/logs/${logId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -214,7 +218,12 @@ export function renderHistorySearchBar(state) {
 }
 
 export function renderHistoryView(state) {
-  const logs = state.historyLogs || [];
+  // Merge any offline-queued logs (Phase 2.1) so they show inline with a
+  // "pending" badge until they sync. They carry _pending; search results skip
+  // them (they aren't on the server yet).
+  const searchingNow = !!(state.historySearch && state.historySearch.trim());
+  const pending = (!searchingNow ? (state.pendingLogs || []) : []);
+  const logs = [...pending, ...(state.historyLogs || [])];
   const chores = state.chores || [];
   const filter = state.historyChoreFilter;
   const searching = !!(state.historySearch && state.historySearch.trim());
@@ -275,6 +284,8 @@ export function renderHistoryView(state) {
       indicatorIcons,
       rating: l.rating,
       title: l.title || '',
+      subject: l.subject || '',
+      pending: l._pending || false,
       logId: l.id,
       choreId: l.choreId,
       date: dateKey,
@@ -372,22 +383,30 @@ export function renderHistoryView(state) {
         const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${formatVolume(r.volumeML, volumeUnit)}` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
+        const subjectStr = r.subject ? ` · <span class="hist-subject">${escapeHTML(r.subject)}</span>` : '';
         const titleStr = r.title ? `<span class="hist-title">${escapeHTML(r.title)}</span>` : '';
+        const pendingBadge = r.pending ? `<span class="hist-pending">⏳ pending</span>` : '';
+        // Pending rows aren't yet on the server, so they're not tappable.
+        const pendingAttrs = r.pending ? `disabled aria-disabled="true"` : `data-action="view-log"`;
         return `
-        <button type="button" class="hist-row" style="--chore-color:${r.color}"
-          data-action="view-log"
+        <button type="button" class="hist-row${r.pending ? ' hist-row--pending' : ''}" style="--chore-color:${r.color}"
+          ${pendingAttrs}
           data-chore-id="${r.choreId}"
           data-log-id="${r.logId}"
           data-date="${r.date}">
           <span class="hist-icon">${r.icon}</span>
           <div class="hist-body">
-            <span class="hist-name">${escapeHTML(r.name)}</span>
+            <span class="hist-name">${escapeHTML(r.name)}${pendingBadge}</span>
             ${titleStr}
-            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${subjectStr}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
           </div>
         </button>`;
       }).join('');
-      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span></div>${rows}`;
+      const dayNote = (state.dayNotes || {})[g.date] || "";
+      const noteHTML = dayNote
+        ? `<button type="button" class="hist-day-note" data-action="edit-day-note" data-date="${g.date}">📝 ${escapeHTML(dayNote)}</button>`
+        : `<button type="button" class="hist-day-note hist-day-note--empty" data-action="edit-day-note" data-date="${g.date}" aria-label="Add a note for ${escapeHTML(g.label)}">＋ note</button>`;
+      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span>${noteHTML}</div>${rows}`;
     }).join('');
     return `<div class="hist-chunk">
       <div class="hist-chunk-header">${chunk.label}</div>

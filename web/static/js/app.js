@@ -2,7 +2,7 @@ import { createAppState, resetAuthedState } from "./state.js";
 import { morphInnerHTML } from "./morph.js";
 import { apiMe, apiFetch } from "./api.js";
 import { replayQueue, queuedCount } from "./offline-queue.js";
-import { escapeHTML, localDateStr } from "./utils.js";
+import { escapeHTML, localDateStr, formatVolume } from "./utils.js";
 import {
   loadSession,
   handleLogin,
@@ -22,10 +22,11 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets } from "./preferences.js";
+import { loadTimer, saveTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
@@ -210,6 +211,7 @@ export function render(root) {
   }
   updateTabs(tabRoute);
   updateTopBar();
+  renderTimerChip();
 
   // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
   // first rendered (scrollTop === 0).  This prevents the grid from always
@@ -281,7 +283,7 @@ async function refreshActiveTab() {
   const route = state.currentRoute || window.location.pathname || "/";
   try {
     if (route === "/activity") {
-      const data = await loadHistory(state.historySearch);
+      const [data] = await Promise.all([loadHistory(state.historySearch), loadDayNotesData()]);
       state.historyLogs = data?.logs || [];
       state.historyHasMore = data?.hasMore || false;
       state.historyBefore = data?.start || null;
@@ -371,15 +373,41 @@ function renderActivityView() {
   return renderHistoryView();
 }
 
+function renderDayNoteSheet() {
+  const { date } = state.activeSheetData || {};
+  const existing = (state.dayNotes || {})[date] || "";
+  const label = (() => {
+    const d = new Date(date + "T00:00:00");
+    return isNaN(d.getTime()) ? date : d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  })();
+  return `<div class="bottom-sheet day-note-sheet" role="dialog" aria-modal="true" aria-label="Day note">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h2 class="sheet-title">${escapeHTML(label)}</h2>
+    <div class="sheet-note-row">
+      <label for="day-note-input" class="field-label">Note for this day (shared)</label>
+      <textarea id="day-note-input" class="text-input" rows="3" maxlength="500" placeholder="e.g. first solid food!">${escapeHTML(existing)}</textarea>
+    </div>
+    <button type="button" class="btn btn-primary btn-full" data-action="save-day-note" data-date="${escapeHTML(date)}">Save</button>
+    <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">Cancel</button>
+  </div>`;
+}
+
 function renderHistoryView() {
   const mainView = renderHistoryPage(state);
+  if (state.activeSheet === "day-note") {
+    return `<div class="sheet-overlay-wrapper">
+      ${mainView}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${renderDayNoteSheet()}
+    </div>`;
+  }
   if (state.activeSheet === "log") {
     const { choreId, logId, date } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -403,7 +431,7 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -516,7 +544,7 @@ function renderCalendarView() {
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -601,7 +629,7 @@ function renderScheduleView() {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes, volumeUnit: state.volumeUnit });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -851,7 +879,80 @@ async function loadAllStatsData() {
       }
     })(),
     loadBabyTimeSeries(),
+    loadChoreAnalyticsData(),
+    loadWidgetData(),
   ]);
+}
+
+// loadWidgetData fetches the time-series each user-defined widget (Phase 4)
+// needs to render. Data maps onto the existing time-series endpoint; widgets
+// add no new query surface. Results are keyed by widget id.
+async function loadWidgetData() {
+  const hidden = new Set((state.stats && state.stats.sectionHidden) || []);
+  const widgets = (state.stats?.widgets || [])
+    .filter(w => !hidden.has(`widget:${w.id}`))
+    .slice(0, MAX_ANALYTICS_FETCHES);
+  if (widgets.length === 0) return;
+  state.stats.widgetData = state.stats.widgetData || {};
+  await Promise.allSettled(widgets.map(async (w) => {
+    // last-done reads from latest-per-chore already in state — no fetch.
+    if (w.type === "last-done") { state.stats.widgetData[w.id] = []; return; }
+    if (w.type === "timeseries") {
+      // A chart needs buckets: fetch the time-series at the period's grain.
+      const grain = widgetGrain(w);
+      const results = await Promise.allSettled(
+        (w.choreIds || []).map(async (cid) => {
+          const chore = (state.chores || []).find(c => c.id === cid);
+          const data = await loadChoreTimeSeries(cid, grain);
+          return { chore, ts: data?.timeSeries };
+        })
+      );
+      state.stats.widgetData[w.id] = results
+        .filter(r => r.status === "fulfilled" && r.value.ts)
+        .map(r => r.value);
+      return;
+    }
+    // total / member-split (and any other type) → period-scoped summary so the
+    // widget's period actually bounds the numbers (incl. true all-time).
+    const results = await Promise.allSettled(
+      (w.choreIds || []).map(async (cid) => {
+        const chore = (state.chores || []).find(c => c.id === cid);
+        const data = await loadChoreSummary(cid, w.period || "week");
+        return { chore, summary: data?.summary };
+      })
+    );
+    state.stats.widgetData[w.id] = results
+      .filter(r => r.status === "fulfilled" && r.value.summary)
+      .map(r => r.value);
+  }));
+}
+
+// MAX_ANALYTICS_FETCHES bounds the per-chore/per-widget time-series fan-out on
+// a single Stats open, so a household with many metric/indicator chores can't
+// trigger an unbounded burst of full-year-scan requests.
+const MAX_ANALYTICS_FETCHES = 15;
+
+// loadChoreAnalyticsData fetches daily time-series for chores that have a
+// generalized analytics section (a metric or indicators), powering the
+// per-chore `chore:<id>` stats sections (Phase 3). It skips sections the user
+// has hidden and caps the number of fetches to bound DB load.
+async function loadChoreAnalyticsData() {
+  const hidden = new Set((state.stats && state.stats.sectionHidden) || []);
+  const chores = (state.chores || [])
+    .filter(choreHasAnalytics)
+    .filter(c => !hidden.has(`chore:${c.id}`))
+    .slice(0, MAX_ANALYTICS_FETCHES);
+  if (chores.length === 0) return;
+  state.stats = state.stats || {};
+  state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
+  await Promise.allSettled(chores.map(async (c) => {
+    try {
+      const data = await loadChoreTimeSeries(c.id, "daily");
+      if (data && data.timeSeries) {
+        state.stats.choreTimeSeries[c.id] = data.timeSeries;
+      }
+    } catch {}
+  }));
 }
 
 async function loadBabyTimeSeries() {
@@ -916,6 +1017,40 @@ function apiExclusiveEnd(inclusiveEnd) {
   return d.toISOString().slice(0, 10);
 }
 
+// recentVolumesForChore returns up to three distinct recent amounts (in
+// canonical mL) logged for the chore, most-recent-first, drawn from whatever
+// logs are already in state. Powers the Phase 5.3 recent-value chips.
+function recentVolumesForChore(choreId) {
+  const sources = [
+    ...(state.historyLogs || []),
+    ...(state.todayLogs || []),
+    ...(state.weekLogs || []),
+  ].filter(l => l.choreId === choreId);
+  const latest = state.latestLogs?.[choreId];
+  if (latest) sources.unshift(latest);
+  // Newest-first: sort by completedAt descending.
+  sources.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
+  const seen = new Set();
+  const out = [];
+  for (const l of sources) {
+    const vals = [];
+    if (l.volumeML != null) vals.push(l.volumeML);
+    if (l.indicatorVolumes) {
+      for (const v of Object.values(l.indicatorVolumes)) {
+        if (v != null && v > 0) vals.push(v);
+      }
+    }
+    for (const v of vals) {
+      if (v > 0 && !seen.has(v)) {
+        seen.add(v);
+        out.push(v);
+        if (out.length >= 3) return out;
+      }
+    }
+  }
+  return out;
+}
+
 function countTodayLogs() {
   if (!state.todayLogs) return 0;
   const today = new Date();
@@ -929,7 +1064,15 @@ function countTodayLogs() {
 function renderStatsPageView() {
   try {
     if (state.stats && state.stats.overview) {
-      return renderStatsPage(state);
+      const page = renderStatsPage(state);
+      if (state.activeSheet === "widget-wizard") {
+        return `<div class="sheet-overlay-wrapper">
+          ${page}
+          <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+          ${renderWidgetWizard(state, state.activeSheetData?.widgetDraft)}
+        </div>`;
+      }
+      return page;
     }
     return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Loading...</p></div>';
   } catch {
@@ -943,6 +1086,20 @@ async function loadLatestLogsData() {
     const data = await loadLatestLogs();
     state.latestLogs = data?.latestLogs || {};
   } catch {}
+}
+
+// loadDayNotesData fetches the household's per-day diary notes (Phase 5.4) and
+// indexes them by date for the Activity day headers.
+async function loadDayNotesData() {
+  if (!state.household) return;
+  try {
+    const { data } = await apiFetch("/api/day-notes");
+    const map = {};
+    (data?.notes || []).forEach(n => { if (n.note) map[n.date] = n.note; });
+    state.dayNotes = map;
+  } catch {
+    state.dayNotes = state.dayNotes || {};
+  }
 }
 
 async function loadNotifData() {
@@ -1131,6 +1288,42 @@ function updateTopBar() {
   } else {
     topBar.hidden = true;
     tabs.hidden = true;
+  }
+}
+
+// ─── Duration timer chip (Phase 5.2) ─────────────────────────────────────────
+
+// renderTimerChip creates/updates/removes a fixed-position chip showing the
+// running timer. It lives on document.body (outside the morph root) so DOM
+// morphing never disturbs it. A 1s interval keeps the elapsed time fresh.
+let _timerInterval = null;
+function renderTimerChip() {
+  let chip = document.querySelector("#timer-chip");
+  const t = state.activeTimer;
+  if (!t) {
+    if (chip) chip.remove();
+    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    return;
+  }
+  if (!chip) {
+    chip = document.createElement("button");
+    chip.id = "timer-chip";
+    chip.type = "button";
+    chip.className = "timer-chip";
+    chip.setAttribute("data-action", "stop-timer");
+    document.body.appendChild(chip);
+  }
+  const secs = elapsedSeconds(t);
+  chip.innerHTML = `<span class="timer-chip-icon">${escapeHTML(t.choreIcon || "⏱")}</span>
+    <span class="timer-chip-name">${escapeHTML(t.choreName || "Timer")}</span>
+    <span class="timer-chip-time">${formatElapsed(secs)}</span>
+    <span class="timer-chip-stop">Stop &amp; log</span>`;
+  if (!_timerInterval) {
+    _timerInterval = setInterval(() => {
+      const el = document.querySelector("#timer-chip .timer-chip-time");
+      if (el && state.activeTimer) el.textContent = formatElapsed(elapsedSeconds(state.activeTimer));
+      else if (!state.activeTimer && _timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+    }, 1000);
   }
 }
 
@@ -1366,6 +1559,9 @@ export async function init() {
 
   state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
 
+  // Restore an in-progress duration timer (Phase 5.2) so it survives reloads.
+  state.activeTimer = loadTimer();
+
   // Register the service worker and set up the controllerchange listener early,
   // before any async work, so the "App updated" toast fires reliably on every
   // deploy regardless of session-load timing.
@@ -1478,7 +1674,7 @@ export async function init() {
       }
       if (state.currentRoute === "/activity") {
         if (state.activityView === "history") {
-          loadHistory().then(data => {
+          Promise.all([loadHistory(), loadDayNotesData()]).then(([data]) => {
             state.historyLogs = data?.logs || [];
             state.historyHasMore = data?.hasMore || false;
             state.historyBefore = data?.start || null;
@@ -1902,8 +2098,11 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         const note    = (document.querySelector('#log-note')?.value || "").trim();
         const titleVal = (document.querySelector('#log-title')?.value || "").trim();
-        const indicators = [...document.querySelectorAll('.log-chip--on')]
-          .map(el => el.dataset.label);
+        const indicators = [...document.querySelectorAll('.log-chip--on[data-action="toggle-indicator"]')]
+          .map(el => el.dataset.label)
+          .filter(Boolean);
+        // Subject tag (Phase 5.5): single-select chip, if any.
+        const subject = document.querySelector('.subject-chip.subject-chip--on')?.dataset.subject || null;
         const indicatorVolumes = {};
         document.querySelectorAll('.indicator-volume-select').forEach(select => {
           const indicator = select.dataset.indicator;
@@ -1962,7 +2161,7 @@ export async function init() {
         }
 
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating, titleVal || null)
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating, titleVal || null, subject)
           : (() => {
             const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
             const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
@@ -1975,7 +2174,7 @@ export async function init() {
               const pad = n => String(n).padStart(2, "0");
               followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
             }
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null);
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null, null, subject);
           })();
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
@@ -2269,11 +2468,21 @@ export async function init() {
           }
         });
 
+        // Metric config (Phase 3): type + optional amount unit.
+        const metricType = document.querySelector("#chore-metric-type")?.value || "none";
+        const metricUnit = metricType === "amount"
+          ? ((document.querySelector("#chore-metric-unit")?.value || "").trim() || "mL")
+          : "";
+        // Subjects (Phase 5.5): collect non-empty subject tags.
+        const subjects = [...document.querySelectorAll(".subject-label-input")]
+          .map(el => el.value.trim())
+          .filter(v => v.length > 0);
+
         if (isNew) {
           const followUpEnabled = document.querySelector("[data-action='toggle-followup-enabled']")?.checked ?? true;
           apiFetch("/api/chores", {
             method: "POST",
-            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled }),
+            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects }),
           }).then(async ({ data }) => {
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }
@@ -2293,7 +2502,7 @@ export async function init() {
           const followUpEnabled = followUpEnabledEl?.checked;
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled }),
+            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects }),
           }).then(async () => {
             state.activeSheet = null;
             state.activeSheetData = {};
@@ -2346,6 +2555,174 @@ export async function init() {
             showToast("Restored to default", "success");
           })
           .catch(() => showToast("Failed to restore default", "error"));
+        break;
+      }
+
+      // ── Subject picker (Phase 5.5) ───────────────────────────────────────
+
+      case "pick-subject": {
+        e.preventDefault();
+        const wasOn = actionEl.getAttribute("aria-pressed") === "true";
+        // Single-select: clear all, then set this one unless it was already on.
+        document.querySelectorAll(".subject-chip").forEach(chip => {
+          chip.classList.remove("subject-chip--on");
+          chip.setAttribute("aria-pressed", "false");
+        });
+        if (!wasOn) {
+          actionEl.classList.add("subject-chip--on");
+          actionEl.setAttribute("aria-pressed", "true");
+        }
+        break;
+      }
+
+      // ── Recent-value volume chips (Phase 5.3) ────────────────────────────
+
+      case "set-recent-volume": {
+        e.preventDefault();
+        const ml = parseInt(actionEl.dataset.ml, 10);
+        if (isNaN(ml)) break;
+        // Fill the plain volume input if present.
+        const plain = document.querySelector("#log-volume");
+        if (plain) plain.value = String(ml);
+        // Fill each per-indicator volume select (revealing it and turning its
+        // indicator chip on so the value is actually submitted).
+        document.querySelectorAll(".indicator-row").forEach(row => {
+          const select = row.querySelector(".indicator-volume-select");
+          const chip = row.querySelector("[data-action='toggle-indicator']");
+          if (!select) return;
+          const hasOption = [...select.options].some(o => o.value === String(ml));
+          if (!hasOption) {
+            const opt = document.createElement("option");
+            opt.value = String(ml);
+            opt.textContent = formatVolume(ml, state.volumeUnit);
+            select.appendChild(opt);
+          }
+          select.value = String(ml);
+          select.style.display = "";
+          if (chip && chip.getAttribute("aria-pressed") !== "true") {
+            chip.classList.add("log-chip--on");
+            chip.setAttribute("aria-pressed", "true");
+          }
+        });
+        actionEl.classList.add("volume-recent-chip--active");
+        break;
+      }
+
+      // ── Duration timer (Phase 5.2) ───────────────────────────────────────
+
+      case "start-timer": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        if (isNaN(choreId)) break;
+        state.activeTimer = {
+          choreId,
+          choreName: actionEl.dataset.choreName || "",
+          choreIcon: actionEl.dataset.choreIcon || "⏱",
+          startedAt: Date.now(),
+        };
+        saveTimer(state.activeTimer);
+        state.activeSheet = null;
+        state.activeSheetData = {};
+        render(app);
+        showToast("Timer started", "info");
+        break;
+      }
+
+      case "stop-timer": {
+        e.preventDefault();
+        const t = state.activeTimer;
+        if (!t) break;
+        const durationSeconds = elapsedSeconds(t);
+        const completedAt = new Date().toISOString();
+        // Clear the timer immediately so a double-tap can't double-log.
+        state.activeTimer = null;
+        saveTimer(null);
+        render(app);
+        logChore(t.choreId, "", "", [], null, completedAt, null, state.user?.id ?? null, {}, 0, null, null, null, durationSeconds)
+          .then(async () => {
+            await Promise.all([loadTodayData(), loadLatestLogsData()]);
+            render(app);
+            showToast(`Logged ${formatElapsed(durationSeconds)}`, "success");
+          })
+          .catch(() => showToast("Failed to log timer", "error"));
+        break;
+      }
+
+      // ── Per-day diary notes (Phase 5.4) ──────────────────────────────────
+
+      case "edit-day-note": {
+        e.preventDefault();
+        const date = actionEl.dataset.date;
+        if (!date) break;
+        state.activeSheet = "day-note";
+        state.activeSheetData = { date };
+        render(app);
+        break;
+      }
+
+      case "save-day-note": {
+        e.preventDefault();
+        const date = actionEl.dataset.date;
+        const note = (document.querySelector("#day-note-input")?.value || "").trim();
+        apiFetch(`/api/day-notes/${date}`, {
+          method: "PUT",
+          body: JSON.stringify({ note }),
+        }).then(({ response }) => {
+          if (!response.ok) { showToast("Failed to save note", "error"); return; }
+          state.dayNotes = state.dayNotes || {};
+          if (note) state.dayNotes[date] = note;
+          else delete state.dayNotes[date];
+          state.activeSheet = null;
+          state.activeSheetData = {};
+          render(app);
+        }).catch(() => showToast("Failed to save note", "error"));
+        break;
+      }
+
+      // ── Stats widgets (Phase 4) ──────────────────────────────────────────
+
+      case "widget-add": {
+        e.preventDefault();
+        state.activeSheet = "widget-wizard";
+        state.activeSheetData = { widgetDraft: { type: "total", metric: "count", period: "week" } };
+        render(app);
+        break;
+      }
+
+      case "widget-save": {
+        e.preventDefault();
+        const title = (document.querySelector("#widget-title")?.value || "").trim();
+        const type = document.querySelector("#widget-presentation")?.value || "total";
+        const metric = document.querySelector("#widget-metric")?.value || "count";
+        const period = document.querySelector("#widget-period")?.value || "week";
+        const choreIds = [...document.querySelectorAll("[data-action='widget-draft-chore']:checked")]
+          .map(el => parseInt(el.dataset.choreId, 10))
+          .filter(n => !isNaN(n));
+        if (type !== "total" && choreIds.length === 0) {
+          showToast("Pick at least one chore", "error");
+          break;
+        }
+        const widget = { type, metric, period, choreIds, title: title || "Widget" };
+        const widgets = [...(state.stats?.widgets || []), widget];
+        saveStatsWidgets(state, widgets).then(async (saved) => {
+          if (!saved) { showToast("Failed to add widget", "error"); return; }
+          state.activeSheet = null;
+          state.activeSheetData = {};
+          await loadWidgetData();
+          render(app);
+          showToast("Widget added", "success");
+        });
+        break;
+      }
+
+      case "widget-remove": {
+        e.preventDefault();
+        const id = actionEl.dataset.widgetId;
+        const widgets = (state.stats?.widgets || []).filter(w => w.id !== id);
+        saveStatsWidgets(state, widgets).then((saved) => {
+          if (!saved) { showToast("Failed to remove widget", "error"); return; }
+          render(app);
+        });
         break;
       }
 
@@ -2418,6 +2795,31 @@ export async function init() {
       }
 
       case "remove-indicator-label": {
+        e.preventDefault();
+        const row = actionEl.closest(".indicator-chip-row");
+        if (row) row.remove();
+        break;
+      }
+
+      case "add-subject-label": {
+        e.preventDefault();
+        const list = document.querySelector("#subject-labels-list");
+        if (!list) break;
+        const idx = list.children.length;
+        const row = document.createElement("div");
+        row.className = "indicator-chip-row";
+        row.dataset.subjectIndex = idx;
+        row.innerHTML = `<input type="text" class="subject-label-input input" data-subject-index="${idx}"
+          value="" placeholder="e.g. 👶 Alice" maxlength="30" />
+          <button type="button" class="indicator-remove-btn"
+            data-action="remove-subject-label" data-subject-index="${idx}"
+            aria-label="Remove subject">×</button>`;
+        list.appendChild(row);
+        row.querySelector("input")?.focus();
+        break;
+      }
+
+      case "remove-subject-label": {
         e.preventDefault();
         const row = actionEl.closest(".indicator-chip-row");
         if (row) row.remove();
@@ -2908,6 +3310,11 @@ export async function init() {
           }).catch(() => {}).then(() => render(app));
         }
       }
+    if (actionEl?.dataset?.action === "pick-metric-type") {
+      const sheet = actionEl.closest(".bottom-sheet");
+      const unitRow = sheet?.querySelector(".chore-metric-unit-row");
+      if (unitRow) unitRow.classList.toggle("hidden", actionEl.value !== "amount");
+    }
     if (actionEl?.dataset?.action === "toggle-stats-section") {
       const section = actionEl.dataset.section;
       if (!section) return;
@@ -3614,13 +4021,37 @@ export async function init() {
   // Tell the user it was saved, and replay the queue when we regain
   // connectivity or the app is foregrounded (iOS Safari lacks Background Sync,
   // so foreground replay is the primary mechanism there).
-  window.addEventListener("nabu-log-queued", () => {
+  window.addEventListener("nabu-log-queued", (e) => {
     showToast("Saved — will sync when online", "info");
+    // Synthesize a "pending" row (Phase 2.1) so the queued log is visible in
+    // Activity until it syncs. Reconciled (cleared) on the next successful flush.
+    const body = e?.detail;
+    if (body && typeof body.choreId === "number") {
+      state.pendingLogs = state.pendingLogs || [];
+      state.pendingLogs.unshift({
+        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        choreId: body.choreId,
+        userId: body.userId ?? state.user?.id,
+        note: body.note || "",
+        indicators: body.indicators || [],
+        indicatorVolumes: body.indicatorVolumes || {},
+        volumeML: body.volumeML ?? null,
+        rating: body.rating ?? null,
+        subject: body.subject ?? "",
+        title: body.title ?? "",
+        completedAt: body.completedAt || new Date().toISOString(),
+        _pending: true,
+      });
+      render(document.querySelector("#app"));
+    }
   });
   const flushOfflineQueue = () => {
     if (!state.user) return;
     replayQueue(apiFetch).then(async (synced) => {
       if (synced > 0) {
+        // Reconcile: the queued logs are now on the server, so drop the
+        // synthetic pending rows before refetching.
+        state.pendingLogs = [];
         await Promise.all([loadLatestLogsData(), reloadViewData()]);
         render(document.querySelector("#app"));
         showToast(`Synced ${synced} log${synced === 1 ? "" : "s"}`, "success");
@@ -3701,6 +4132,7 @@ async function reloadViewData() {
   if (state.currentRoute === "/activity") {
     if (state.activityView === "history") {
       try {
+        loadDayNotesData().catch(() => {});
         const prevLogs = [...(state.historyLogs || [])];
         const prevBefore = state.historyBefore;
         const prevHasMore = state.historyHasMore;

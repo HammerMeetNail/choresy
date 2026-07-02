@@ -24,6 +24,37 @@ func TestCSRFMiddlewareRejectsMissingHeader(t *testing.T) {
 	}
 }
 
+func TestCSRFExemptsSnoozeButNotOtherRoutes(t *testing.T) {
+	handler := CSRF("csrf", false)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// The SW-invoked snooze route is exempt: a POST with no CSRF header passes.
+	exempt := httptest.NewRequest(http.MethodPost, "/api/reminders/snooze", nil)
+	recExempt := httptest.NewRecorder()
+	handler.ServeHTTP(recExempt, exempt)
+	if recExempt.Code != http.StatusNoContent {
+		t.Fatalf("snooze without CSRF: status = %d, want %d", recExempt.Code, http.StatusNoContent)
+	}
+
+	// A different state-changing /api/ route with no CSRF header is still rejected.
+	other := httptest.NewRequest(http.MethodPost, "/api/day-notes/2026-07-01", nil)
+	recOther := httptest.NewRecorder()
+	handler.ServeHTTP(recOther, other)
+	if recOther.Code != http.StatusForbidden {
+		t.Fatalf("day-notes without CSRF: status = %d, want %d", recOther.Code, http.StatusForbidden)
+	}
+
+	// The exemption must not extend to a path that merely has the snooze prefix
+	// as a substring elsewhere — it's an exact-match allowlist.
+	sneaky := httptest.NewRequest(http.MethodPost, "/api/reminders/snooze/evil", nil)
+	recSneaky := httptest.NewRecorder()
+	handler.ServeHTTP(recSneaky, sneaky)
+	if recSneaky.Code != http.StatusForbidden {
+		t.Fatalf("snooze-prefixed path without CSRF: status = %d, want %d", recSneaky.Code, http.StatusForbidden)
+	}
+}
+
 func TestRateLimiterBlocksRequestsAboveLimit(t *testing.T) {
 	limiter := NewRateLimiter(1, time.Minute)
 	handler := limiter.Middleware("/api/auth")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

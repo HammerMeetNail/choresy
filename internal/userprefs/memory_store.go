@@ -22,11 +22,12 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 	p, ok := s.data[userID]
 	if !ok {
 		return Preferences{
-			ChoreOrder:          []int64{},
-			HiddenHomeChoreIDs:  []int64{},
-			StatsSectionOrder:   []string{},
-			StatsSectionHidden:  []string{},
-			VolumeUnit:          "ml",
+			ChoreOrder:         []int64{},
+			HiddenHomeChoreIDs: []int64{},
+			StatsSectionOrder:  []string{},
+			StatsSectionHidden: []string{},
+			VolumeUnit:         "ml",
+			StatsWidgets:       []StatsWidget{},
 		}, nil
 	}
 	// Return a copy so callers can't mutate internal state.
@@ -37,6 +38,7 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 		StatsSectionOrder:  make([]string, len(p.StatsSectionOrder)),
 		StatsSectionHidden: make([]string, len(p.StatsSectionHidden)),
 		VolumeUnit:         p.VolumeUnit,
+		StatsWidgets:       make([]StatsWidget, len(p.StatsWidgets)),
 	}
 	if out.VolumeUnit == "" {
 		out.VolumeUnit = "ml"
@@ -45,6 +47,7 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 	copy(out.HiddenHomeChoreIDs, p.HiddenHomeChoreIDs)
 	copy(out.StatsSectionOrder, p.StatsSectionOrder)
 	copy(out.StatsSectionHidden, p.StatsSectionHidden)
+	copy(out.StatsWidgets, p.StatsWidgets)
 	return out, nil
 }
 
@@ -58,6 +61,7 @@ func (s *memoryStore) Upsert(ctx context.Context, userID int64, p Preferences) e
 		StatsSectionOrder:  make([]string, len(p.StatsSectionOrder)),
 		StatsSectionHidden: make([]string, len(p.StatsSectionHidden)),
 		VolumeUnit:         p.VolumeUnit,
+		StatsWidgets:       make([]StatsWidget, len(p.StatsWidgets)),
 	}
 	if cp.VolumeUnit != "oz" {
 		cp.VolumeUnit = "ml"
@@ -66,6 +70,7 @@ func (s *memoryStore) Upsert(ctx context.Context, userID int64, p Preferences) e
 	copy(cp.HiddenHomeChoreIDs, p.HiddenHomeChoreIDs)
 	copy(cp.StatsSectionOrder, p.StatsSectionOrder)
 	copy(cp.StatsSectionHidden, p.StatsSectionHidden)
+	copy(cp.StatsWidgets, p.StatsWidgets)
 	s.data[userID] = cp
 	return nil
 }

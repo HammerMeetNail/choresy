@@ -1,4 +1,8 @@
-const CACHE_NAME = "nabu-static-v1";
+// Bump on any release that changes shipped static assets so the new SW purges
+// the previous cache on activate (the activate handler deletes caches whose key
+// != CACHE_NAME). This prevents serving a stale mix of old runtime-cached,
+// version-hashed JS modules alongside a newly-deployed app.
+const CACHE_NAME = "nabu-static-v2";
 const OFFLINE_URL = "/static/offline.html";
 const STATIC_ASSETS = [
   "/static/css/app.css",
@@ -68,7 +72,10 @@ self.addEventListener("push", (event) => {
     data: notifData,
   };
   if (data.type === "schedule_reminder" && data.choreId) {
-    options.actions = [{ action: "log-now", title: "✓ Log now" }];
+    options.actions = [
+      { action: "log-now", title: "✓ Log now" },
+      { action: "snooze", title: "⏰ Snooze 30m" },
+    ];
   }
   event.waitUntil(
     Promise.all([
@@ -122,6 +129,22 @@ async function clearBadge() {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
+
+  // "Snooze 30m" silently reschedules the reminder without opening the app.
+  // The fetch carries the session cookie automatically (same-origin); the
+  // endpoint is CSRF-exempt and ownership-checked server-side.
+  if (event.action === "snooze" && data.choreId) {
+    event.waitUntil(
+      fetch("/api/reminders/snooze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ choreId: data.choreId, minutes: 30 }),
+      }).catch(() => {})
+    );
+    return;
+  }
+
   // "Log now" deep-links to the pre-filled log sheet for the reminder's chore.
   // A plain body tap (no action) just opens/focuses the app.
   const wantsLog = event.action === "log-now" && data.choreId;

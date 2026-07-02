@@ -16,6 +16,7 @@ export async function loadPreferences(state) {
     state.stats = state.stats || {};
     state.stats.sectionOrder = data?.preferences?.statsSectionOrder ?? [];
     state.stats.sectionHidden = data?.preferences?.statsSectionHidden ?? [];
+    state.stats.widgets = data?.preferences?.statsWidgets ?? [];
   } catch {
     state.choreOrder = [];
     state.hiddenHomeChoreIDs = [];
@@ -24,6 +25,30 @@ export async function loadPreferences(state) {
     state.stats = state.stats || {};
     state.stats.sectionOrder = [];
     state.stats.sectionHidden = [];
+    state.stats.widgets = [];
+  }
+}
+
+/**
+ * Persist the user's custom stats widgets and update state. The server
+ * validates the widget schema and echoes back the normalized list (with
+ * server-assigned ids), which we store.
+ *
+ * @param {object} state     - The global app state (mutated in place).
+ * @param {object[]} widgets - Array of widget definitions.
+ * @returns {Promise<object[]|null>} normalized widgets on success, null on error.
+ */
+export async function saveStatsWidgets(state, widgets) {
+  try {
+    const { data } = await apiFetch("/api/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ statsWidgets: widgets }),
+    });
+    state.stats = state.stats || {};
+    state.stats.widgets = data?.preferences?.statsWidgets ?? widgets;
+    return state.stats.widgets;
+  } catch {
+    return null;
   }
 }
 

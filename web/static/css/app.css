@@ -4363,3 +4363,180 @@ details[open] .chore-stat-chevron {
   }
 }
 
+
+/* ── Chore metric picker (Phase 3) ─────────────────────────────────────────── */
+.chore-metric-unit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chore-metric-unit-row .chore-edit-label {
+  margin: 0;
+  white-space: nowrap;
+}
+.chore-metric-unit-row .input {
+  max-width: 140px;
+}
+
+/* ── Custom stats widgets (Phase 4) ────────────────────────────────────────── */
+.widget-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.widget-card-header h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.widget-remove-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2, #eee);
+  color: var(--text-secondary, #666);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.widget-remove-btn:hover { background: var(--danger-bg, #fde8e8); color: var(--danger, #c0392b); }
+.widget-big-number {
+  font-size: 40px;
+  font-weight: 700;
+  text-align: center;
+  padding: 12px 0;
+  color: var(--text, #19323C);
+}
+.widget-big-unit { font-size: 18px; font-weight: 500; color: var(--text-secondary, #666); }
+.widget-chore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.widget-chore-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* ── Recent-value volume chips (Phase 5.3) ─────────────────────────────────── */
+/* Deliberately NOT class ".log-chip" so positional .log-chip selectors keep
+   pointing at the indicator chips; this reuses the chip look via its own rule. */
+.sheet-recent-volume-row { margin-bottom: 8px; }
+.volume-recent-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.volume-recent-chip--active {
+  outline: 2px solid var(--accent, #2E86AB);
+  outline-offset: 1px;
+}
+
+/* ── Per-day diary notes (Phase 5.4) ───────────────────────────────────────── */
+.hist-day-note {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2, #f0f0f0);
+  color: var(--text, #333);
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.hist-day-note--empty {
+  color: var(--text-secondary, #888);
+  background: transparent;
+  opacity: 0.75;
+}
+.hist-day-note:hover { background: var(--surface-3, #e6e6e6); }
+
+/* ── Duration timer chip (Phase 5.2) ───────────────────────────────────────── */
+.timer-chip {
+  position: fixed;
+  /* Sit just above the bottom tab bar so it never overlaps the top-bar/home
+     header controls (which would obscure the Stop tap target). */
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 20px;
+  background: var(--accent, #2E86AB);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  max-width: calc(100vw - 24px);
+}
+.timer-chip-time { font-variant-numeric: tabular-nums; min-width: 44px; text-align: right; }
+.timer-chip-stop {
+  background: rgba(255, 255, 255, 0.22);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.timer-chip-name { max-width: 32vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-duration-row { margin-top: 8px; }
+
+/* ── Subject tagging (Phase 5.5) ───────────────────────────────────────────── */
+/* Own class (not .log-chip) so positional .log-chip selectors keep pointing at
+   the indicator chips even for chores that define subjects. */
+.hist-subject { font-weight: 600; opacity: 0.85; }
+.subject-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.subject-chip--on {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ── Offline pending log badge (Phase 2.1) ─────────────────────────────────── */
+.hist-pending {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--surface-2, #eee);
+  color: var(--text-secondary, #777);
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.hist-row--pending { opacity: 0.7; cursor: default; }

@@ -30,7 +30,7 @@ func CSRF(cookieName string, secure bool) func(http.Handler) http.Handler {
 					Secure:   secure || r.TLS != nil,
 				})
 			}
-			if isStateChanging(r.Method) && strings.HasPrefix(r.URL.Path, "/api/") {
+			if isStateChanging(r.Method) && strings.HasPrefix(r.URL.Path, "/api/") && !isCSRFExempt(r.URL.Path) {
 				headerToken := r.Header.Get("X-CSRF-Token")
 				if subtle.ConstantTimeCompare([]byte(headerToken), []byte(token)) != 1 {
 					http.Error(w, "csrf token invalid", http.StatusForbidden)
@@ -40,6 +40,15 @@ func CSRF(cookieName string, secure bool) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isCSRFExempt lists endpoints intentionally exempt from double-submit CSRF.
+// These are invoked by the service worker (which has no access to the CSRF
+// cookie/header) and are safe: they require a valid session cookie — which
+// SameSite=Lax already prevents cross-site POSTs from carrying — and only
+// mutate the caller's own data behind an ownership check.
+func isCSRFExempt(path string) bool {
+	return path == "/api/reminders/snooze"
 }
 
 func isStateChanging(method string) bool {

@@ -7,9 +7,15 @@
 > This document has been trimmed to the **outstanding** items only. Phases 1
 > and 2 (visual/correctness fixes and interaction/ergonomics gaps) and Phase 5.1
 > (CSV export) are implemented, tested, and shipped — see git history and
-> `docs/plans/client-parity.md` for what landed. What remains: Phase 3
-> (generalized metrics), Phase 4 (widget builder), Phase 5.2–5.6, and two small
-> carry-over deferrals noted below.
+> `docs/plans/client-parity.md` for what landed.
+>
+> **Update (branch `feat/uiux-mobile-review-phases`):** Phase 3 (generalized
+> metrics), Phase 4 (secure widget builder), Phase 5.2 (duration timer), 5.3
+> (recent-value chips), 5.4 (per-day notes), 5.5 (subject tagging), and the
+> carry-overs 2.1 (offline pending badge) and 2.6 (snooze endpoint + SW action)
+> are now implemented and tested on the PWA/backend (migrations 036–039). Phase
+> 5.6 (iOS Home-Screen widget) is native-only and remains on the iOS roadmap.
+> Each shipped item has iOS-parity rows in `docs/plans/client-parity.md`.
 
 ---
 

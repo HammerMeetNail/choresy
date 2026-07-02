@@ -12,6 +12,20 @@ import (
 	migrationassets "github.com/HammerMeetNail/nabu/migrations"
 )
 
+// expectLock/expectUnlock set expectations for the session advisory lock that
+// Migrate acquires (and releases) around the migration run.
+func expectLock(mock sqlmock.Sqlmock) {
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_lock($1)`)).
+		WithArgs(migrateLockKey).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+}
+
+func expectUnlock(mock sqlmock.Sqlmock) {
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_unlock($1)`)).
+		WithArgs(migrateLockKey).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+}
+
 func TestMigrateAppliesPendingMigrations(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -23,6 +37,7 @@ func TestMigrateAppliesPendingMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Names returned error: %v", err)
 	}
+	expectLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,
@@ -45,6 +60,7 @@ func TestMigrateAppliesPendingMigrations(t *testing.T) {
 		mock.ExpectCommit()
 	}
 
+	expectUnlock(mock)
 	if err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("Migrate returned error: %v", err)
 	}
@@ -65,6 +81,7 @@ func TestMigrateSkipsAppliedMigrations(t *testing.T) {
 		t.Fatalf("Names returned error: %v", err)
 	}
 
+	expectLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,
@@ -80,6 +97,7 @@ func TestMigrateSkipsAppliedMigrations(t *testing.T) {
 			return rows
 		}())
 
+	expectUnlock(mock)
 	if err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("Migrate returned error: %v", err)
 	}
@@ -95,6 +113,7 @@ func TestMigrateReturnsCreateTableErrors(t *testing.T) {
 	}
 	defer db.Close()
 
+	expectLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,
@@ -102,6 +121,7 @@ func TestMigrateReturnsCreateTableErrors(t *testing.T) {
 		)`)).
 		WillReturnError(errors.New("create failed"))
 
+	expectUnlock(mock)
 	err = Migrate(context.Background(), db)
 	if err == nil || err.Error() != "create schema_migrations: create failed" {
 		t.Fatalf("unexpected error: %v", err)
@@ -124,6 +144,7 @@ func TestMigrateReturnsApplyErrors(t *testing.T) {
 		t.Fatalf("ReadFile returned error: %v", err)
 	}
 
+	expectLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,
@@ -137,6 +158,7 @@ func TestMigrateReturnsApplyErrors(t *testing.T) {
 		WillReturnError(errors.New("syntax error"))
 	mock.ExpectRollback()
 
+	expectUnlock(mock)
 	err = Migrate(context.Background(), db)
 	if err == nil || err.Error() != "apply migration "+names[0]+": syntax error" {
 		t.Fatalf("unexpected error: %v", err)
@@ -159,6 +181,7 @@ func TestMigrateReturnsRecordErrors(t *testing.T) {
 		t.Fatalf("ReadFile returned error: %v", err)
 	}
 
+	expectLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			name TEXT PRIMARY KEY,
@@ -175,6 +198,7 @@ func TestMigrateReturnsRecordErrors(t *testing.T) {
 		WillReturnError(errors.New("insert failed"))
 	mock.ExpectRollback()
 
+	expectUnlock(mock)
 	err = Migrate(context.Background(), db)
 	if err == nil || err.Error() != "record migration "+names[0]+": insert failed" {
 		t.Fatalf("unexpected error: %v", err)

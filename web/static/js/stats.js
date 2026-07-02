@@ -55,20 +55,57 @@ const SECTION_LABELS = {
   recap: "Weekly recap",
 };
 
+// Dynamic per-entity section keys (Phase 3/4). A section key is either a
+// static canonical key (above), a per-chore analytics section "chore:<id>",
+// or a user-defined widget "widget:<uuid>".
+export function choreSectionKey(id) { return `chore:${id}`; }
+export function widgetSectionKey(id) { return `widget:${id}`; }
+
+export function isChoreSectionKey(k) { return /^chore:\d+$/.test(k); }
+export function isWidgetSectionKey(k) { return /^widget:[A-Za-z0-9_-]{1,64}$/.test(k); }
+export function isDynamicSectionKey(k) { return isChoreSectionKey(k) || isWidgetSectionKey(k); }
+
+// choreHasAnalytics reports whether a chore is rich enough to warrant its own
+// generalized analytics section: it tracks a metric or has indicator labels.
+// The two dedicated baby chores are excluded because the "baby" section already
+// renders them.
+export function choreHasAnalytics(c) {
+  if (!c) return false;
+  if (c.name === "Feed Baby" || c.name === "Change Baby") return false;
+  const hasMetric = c.metricType && c.metricType !== "none";
+  const hasIndicators = (c.indicatorLabels || []).length > 0;
+  return Boolean(hasMetric || hasIndicators);
+}
+
+// eligibleChoreSectionKeys returns the ordered list of per-chore section keys
+// that should be auto-available on the stats page for the given chores.
+export function eligibleChoreSectionKeys(chores) {
+  return (chores || []).filter(choreHasAnalytics).map(c => choreSectionKey(c.id));
+}
+
 // resolveStatsLayout merges the user's stored order with the canonical
-// registry. Unknown keys are dropped. Canonical keys missing from the
-// user's order (e.g. newly-shipped sections) are appended at the end.
-// Hidden sections are excluded.
-export function resolveStatsLayout(userOrder, userHidden) {
+// registry plus any dynamic keys (per-chore/widget). Static keys not present
+// in the user's order are appended; then eligible dynamic keys (passed in) are
+// appended so newly-configured chores/widgets appear automatically. Hidden
+// sections are excluded. Stored dynamic keys that are no longer eligible are
+// dropped.
+export function resolveStatsLayout(userOrder, userHidden, dynamicKeys = []) {
   const hidden = new Set(userHidden || []);
+  const dynamic = new Set(dynamicKeys || []);
+  const valid = (k) => STATS_SECTIONS.includes(k) || dynamic.has(k);
   const seen = new Set();
   const out = [];
   for (const k of userOrder || []) {
-    if (STATS_SECTIONS.includes(k) && !hidden.has(k) && !seen.has(k)) {
+    if (valid(k) && !hidden.has(k) && !seen.has(k)) {
       out.push(k); seen.add(k);
     }
   }
   for (const k of STATS_SECTIONS) {
+    if (!seen.has(k) && !hidden.has(k)) {
+      out.push(k); seen.add(k);
+    }
+  }
+  for (const k of dynamicKeys || []) {
     if (!seen.has(k) && !hidden.has(k)) {
       out.push(k); seen.add(k);
     }
@@ -135,6 +172,15 @@ export async function loadLeaderboard(period) {
 export async function loadChoreTimeSeries(choreId, period) {
   const { data } = await apiFetch(
     `/api/stats/chores/${choreId}/time-series?period=${period || "daily"}`
+  );
+  return data;
+}
+
+// loadChoreSummary fetches a period-scoped aggregate (count/amount/duration +
+// per-member split) for one chore. Powers period-correct widgets (Phase 4).
+export async function loadChoreSummary(choreId, period) {
+  const { data } = await apiFetch(
+    `/api/stats/chores/${choreId}/summary?period=${period || "week"}`
   );
   return data;
 }
@@ -226,9 +272,16 @@ export function renderStatsPage(state) {
     return "-";
   })();
 
+  const choreTimeSeries = state.stats?.choreTimeSeries || {};
+  const widgets = state.stats?.widgets || [];
+  const dynamicKeys = [
+    ...eligibleChoreSectionKeys(chores),
+    ...widgets.map(w => widgetSectionKey(w.id)),
+  ];
   const order = resolveStatsLayout(
     state.stats?.sectionOrder,
     state.stats?.sectionHidden,
+    dynamicKeys,
   );
 
   const sections = {
@@ -285,7 +338,21 @@ export function renderStatsPage(state) {
   };
 
   const body = order
-    .map(k => sections[k])
+    .map(k => {
+      if (sections[k] != null) return sections[k];
+      if (isChoreSectionKey(k)) {
+        const id = parseInt(k.slice("chore:".length), 10);
+        const chore = choreMap[id];
+        if (!chore) return "";
+        return renderChoreAnalyticsSection(chore, choreTimeSeries[id], members);
+      }
+      if (isWidgetSectionKey(k)) {
+        const w = widgets.find(x => widgetSectionKey(x.id) === k);
+        if (!w) return "";
+        return renderWidgetSection(w, state);
+      }
+      return "";
+    })
     .filter(html => html && html.trim().length > 0)
     .join("\n");
 
@@ -307,13 +374,39 @@ export function renderStatsPage(state) {
   </div>`;
 }
 
+// sectionLabel resolves the display label for a section key, including the
+// dynamic per-chore ("chore:<id>") and widget ("widget:<uuid>") keys.
+export function sectionLabel(k, chores, widgets) {
+  if (SECTION_LABELS[k]) return SECTION_LABELS[k];
+  if (isChoreSectionKey(k)) {
+    const id = parseInt(k.slice("chore:".length), 10);
+    const c = (chores || []).find(x => x.id === id);
+    return c ? `${c.icon} ${c.name}` : "Chore";
+  }
+  if (isWidgetSectionKey(k)) {
+    const w = (widgets || []).find(x => widgetSectionKey(x.id) === k);
+    return w ? (w.title || "Widget") : "Widget";
+  }
+  return k;
+}
+
 function renderCustomizePanel(state) {
+  const chores = state.chores || [];
+  const widgets = state.stats?.widgets || [];
   const hidden = new Set(state.stats?.sectionHidden || []);
-  const ordered = resolveStatsLayout(state.stats?.sectionOrder, []);
-  const allKeys = [...ordered, ...STATS_SECTIONS.filter(k => !ordered.includes(k))];
+  const dynamicKeys = [
+    ...eligibleChoreSectionKeys(chores),
+    ...widgets.map(w => widgetSectionKey(w.id)),
+  ];
+  const ordered = resolveStatsLayout(state.stats?.sectionOrder, [], dynamicKeys);
+  const allKeys = [
+    ...ordered,
+    ...STATS_SECTIONS.filter(k => !ordered.includes(k)),
+    ...dynamicKeys.filter(k => !ordered.includes(k)),
+  ];
   const rows = allKeys.map((k) => {
     const isHidden = hidden.has(k);
-    const label = SECTION_LABELS[k];
+    const label = sectionLabel(k, chores, widgets);
     return `<div class="customize-row" draggable="true" data-section="${k}">
       <span class="drag-handle" aria-hidden="true">⠿</span>
       <label class="customize-check">
@@ -336,6 +429,7 @@ function renderCustomizePanel(state) {
       </button>
     </div>
     ${rows}
+    <button class="btn btn-outline btn-sm mt-2" data-action="widget-add">+ Add widget</button>
   </div>`;
 }
 
@@ -768,6 +862,271 @@ export function renderBabyCareSection(state) {
       ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
     </div>
   </div>`;
+}
+
+// renderChoreAnalyticsSection renders the generalized per-chore analytics
+// (Phase 3): a member split plus a metric-appropriate chart, for any chore that
+// tracks a metric or has indicator labels. Reuses the same chart primitives as
+// the baby section. `ts` is the chore's time-series (daily) or undefined.
+export function renderChoreAnalyticsSection(chore, ts, members) {
+  const memberMap = {};
+  (members || []).forEach(m => { memberMap[m.userId] = m; });
+  const periods = ts?.periods || [];
+  const metricType = chore.metricType || "none";
+
+  let chartHTML;
+  if (metricType === "amount") {
+    const unit = chore.metricUnit || "";
+    chartHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => p.totalML || 0,
+      unitLabel: unit,
+      fmt: v => `${v}${unit ? " " + unit : ""}`,
+    });
+  } else if (metricType === "duration") {
+    chartHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => Math.round((p.totalDuration || 0) / 60),
+      unitLabel: "min",
+      fmt: v => `${v} min`,
+    });
+  } else if ((chore.indicatorLabels || []).length > 0) {
+    chartHTML = renderIndicatorChart(periods, "daily");
+  } else {
+    chartHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => p.count || 0,
+      unitLabel: "count",
+      fmt: v => `${v}`,
+    });
+  }
+
+  return `<div class="card mb-3">
+    <div class="baby-col-header">
+      <h3 class="baby-col-title">${chore.icon} ${escapeHTML(chore.name)}</h3>
+    </div>
+    ${renderMemberList(ts?.byMember, memberMap)}
+    <div class="baby-chart">${chartHTML}</div>
+  </div>`;
+}
+
+// ─── User-defined widgets (Phase 4) ─────────────────────────────────────────
+
+// widgetGrain resolves the time-series grain a widget's data is fetched at,
+// derived from its period so month/all pull enough history: day/week use the
+// daily series (14 days), month/all use the monthly series (6 months).
+export function widgetGrain(widget) {
+  const p = widget?.period;
+  return (p === "month" || p === "all") ? "monthly" : "daily";
+}
+
+// widgetMetricValue extracts the numeric value for a widget's chosen metric
+// from a bucket/summary carrying totalML/totalDuration/count. Amount uses the
+// stored total; duration is in minutes; everything else is the occurrence count.
+function widgetMetricValue(src, metric) {
+  switch (metric) {
+    case "amount": return src.totalML || 0;
+    case "duration": return Math.round((src.totalDuration || 0) / 60);
+    default: return src.count || 0;
+  }
+}
+
+function widgetMetricUnit(widget, src) {
+  switch (widget.metric) {
+    case "amount": return src?.metricUnit || "";
+    case "duration": return "min";
+    default: return "";
+  }
+}
+
+// renderWidgetSection renders one user-defined widget. Data comes from
+// state.stats.widgetData[widget.id] (an array of per-chore time-series loaded by
+// app.js) plus state.latestLogs for the last-done type. The widget title is
+// always escaped — widgets carry no markup.
+export function renderWidgetSection(widget, state) {
+  const title = escapeHTML(widget.title || "Widget");
+  const data = (state.stats?.widgetData && state.stats.widgetData[widget.id]) || [];
+  const chores = state.chores || [];
+  const members = state.members || [];
+  const choreMap = {};
+  chores.forEach(c => { choreMap[c.id] = c; });
+
+  let bodyHTML = "";
+  if (widget.type === "last-done") {
+    const latest = state.latestLogs || {};
+    const rows = (widget.choreIds || []).map(id => {
+      const c = choreMap[id];
+      if (!c) return "";
+      const l = latest[id];
+      const ago = l?.completedAt ? formatTimeAgo(l.completedAt) : "";
+      const agoHTML = ago
+        ? `<span class="last-done-ago">${escapeHTML(ago)}</span>`
+        : `<span class="last-done-ago last-done-ago--never">never</span>`;
+      return `<div class="last-done-row">
+        <span class="last-done-icon" style="--chore-color:${escapeHTML(c.color)}">${escapeHTML(c.icon)}</span>
+        <span class="last-done-name">${escapeHTML(c.name)}</span>
+        ${agoHTML}
+      </div>`;
+    }).join("");
+    bodyHTML = `<div class="last-done-list">${rows || '<p class="text-secondary text-center">No chores</p>'}</div>`;
+  } else if (widget.type === "member-split") {
+    const memberMap = {};
+    members.forEach(m => { memberMap[m.userId] = m; });
+    // Period-scoped byMember comes from the summary endpoint.
+    const merged = {};
+    data.forEach(d => (d.summary?.byMember || []).forEach(e => { merged[e.userId] = (merged[e.userId] || 0) + e.count; }));
+    const byMember = Object.entries(merged)
+      .map(([userId, count]) => ({ userId: parseInt(userId, 10), count }))
+      .sort((a, b) => b.count - a.count);
+    bodyHTML = renderMemberList(byMember, memberMap);
+  } else if (widget.type === "timeseries") {
+    const ts = data[0]?.ts;
+    const periods = ts?.periods || [];
+    const unit = widgetMetricUnit(widget, ts);
+    bodyHTML = renderSimpleMetricChart(periods, {
+      valueFn: p => widgetMetricValue(p, widget.metric),
+      unitLabel: unit || (widget.metric === "count" ? "count" : ""),
+      fmt: v => `${v}${unit ? " " + unit : ""}`,
+    });
+  } else {
+    // "total" (and any other type) → a big-number, period-scoped aggregate from
+    // the summary endpoint (the server bounds it to the widget's period).
+    let total = 0;
+    data.forEach(d => { if (d.summary) total += widgetMetricValue(d.summary, widget.metric); });
+    const unit = data.length ? widgetMetricUnit(widget, data[0].summary) : "";
+    bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
+  }
+
+  return `<div class="card mb-3 widget-card">
+    <div class="widget-card-header">
+      <h3>${title}</h3>
+      <button class="widget-remove-btn" data-action="widget-remove" data-widget-id="${escapeHTML(widget.id)}" aria-label="Remove widget">×</button>
+    </div>
+    ${bodyHTML}
+  </div>`;
+}
+
+// renderWidgetWizard renders the "Add widget" bottom sheet. `draft` holds the
+// in-progress selection.
+export function renderWidgetWizard(state, draft) {
+  const chores = state.chores || [];
+  const d = draft || {};
+  const selChores = new Set(d.choreIds || []);
+  const type = d.type || "total";
+  const metric = d.metric || "count";
+  const period = d.period || "week";
+
+  const presentations = [
+    { value: "total", label: "Big number" },
+    { value: "timeseries", label: "Bar chart" },
+    { value: "member-split", label: "Member split" },
+    { value: "last-done", label: "Last done" },
+  ];
+  const metrics = [
+    { value: "count", label: "Count" },
+    { value: "amount", label: "Amount" },
+    { value: "duration", label: "Duration" },
+  ];
+  const periods = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+    { value: "all", label: "All" },
+  ];
+
+  const choreChecks = chores.map(c =>
+    `<label class="widget-chore-check">
+      <input type="checkbox" data-action="widget-draft-chore" data-chore-id="${c.id}" ${selChores.has(c.id) ? "checked" : ""}>
+      <span>${escapeHTML(c.icon)} ${escapeHTML(c.name)}</span>
+    </label>`
+  ).join("");
+
+  const opt = (arr, sel) => arr.map(o => `<option value="${o.value}"${o.value === sel ? " selected" : ""}>${escapeHTML(o.label)}</option>`).join("");
+
+  return `<div class="bottom-sheet widget-wizard-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Add widget</div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-title">Name</label>
+      <input id="widget-title" type="text" class="input" maxlength="60" placeholder="e.g. Bottles this week" value="${escapeHTML(d.title || "")}" />
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">Chores</label>
+      <div class="widget-chore-list">${choreChecks || '<p class="text-secondary">No chores yet</p>'}</div>
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-presentation">Show as</label>
+      <select id="widget-presentation" class="input" data-action="widget-draft-field" data-field="type">${opt(presentations, type)}</select>
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-metric">Value</label>
+      <select id="widget-metric" class="input" data-action="widget-draft-field" data-field="metric">${opt(metrics, metric)}</select>
+    </div>
+
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="widget-period">Period</label>
+      <select id="widget-period" class="input" data-action="widget-draft-field" data-field="period">${opt(periods, period)}</select>
+    </div>
+
+    <div class="chore-sheet-footer">
+      <div class="chore-sheet-footer-left"></div>
+      <div class="chore-sheet-footer-right">
+        <button type="button" class="btn btn-outline" data-action="close-sheet">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="widget-save">Add</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// renderSimpleMetricChart draws a single-series vertical bar chart over daily
+// period buckets. Used for generic amount/duration/count per-chore analytics.
+function renderSimpleMetricChart(periods, opts) {
+  if (!periods || periods.length === 0) {
+    return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+  }
+  const valueFn = opts.valueFn;
+  const fmt = opts.fmt || (v => String(v));
+  const values = periods.map(valueFn);
+  const maxV = Math.max(1, ...values);
+
+  const leftM = 38, rightM = 6, topM = 8, bottomM = 30, chartH = 120, colW = 22;
+  const totalW = leftM + periods.length * colW + rightM;
+  const totalH = topM + chartH + bottomM;
+
+  const step = niceAxisStep(maxV);
+  const ticks = [];
+  for (let v = 0; v <= maxV + step / 2; v += step) ticks.push(v);
+
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="${escapeHTML(opts.unitLabel || "value")} chart">`;
+  ticks.forEach(t => {
+    const y = topM + chartH - Math.round((t / maxV) * chartH);
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="var(--chart-grid)" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif">${t}</text>`;
+  });
+  if (opts.unitLabel) {
+    svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="var(--chart-label)" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">${escapeHTML(opts.unitLabel)}</text>`;
+  }
+
+  periods.forEach((p, i) => {
+    const v = values[i];
+    const x = leftM + i * colW;
+    const baseY = topM + chartH;
+    const barH = v > 0 ? Math.max(Math.round((v / maxV) * chartH), 0.5) : 0;
+    const label = formatPeriodLabel(p, "daily");
+    svg += `<g data-action="chart-tap" data-bar="${i}" role="button" aria-label="${label}: ${fmt(v)}">`;
+    if (v > 0) {
+      svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="var(--chart-bar, #2E86AB)" opacity="0.85"/>`;
+    }
+    svg += `</g>`;
+    if (i % 2 === 0) {
+      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${formatXLabel(p, "daily")}</text>`;
+    }
+  });
+
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="var(--chart-axis)" stroke-width="1"/>`;
+  svg += `</svg>`;
+  return svg;
 }
 
 function renderBabyPeriodToggle(activePeriod, type) {

@@ -32,6 +32,9 @@ type Preferences struct {
 	// StatsSectionHidden is the set of section keys the user has removed
 	// from the stats page. Hidden sections are not rendered.
 	StatsSectionHidden []string `json:"statsSectionHidden"`
+
+	// StatsWidgets is the user's list of custom stats widgets (Phase 4).
+	StatsWidgets []StatsWidget `json:"statsWidgets"`
 }
 
 // Store is the persistence interface for user preferences.

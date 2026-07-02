@@ -23,7 +23,7 @@ func newSvcWithAudit() (*chore.Service, *audit.Recorder, context.Context) {
 func TestAudit_ChoreCreated(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
 
-	c, err := svc.CreateChore(ctx, 1, 10, "Wash Dishes", "🍽️", "#3B82F6", "cleaning", nil, nil, nil)
+	c, err := svc.CreateChore(ctx, 1, 10, "Wash Dishes", "🍽️", "#3B82F6", "cleaning", nil, nil, nil, "", "", nil)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestAudit_ChoreCreated(t *testing.T) {
 
 func TestAudit_ChoreCreated_EmptyNameNotAudited(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
-	if _, err := svc.CreateChore(ctx, 1, 10, "", "", "", "", nil, nil, nil); err == nil {
+	if _, err := svc.CreateChore(ctx, 1, 10, "", "", "", "", nil, nil, nil, "", "", nil); err == nil {
 		t.Fatal("expected error for empty name")
 	}
 	if ev, ok := rec.Find("chore.created"); ok {
@@ -59,9 +59,9 @@ func TestAudit_ChoreCreated_EmptyNameNotAudited(t *testing.T) {
 
 func TestAudit_ChoreUpdated(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
-	c, _ := svc.CreateChore(ctx, 1, 10, "Old", "🐱", "", "", nil, nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Old", "🐱", "", "", nil, nil, nil, "", "", nil)
 
-	if err := svc.UpdateChore(ctx, c.ID, 1, "New", "", "", "", nil, nil, nil); err != nil {
+	if err := svc.UpdateChore(ctx, c.ID, 1, "New", "", "", "", nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateChore: %v", err)
 	}
 	ev, ok := rec.Find("chore.updated")
@@ -81,10 +81,10 @@ func TestAudit_ChoreUpdated(t *testing.T) {
 
 func TestAudit_ChoreUpdated_CrossHouseholdNotAudited(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
-	c, _ := svc.CreateChore(ctx, 1, 10, "Mine", "", "", "", nil, nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Mine", "", "", "", nil, nil, nil, "", "", nil)
 
 	// Attempt to update chore 1 from household 2 — must fail and not be audited.
-	if err := svc.UpdateChore(ctx, c.ID, 2, "Hacked", "", "", "", nil, nil, nil); err == nil {
+	if err := svc.UpdateChore(ctx, c.ID, 2, "Hacked", "", "", "", nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("expected cross-household update to fail")
 	}
 	if ev, ok := rec.Find("chore.updated"); ok {
@@ -94,7 +94,7 @@ func TestAudit_ChoreUpdated_CrossHouseholdNotAudited(t *testing.T) {
 
 func TestAudit_ChoreDeleted(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
-	c, _ := svc.CreateChore(ctx, 1, 10, "Temp", "", "", "", nil, nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Temp", "", "", "", nil, nil, nil, "", "", nil)
 
 	if err := svc.DeleteChore(ctx, c.ID, 1); err != nil {
 		t.Fatalf("DeleteChore: %v", err)
@@ -135,8 +135,8 @@ func TestAudit_ChoreDeleted_PredefinedNotAudited(t *testing.T) {
 
 func TestAudit_ChoreReordered(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
-	c1, _ := svc.CreateChore(ctx, 1, 10, "A", "", "", "", nil, nil, nil)
-	c2, _ := svc.CreateChore(ctx, 1, 10, "B", "", "", "", nil, nil, nil)
+	c1, _ := svc.CreateChore(ctx, 1, 10, "A", "", "", "", nil, nil, nil, "", "", nil)
+	c2, _ := svc.CreateChore(ctx, 1, 10, "B", "", "", "", nil, nil, nil, "", "", nil)
 
 	if err := svc.ReorderChores(ctx, 1, []int64{c2.ID, c1.ID}); err != nil {
 		t.Fatalf("ReorderChores: %v", err)
@@ -164,7 +164,7 @@ func TestAudit_ChoreDefaultRestored(t *testing.T) {
 			break
 		}
 	}
-	_ = svc.UpdateChore(ctx, targetID, 1, "Modified", "", "", "", nil, nil, nil)
+	_ = svc.UpdateChore(ctx, targetID, 1, "Modified", "", "", "", nil, nil, nil, nil, nil, nil)
 	rec.Reset()
 
 	if err := svc.RestoreDefaultChore(ctx, targetID, 1); err != nil {
@@ -205,7 +205,7 @@ func TestAudit_Chore_NoActorDoesNotPanic(t *testing.T) {
 	rec := audit.NewRecorder()
 	svc.SetAuditLogger(rec)
 	// Plain context (no middleware): should still emit without user_id.
-	if _, err := svc.CreateChore(context.Background(), 1, 10, "X", "", "", "", nil, nil, nil); err != nil {
+	if _, err := svc.CreateChore(context.Background(), 1, 10, "X", "", "", "", nil, nil, nil, "", "", nil); err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
 	ev, ok := rec.Find("chore.created")

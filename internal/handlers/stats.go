@@ -484,6 +484,33 @@ func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"timeSeries": ts})
 }
 
+func (h *StatsHandler) ChoreSummary(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	idStr := r.PathValue("id")
+	choreID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid chore id")
+		return
+	}
+
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "week"
+	}
+
+	summary, err := h.service.GetChoreSummary(r.Context(), *user.HouseholdID, choreID, period, h.userLocation(r))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "chore not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"summary": summary})
+}
+
 func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
 	if user.HouseholdID == nil {
@@ -515,7 +542,14 @@ func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
 		end = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
 	}
 
-	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, start, end, loc)
+	var choreID *int64
+	if cidStr := r.URL.Query().Get("choreId"); cidStr != "" {
+		if cid, err := strconv.ParseInt(cidStr, 10, 64); err == nil {
+			choreID = &cid
+		}
+	}
+
+	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, choreID, start, end, loc)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

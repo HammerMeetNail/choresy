@@ -23,7 +23,7 @@ func TestAudit_LogCreated(t *testing.T) {
 
 	// User 7 logs chore 100 attributed to user 9 (logging on behalf of another
 	// household member). The audit actor must be user 7 (who did it).
-	l, err := svc.LogChore(ctx, 5, 9, 100, nil, "done", nil, nil, nil, nil, nil, nil, nil)
+	l, err := svc.LogChore(ctx, 5, 9, 100, nil, "done", nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -48,10 +48,10 @@ func TestAudit_LogCreated(t *testing.T) {
 func TestAudit_LogUpdated(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
 
-	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "first", nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "first", nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	rec.Reset()
 
-	if err := svc.UpdateLog(ctx, l.ID, 5, nil, "edited", nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := svc.UpdateLog(ctx, l.ID, 5, nil, "edited", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpdateLog: %v", err)
 	}
 	ev, ok := rec.Find("log.updated")
@@ -72,9 +72,9 @@ func TestAudit_LogUpdated(t *testing.T) {
 func TestAudit_LogUpdated_CrossHouseholdNotAudited(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
 
-	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	// Try to update from a different household — must fail and not be audited.
-	if err := svc.UpdateLog(ctx, l.ID, 99, nil, "hacked", nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
+	if err := svc.UpdateLog(ctx, l.ID, 99, nil, "hacked", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
 		t.Fatal("expected cross-household update to fail")
 	}
 	if ev, ok := rec.Find("log.updated"); ok {
@@ -85,7 +85,7 @@ func TestAudit_LogUpdated_CrossHouseholdNotAudited(t *testing.T) {
 func TestAudit_LogDeleted(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
 
-	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	rec.Reset()
 
 	if err := svc.UndoLog(ctx, 5, l.ID); err != nil {
@@ -106,7 +106,7 @@ func TestAudit_LogDeleted(t *testing.T) {
 func TestAudit_LogDeleted_CrossHouseholdNotAudited(t *testing.T) {
 	svc, rec, ctx := newSvcWithAudit()
 
-	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 5, 9, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err := svc.UndoLog(ctx, 99, l.ID); err == nil {
 		t.Fatal("expected cross-household undo to fail")
 	}

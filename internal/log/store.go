@@ -20,6 +20,12 @@ type ChoreLog struct {
 	LogDate          *string        `json:"-"`
 	VolumeML         *int           `json:"volumeML,omitempty"`
 	Rating           *int           `json:"rating,omitempty"`
+	// DurationSeconds records elapsed time for duration-metric chores (Phase 3),
+	// produced e.g. by the duration timer (Phase 5.2). nil = no duration.
+	DurationSeconds *int `json:"durationSeconds,omitempty"`
+	// Subject optionally tags which of the chore's subjects (e.g. which twin)
+	// this log is about (Phase 5.5). nil/empty = untagged.
+	Subject *string `json:"subject,omitempty"`
 	// IdempotencyKey is a client-generated token used to de-duplicate offline
 	// log replays. Never returned to clients. Empty means "no key".
 	IdempotencyKey string `json:"-"`

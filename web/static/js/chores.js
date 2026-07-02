@@ -97,6 +97,9 @@ export function renderChoreSheet(chore, opts = {}) {
   const indicatorDefaults = chore?.indicatorDefaults || [];
   const isPredefined = chore?.isPredefined || false;
   const choreId = chore?.id ?? null;
+  const metricType = chore?.metricType || "none";
+  const metricUnit = chore?.metricUnit || "";
+  const subjects = chore?.subjects || [];
 
   const { scheduleReminderEnabled = false, reminderPref = null, defaultLeadMinutes = 10 } = opts;
   const leadTimes = [5, 10, 15, 30, 60];
@@ -138,6 +141,54 @@ export function renderChoreSheet(chore, opts = {}) {
     `<button type="button" class="emoji-quick" data-action="pick-chore-emoji"
       data-emoji="${escapeHTML(e)}" aria-label="${escapeHTML(e)}">${e}</button>`
   ).join("");
+
+  const metricTypes = [
+    { value: "none", label: "Nothing" },
+    { value: "amount", label: "Amount (mL/oz/g…)" },
+    { value: "rating", label: "Rating (stars)" },
+    { value: "duration", label: "Duration (timer)" },
+  ];
+  const metricOptions = metricTypes.map(m =>
+    `<option value="${m.value}"${m.value === metricType ? " selected" : ""}>${escapeHTML(m.label)}</option>`
+  ).join("");
+  const unitPresets = ["mL", "oz", "g", "min"];
+  const metricSection = `
+    <div class="chore-edit-field">
+      <label class="chore-edit-label" for="chore-metric-type">
+        Track a value
+        <span class="chore-edit-hint">Log a number, rating, or elapsed time with this chore</span>
+      </label>
+      <select id="chore-metric-type" class="input" data-action="pick-metric-type">
+        ${metricOptions}
+      </select>
+      <div class="chore-metric-unit-row mt-2${metricType === "amount" ? "" : " hidden"}">
+        <label class="chore-edit-label" for="chore-metric-unit">Unit</label>
+        <input id="chore-metric-unit" type="text" class="input" list="chore-metric-unit-list"
+          value="${escapeHTML(metricUnit || "mL")}" maxlength="12" placeholder="mL" />
+        <datalist id="chore-metric-unit-list">
+          ${unitPresets.map(u => `<option value="${u}"></option>`).join("")}
+        </datalist>
+      </div>
+    </div>`;
+
+  const subjectChips = subjects.map((s, i) =>
+    `<div class="indicator-chip-row" data-subject-index="${i}">
+      <input type="text" class="subject-label-input input" data-subject-index="${i}"
+        value="${escapeHTML(s)}" placeholder="e.g. 👶 Alice" maxlength="30" />
+      <button type="button" class="indicator-remove-btn"
+        data-action="remove-subject-label" data-subject-index="${i}"
+        aria-label="Remove subject">×</button>
+    </div>`
+  ).join("");
+  const subjectSection = `
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">
+        Subjects
+        <span class="chore-edit-hint">Optional tags to distinguish who a log is about (e.g. twins)</span>
+      </label>
+      <div id="subject-labels-list">${subjectChips}</div>
+      <button type="button" class="btn-add-indicator" data-action="add-subject-label">+ Add subject</button>
+    </div>`;
 
   const defaultsSet = new Set(indicatorDefaults);
   const indicatorChips = indicatorLabels.map((label, i) =>
@@ -195,6 +246,10 @@ export function renderChoreSheet(chore, opts = {}) {
       <div id="indicator-labels-list">${indicatorChips}</div>
       <button type="button" class="btn-add-indicator" data-action="add-indicator-label">+ Add label</button>
     </div>
+
+    ${metricSection}
+
+    ${subjectSection}
 
     <div class="chore-edit-field">
       <label class="chore-edit-label">
