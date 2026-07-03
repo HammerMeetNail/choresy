@@ -758,6 +758,25 @@ describe("Stats: user-defined widgets (Phase 4)", () => {
     assert.ok(!ld.includes('data-action="widget-period"'));
   });
 
+  it("per-chore analytics card shows a day/week/month toggle reflecting the active period", async () => {
+    const { renderChoreAnalyticsSection, choreAnalyticsGrain } = await import("../stats.js");
+    const chore = { id: 7, name: "Laundry", icon: "🧺", metricType: "none" };
+    const ts = { periods: [], byMember: [] };
+    const html = renderChoreAnalyticsSection(chore, ts, [], "week");
+    assert.ok(html.includes('data-action="chore-analytics-period"'));
+    assert.ok(html.includes('data-chore-id="7"'));
+    assert.ok(html.includes('data-period="day"'));
+    assert.ok(html.includes('data-period="month"'));
+    // The active button reflects the passed period; default is "day".
+    assert.match(html, /period-toggle--active[^>]*data-period="week"|data-period="week"[^>]*period-toggle--active/);
+    const dflt = renderChoreAnalyticsSection(chore, ts, [], undefined);
+    assert.match(dflt, /period-toggle--active[^>]*data-period="day"|data-period="day"[^>]*period-toggle--active/);
+    // Period maps to the endpoint's bucket grain.
+    assert.equal(choreAnalyticsGrain("day"), "daily");
+    assert.equal(choreAnalyticsGrain("week"), "weekly");
+    assert.equal(choreAnalyticsGrain("month"), "monthly");
+  });
+
   it("widget wizard lists chores and presentation options", async () => {
     const { renderWidgetWizard } = await import("../stats.js");
     const state = baseState();

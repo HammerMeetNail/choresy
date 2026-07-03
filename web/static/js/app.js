@@ -22,7 +22,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets } from "./preferences.js";
@@ -945,9 +945,10 @@ async function loadChoreAnalyticsData() {
   if (chores.length === 0) return;
   state.stats = state.stats || {};
   state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
+  const periodById = state.stats.choreAnalyticsPeriod || {};
   await Promise.allSettled(chores.map(async (c) => {
     try {
-      const data = await loadChoreTimeSeries(c.id, "daily");
+      const data = await loadChoreTimeSeries(c.id, choreAnalyticsGrain(periodById[c.id] || "day"));
       if (data && data.timeSeries) {
         state.stats.choreTimeSeries[c.id] = data.timeSeries;
       }
@@ -2955,6 +2956,25 @@ export async function init() {
             actionEl.checked = !isChecked;
           });
           break;
+      }
+
+      case "chore-analytics-period": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const period = actionEl.dataset.period;
+        if (!choreId || !period) break;
+        state.stats = state.stats || {};
+        state.stats.choreAnalyticsPeriod = state.stats.choreAnalyticsPeriod || {};
+        if (state.stats.choreAnalyticsPeriod[choreId] === period) break;
+        state.stats.choreAnalyticsPeriod[choreId] = period;
+        state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
+        // Refetch the chore's time-series at the selected grain, then re-render.
+        loadChoreTimeSeries(choreId, choreAnalyticsGrain(period)).then(data => {
+          if (data && data.timeSeries) {
+            state.stats.choreTimeSeries[choreId] = data.timeSeries;
+          }
+        }).catch(() => {}).then(() => render(app));
+        break;
       }
 
       case "stats-baby-period": {
