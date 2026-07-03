@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 @MainActor
 final class DataLoader: ObservableObject {
@@ -11,6 +12,8 @@ final class DataLoader: ObservableObject {
     private(set) var schedules: ScheduleDataLoader!
     private(set) var notifs: NotificationDataLoader!
     private(set) var preferences: PreferencesDataLoader!
+
+    private var pathMonitor: NWPathMonitor?
 
     init() {
         self.api = APIClient(baseURL: URL(string: "http://localhost:8080")!)
@@ -26,6 +29,36 @@ final class DataLoader: ObservableObject {
         self.schedules = ScheduleDataLoader(api: api, state: state)
         self.notifs = NotificationDataLoader(api: api, state: state)
         self.preferences = PreferencesDataLoader(api: api, state: state)
+        startConnectivityMonitor()
+    }
+
+    /// Replays the offline log queue when connectivity returns (the
+    /// foreground path is `foregroundRefresh`). Mirrors the PWA's
+    /// `online` listener.
+    private func startConnectivityMonitor() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor in
+                await self?.flushOfflineQueue()
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "nabu.offline-queue.path-monitor"))
+        pathMonitor = monitor
+    }
+
+    /// Replays queued offline logs; on success clears the synthetic pending
+    /// rows and refetches so Activity shows the server's copies.
+    func flushOfflineQueue() async {
+        guard state.user != nil else { return }
+        let logStore = LogStore(api: api)
+        let synced = await logStore.replayOfflineQueue()
+        if synced > 0 {
+            state.pendingLogs = []
+            await logs.loadTodayData()
+            await logs.loadLatestLogsData()
+        }
     }
 
     // Called after initial auth (login/register/onboarding)
@@ -52,11 +85,15 @@ final class DataLoader: ObservableObject {
             group.addTask { await self.notifs.loadNotifData() }
         }
         NSLog("[Nabu] DataLoader.reloadAfterAuth complete. schedules=\(state.schedules.count) chores=\(state.chores.count)")
+
+        // Replay anything left in the offline queue from a previous session.
+        await flushOfflineQueue()
     }
 
     // Called on foreground / visibility change
     func foregroundRefresh() async {
         guard state.user != nil else { return }
+        await flushOfflineQueue()
         await notifs.loadNotifData()
         if state.household != nil {
             await household.loadHouseholdData()

@@ -53,15 +53,29 @@ and `hour` derived from the selected value (see `ios/AGENTS.md` invariants).
 
 ## Progress log
 
-- [ ] Volume unit conversion util + settings toggle + LogSheet/history/stats adoption
-- [ ] "Track a value" metric picker in ChoreEditView
-- [ ] Duration timer (start/chip/stop→`durationSeconds`, relaunch-safe)
-- [ ] Subject picker + history tag
-- [ ] Recent-value chips
-- [ ] Offline log queue + idempotency + pending badge
-- [ ] Log sheet on native detents, invariants re-tested
-- [ ] Matrix rows updated (Built + test refs)
+- [x] Volume unit conversion util + settings toggle + LogSheet/history/stats adoption
+- [x] "Track a value" metric picker in ChoreEditView
+- [x] Duration timer (start/chip/stop→`durationSeconds`, relaunch-safe)
+- [x] Subject picker + history tag
+- [x] Recent-value chips
+- [x] Offline log queue + idempotency + pending badge
+- [x] Log sheet on native detents, invariants re-tested
+- [x] Matrix rows updated (Built + test refs)
 
 ### Notes
 
-*(append dated entries here)*
+- **2026-07-03** — Phase complete in one pass. New `Support/` units:
+  `VolumeUnits.swift` (port of `utils.js` conversion, round-trip tested),
+  `DurationTimer.swift` (UserDefaults-persisted start time),
+  `RecentVolumes.swift`, `OfflineLogQueue.swift` (file-backed queue,
+  PWA replay contract: 2xx/permanent-4xx removes, 5xx/429 keeps, network
+  failure stops the pass; `PendingLog` synthesized for the Activity badge).
+  `LogStore.createLog` now returns `CreateLogOutcome` (`.created`/`.queued`)
+  and always sends an `idempotencyKey`; replay fires on foreground,
+  connectivity restore (`NWPathMonitor`), and post-auth. LogSheet rebuilt on
+  `.presentationDetents([.medium, .large])` with subject chips, recent-value
+  chips, star rating, title field, and timer start; `TimerChipView` overlays
+  all tabs via ContentView. `UpdateLogRequest.subject` is double-optional so
+  deselecting a tag sends explicit JSON `null` (wire-format tested). Unit
+  tests: `VolumeUnitsTests`, `DurationTimerTests`, `RecentVolumesTests`,
+  `OfflineLogQueueTests`, plus new `RequestEncodingTests` wire-format cases.

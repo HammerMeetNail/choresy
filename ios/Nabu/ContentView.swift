@@ -36,6 +36,12 @@ struct ContentView: View {
                 let args = ProcessInfo.processInfo.arguments
                 dataLoader.configure(api: environment.apiClient, state: state)
                 auth.configure(api: environment.apiClient)
+                // Restore a duration timer that survived relaunch, and show
+                // any still-queued offline logs as pending rows.
+                state.activeTimer = DurationTimer.load()
+                state.pendingLogs = OfflineLogQueue.shared.items.map {
+                    PendingLog(body: $0.body, fallbackUserId: nil)
+                }
                 if TestHooks.seedHomeForUITest {
                     hasCheckedSession = true
                     hasLoadedData = true
@@ -106,6 +112,14 @@ struct MainTabView: View {
     @ObservedObject var dataLoader: DataLoader
 
     var body: some View {
+        tabs
+            .overlay(alignment: .top) {
+                TimerChipView()
+                    .padding(.top, 4)
+            }
+    }
+
+    private var tabs: some View {
         TabView(selection: $state.currentTab) {
             StatsView()
                 .tabItem {

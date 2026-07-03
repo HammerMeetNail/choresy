@@ -131,11 +131,29 @@ struct HistoryListView: View {
         return logs.isEmpty ? "No completed chores yet." : nil
     }
 
+    /// Offline-queued logs synthesized as rows (negative ids) so they show
+    /// inline with a "pending" badge until the queue replays (PWA Phase 2.1).
+    private func pendingRows() -> [ChoreLog] {
+        state.pendingLogs.enumerated().map { index, pending in
+            ChoreLog(
+                id: -(index + 1), householdId: 0,
+                userId: pending.userId ?? state.user?.id ?? 0,
+                choreId: pending.choreId, completedAt: pending.completedAt,
+                note: pending.note, indicators: pending.indicators,
+                slotHour: nil, createdAt: pending.completedAt,
+                volumeML: pending.volumeML,
+                indicatorVolumes: pending.indicatorVolumes.isEmpty ? nil : pending.indicatorVolumes,
+                title: pending.title, rating: pending.rating,
+                subject: pending.subject
+            )
+        }
+    }
+
     private func groupedLogs() -> [(key: String, rows: [ChoreLog])] {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         var groups: [String: [ChoreLog]] = [:]
-        for log in filterLogsByChores(logs, selected: choreFilter) {
+        for log in filterLogsByChores(pendingRows() + logs, selected: choreFilter) {
             let dateStr = f.string(from: log.completedAt)
             groups[dateStr, default: []].append(log)
         }
@@ -145,7 +163,11 @@ struct HistoryListView: View {
     @ViewBuilder
     private func historyRow(_ log: ChoreLog) -> some View {
         let chore = state.chores.first(where: { $0.id == log.choreId })
+        let isPending = log.id < 0
+        let unit = state.volumeUnit
         Button {
+            // Pending rows aren't yet on the server, so they're not tappable.
+            guard !isPending else { return }
             selectedChore = chore
             selectedLog = log
         } label: {
@@ -157,30 +179,56 @@ struct HistoryListView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(chore?.name ?? "Chore")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
+                    HStack(spacing: 6) {
+                        Text(chore?.name ?? "Chore")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                        if isPending {
+                            Label("pending", systemImage: "clock")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(DesignColors.surfaceSecondary)
+                                .clipShape(Capsule())
+                                .accessibilityLabel("Pending sync")
+                        }
+                    }
+                    if let title = log.title, !title.isEmpty {
+                        Text(title)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    }
                     HStack(spacing: 4) {
                         Text(fmtTime(log.completedAt))
                         if let userId = state.members.first(where: { $0.userId == log.userId }) {
                             Text("· \(userId.displayName.isEmpty ? userId.email : userId.displayName)")
+                        }
+                        if let subject = log.subject, !subject.isEmpty {
+                            Text("· \(subject)")
+                                .fontWeight(.medium)
                         }
                         if !log.note.isEmpty {
                             Text("· \(log.note)")
                         }
                         let volKeys = Set(log.indicatorVolumes?.keys.map { $0 } ?? [])
                         if volKeys.isEmpty, let volume = log.volumeML {
-                            Text("· \(volume)mL")
+                            Text("· \(VolumeUnits.formatVolume(volume, unit: unit))")
                         }
-                        let volParts = (log.indicatorVolumes ?? [:]).map { k, v in
-                            "\(k.split(separator: " ").first ?? "") \(v)mL"
+                        let volParts = (log.indicatorVolumes ?? [:]).sorted(by: { $0.key < $1.key }).map { k, v in
+                            "\(k.split(separator: " ").first ?? "") \(VolumeUnits.formatVolume(v, unit: unit))"
                         }
                         if !volParts.isEmpty {
                             Text("· \(volParts.joined(separator: " "))")
                         }
                         ForEach(log.indicators.filter { !volKeys.contains($0) }, id: \.self) { indicator in
                             Text(indicator.split(separator: " ").first.map(String.init) ?? "")
+                        }
+                        if let rating = log.rating, rating > 0 {
+                            Text("· ★\(String(format: "%.1f", Double(rating) / 10))")
                         }
                     }
                     .font(.caption)
@@ -189,6 +237,7 @@ struct HistoryListView: View {
                 }
             }
             .padding(.vertical, 4)
+            .opacity(isPending ? 0.7 : 1)
             .overlay(
                 Rectangle()
                     .fill(Color(hex: chore?.color ?? "#6B7280") ?? .gray)

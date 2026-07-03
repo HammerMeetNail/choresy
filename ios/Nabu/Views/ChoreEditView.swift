@@ -26,6 +26,9 @@ struct ChoreEditView: View {
     @State private var indicatorLabels: [String] = []
     @State private var indicatorDefaults: Set<String> = []
     @State private var followUpEnabled: Bool = true
+    @State private var metricType: String = "none"
+    @State private var metricUnit: String = "mL"
+    @State private var subjects: [String] = []
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var reminderEnabled: Bool = false
@@ -64,6 +67,63 @@ struct ChoreEditView: View {
 
                 Section("Color") {
                     colorGrid
+                }
+
+                Section {
+                    Picker("Track a value", selection: $metricType) {
+                        Text("Nothing").tag("none")
+                        Text("Amount (mL/oz/g…)").tag("amount")
+                        Text("Rating (stars)").tag("rating")
+                        Text("Duration (timer)").tag("duration")
+                    }
+                    .pickerStyle(.menu)
+
+                    if metricType == "amount" {
+                        HStack {
+                            Text("Unit")
+                            TextField("mL", text: $metricUnit)
+                                .multilineTextAlignment(.trailing)
+                                .onChange(of: metricUnit) { _, newValue in
+                                    if newValue.count > 12 {
+                                        metricUnit = String(newValue.prefix(12))
+                                    }
+                                }
+                        }
+                    }
+                } header: {
+                    Text("Track a value")
+                } footer: {
+                    Text("Log a number, rating, or elapsed time with this chore")
+                }
+
+                Section {
+                    ForEach(subjects.indices, id: \.self) { idx in
+                        HStack {
+                            TextField("e.g. 👶 Alice", text: Binding(
+                                get: { subjects[idx] },
+                                set: { subjects[idx] = String($0.prefix(30)) }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+
+                            Button {
+                                subjects.remove(at: idx)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .accessibilityLabel("Remove subject")
+                        }
+                    }
+
+                    Button {
+                        subjects.append("")
+                    } label: {
+                        Label("Add subject", systemImage: "plus")
+                    }
+                } header: {
+                    Text("Subjects")
+                } footer: {
+                    Text("Optional tags to distinguish who a log is about (e.g. twins)")
                 }
 
                 Section {
@@ -179,6 +239,9 @@ struct ChoreEditView: View {
                 indicatorLabels = chore.indicatorLabels
                 indicatorDefaults = Set(chore.indicatorDefaults)
                 followUpEnabled = chore.followUpEnabled
+                metricType = chore.metricType
+                metricUnit = chore.metricUnit.isEmpty ? "mL" : chore.metricUnit
+                subjects = chore.subjects
                 loadReminderPref()
             }
         }
@@ -264,6 +327,10 @@ struct ChoreEditView: View {
         guard !trimmedName.isEmpty else { return }
         let cleanedLabels = indicatorLabels.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let cleanedDefaults = cleanedLabels.filter { indicatorDefaults.contains($0) }
+        // Amount metrics carry a display unit (default mL); other types send "".
+        let trimmedUnit = metricUnit.trimmingCharacters(in: .whitespaces)
+        let finalMetricUnit = metricType == "amount" ? (trimmedUnit.isEmpty ? "mL" : trimmedUnit) : ""
+        let cleanedSubjects = subjects.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 
         isSaving = true
         do {
@@ -271,7 +338,9 @@ struct ChoreEditView: View {
                 let response = try await choreStore.createChore(
                     name: trimmedName, icon: icon, color: color,
                     indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
-                    followUpEnabled: followUpEnabled
+                    followUpEnabled: followUpEnabled,
+                    metricType: metricType, metricUnit: finalMetricUnit,
+                    subjects: cleanedSubjects
                 )
                 state.chores.append(response.chore)
                 var newOrder = state.choreOrder
@@ -282,22 +351,17 @@ struct ChoreEditView: View {
                 }
                 state.choreOrder = newOrder
             } else if let choreId = chore?.id {
-                let _ = try await choreStore.updateChore(
+                let response = try await choreStore.updateChore(
                     choreId: choreId, name: trimmedName, icon: icon, color: color,
                     indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
-                    followUpEnabled: followUpEnabled
+                    followUpEnabled: followUpEnabled,
+                    metricType: metricType, metricUnit: finalMetricUnit,
+                    subjects: cleanedSubjects
                 )
                 if let idx = state.chores.firstIndex(where: { $0.id == choreId }) {
-                    state.chores[idx] = Chore(
-                        id: state.chores[idx].id, householdId: state.chores[idx].householdId,
-                        name: trimmedName, icon: icon, color: color,
-                        sortOrder: state.chores[idx].sortOrder, category: state.chores[idx].category,
-                        isPredefined: state.chores[idx].isPredefined,
-                        predefinedKey: state.chores[idx].predefinedKey,
-                        createdBy: state.chores[idx].createdBy, createdAt: state.chores[idx].createdAt,
-                        indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
-                        hasVolumeML: state.chores[idx].hasVolumeML
-                    )
+                    // The server keeps hasVolumeML/hasRating in sync with
+                    // metricType — trust its copy over a local reconstruction.
+                    state.chores[idx] = response.chore
                 }
             }
             dismiss()

@@ -26,6 +26,13 @@ final class AppState: ObservableObject {
     @Published var jiggleMode = false
     @Published var historyChoreFilter: [Int]?
     @Published var historyFilterOpen = false
+    /// Per-user volume display/input unit ("ml" | "oz"); volumes stay mL in the API.
+    @Published var volumeUnit: String = "ml"
+    /// The single running duration timer (persisted via `DurationTimer`).
+    @Published var activeTimer: ActiveTimer?
+    /// Offline-queued logs shown inline in Activity with a "pending" badge
+    /// until the queue replays.
+    @Published var pendingLogs: [PendingLog] = []
 
     func reset() {
         user = nil
@@ -52,6 +59,10 @@ final class AppState: ObservableObject {
         jiggleMode = false
         historyChoreFilter = nil
         historyFilterOpen = false
+        volumeUnit = "ml"
+        // activeTimer intentionally survives reset: the PWA's localStorage
+        // timer is device-scoped, not session-scoped.
+        pendingLogs = []
     }
 
     func resetHouseholdScoped() {

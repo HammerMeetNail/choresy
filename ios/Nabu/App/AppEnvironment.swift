@@ -33,6 +33,9 @@ final class AppEnvironment: ObservableObject {
 
         if args.contains("-resetState") {
             state.reset()
+            state.activeTimer = nil
+            DurationTimer.save(nil)
+            OfflineLogQueue.shared.removeAll()
         }
 
         if TestHooks.seedHomeForUITest {

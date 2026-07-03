@@ -38,6 +38,25 @@ struct StatsView: View {
     @State private var selectedFeedBar: Int? = nil
     @State private var selectedChangeBar: Int? = nil
 
+    // Volumes are stored canonically in mL; charts render them in the user's
+    // preferred unit (PWA stats.js fmtVol/volAxisTick/volUnitLabel).
+    private var volumeUnit: String { state.volumeUnit == "oz" ? "oz" : "ml" }
+
+    private func fmtVol(_ ml: Int) -> String {
+        VolumeUnits.formatVolume(ml, unit: volumeUnit)
+    }
+
+    /// Bare numeric axis tick in the active unit (no suffix).
+    private func volAxisTick(_ ml: Int) -> String {
+        if volumeUnit == "oz" {
+            let oz = (VolumeUnits.mlToOz(ml) * 10).rounded() / 10
+            return oz == oz.rounded() ? String(Int(oz)) : String(format: "%.1f", oz)
+        }
+        return String(ml)
+    }
+
+    private var volUnitLabel: String { volumeUnit == "oz" ? "oz" : "mL" }
+
     private var currentTopChores: [TopChore] {
         let uid = topChoresUserId ?? 0
         let key = "\(uid)-\(topChoresPeriod)"
@@ -334,13 +353,13 @@ struct StatsView: View {
                     ZStack(alignment: .topLeading) {
                         ForEach(ticks, id: \.self) { t in
                             let y = chartH - CGFloat(t) / CGFloat(maxML) * chartH
-                            Text("\(t)")
+                            Text(volAxisTick(t))
                                 .font(.system(size: 9))
                                 .foregroundColor(Color(hexUnsafe: "9ca3af"))
                                 .frame(width: leftMargin - 4, alignment: .trailing)
                                 .position(x: (leftMargin - 4) / 2, y: y + 4)
                         }
-                        Text("mL")
+                        Text(volUnitLabel)
                             .font(.system(size: 9))
                             .foregroundColor(Color(hexUnsafe: "9ca3af"))
                             .rotationEffect(.degrees(-90))
@@ -436,15 +455,15 @@ struct StatsView: View {
     private func volumeBarLabel(_ p: TimeSeriesPeriod, stackKeys: [String]) -> String {
         let parts = stackKeys.compactMap { key -> String? in
             guard let ml = p.volumeByIndicator?[key], ml > 0 else { return nil }
-            return "\(key) \(ml)mL"
+            return "\(key) \(fmtVol(ml))"
         }
         let attrML = stackKeys.reduce(0) { $0 + (p.volumeByIndicator?[$1] ?? 0) }
         let unlabeledML = (p.totalML ?? 0) - attrML
         if unlabeledML > 0 {
-            return (parts + ["unlabeled \(unlabeledML)mL"]).joined(separator: ", ")
+            return (parts + ["unlabeled \(fmtVol(unlabeledML))"]).joined(separator: ", ")
         }
         if parts.isEmpty, let total = p.totalML, total > 0 {
-            return "\(total)mL"
+            return fmtVol(total)
         }
         return parts.joined(separator: ", ")
     }
@@ -503,7 +522,7 @@ struct StatsView: View {
                     HStack(spacing: 2) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color(hexUnsafe: "d1d5db").opacity(0.6)).frame(width: 8, height: 8)
-                        Text("unlabeled \(unlabeledTotalML)mL").font(.system(size: 8)).foregroundColor(Color(hexUnsafe: "9ca3af"))
+                        Text("unlabeled \(fmtVol(unlabeledTotalML))").font(.system(size: 8)).foregroundColor(Color(hexUnsafe: "9ca3af"))
                     }
                 }
                 Spacer()
@@ -1255,7 +1274,7 @@ struct StatsView: View {
                     }
                     .frame(height: 42)
                     if let avg = cs.avgVolume {
-                        Text("Avg \(Int(avg.rounded()))mL / feed")
+                        Text("Avg \(fmtVol(Int(avg.rounded()))) / feed")
                             .font(.caption2).foregroundColor(DesignColors.textSecondary)
                     }
                 }

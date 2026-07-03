@@ -139,6 +139,27 @@ struct HouseholdView: View {
                     }
                 }
 
+                // Volume unit (display-only preference; volumes stay mL in the API)
+                Section {
+                    Picker("Volume unit", selection: Binding(
+                        get: { state.volumeUnit == "oz" ? "oz" : "ml" },
+                        set: { newUnit in
+                            Task {
+                                await PreferencesDataLoader(api: environment.apiClient, state: state)
+                                    .setVolumeUnit(newUnit)
+                            }
+                        }
+                    )) {
+                        Text("mL").tag("ml")
+                        Text("oz").tag("oz")
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Volume unit")
+                } footer: {
+                    Text("How feed amounts are shown and entered. Stored values don't change.")
+                }
+
                 // Notifications
                 Section {
                     NavigationLink {

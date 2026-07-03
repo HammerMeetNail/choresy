@@ -56,6 +56,8 @@ struct QuickLogSheet: View {
                 }
             }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private var visibleChores: [Chore] {
@@ -77,13 +79,20 @@ struct QuickLogSheet: View {
 
         Task {
             do {
-                let response = try await logStore.createLog(
+                let outcome = try await logStore.createLog(
                     choreId: chore.id, note: note, date: dateStr,
                     indicators: [], slotHour: hour,
                     completedAt: completedAt
                 )
-                state.todayLogs.insert(response.log, at: 0)
-                state.latestLogs[chore.id] = response.log
+                switch outcome {
+                case .created(let response):
+                    state.todayLogs.insert(response.log, at: 0)
+                    state.latestLogs[chore.id] = response.log
+                case .queued(let pending):
+                    var row = pending
+                    if row.userId == nil { row.userId = state.user?.id }
+                    state.pendingLogs.insert(row, at: 0)
+                }
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

@@ -307,6 +307,39 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertNil(dict["rating"])
     }
 
+    func testCreateLogRequestTitleWireFormat() throws {
+        let req = CreateLogRequest(
+            choreId: 1, note: nil, indicators: nil, date: nil, hour: 10,
+            completedAt: "2026-07-03T10:00:00Z", volumeML: nil, userId: nil,
+            indicatorVolumes: nil, followUpMinutes: nil, followUpTime: nil,
+            title: "Great nap"
+        )
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertEqual(dict["title"] as? String, "Great nap")
+    }
+
+    func testUpdateLogRequestSubjectExplicitNullClearsTag() throws {
+        // Deselecting the subject chip on edit sends an explicit JSON null
+        // (clears the tag) — the PWA's updateLog behavior. An omitted subject
+        // means "no change".
+        let req = UpdateLogRequest(
+            note: nil, indicators: nil, volumeML: nil, userId: nil,
+            completedAt: nil, hour: nil, date: nil, indicatorVolumes: nil,
+            subject: .some(nil)
+        )
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertTrue(dict["subject"] is NSNull, "explicit null expected, got \(String(describing: dict["subject"]))")
+
+        let omitted = UpdateLogRequest(
+            note: nil, indicators: nil, volumeML: nil, userId: nil,
+            completedAt: nil, hour: nil, date: nil, indicatorVolumes: nil
+        )
+        let omittedDict = json(try apiEncoder.encode(omitted))
+        XCTAssertNil(omittedDict["subject"])
+    }
+
     func testUpdateLogRequestNewFieldsWireFormat() throws {
         let req = UpdateLogRequest(
             note: nil,
