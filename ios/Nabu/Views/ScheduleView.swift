@@ -7,6 +7,7 @@ struct ScheduleView: View {
     @State private var editingSchedule: ChoreSchedule?
     @State private var showingPickChore = false
     @State private var loadError: String? = nil
+    @State private var deletingSchedule: ChoreSchedule?
 
     private let scheduleStore: ScheduleStore
 
@@ -31,11 +32,38 @@ struct ScheduleView: View {
                             Section(group.key) {
                                 ForEach(group.rows, id: \.schedule.id) { item in
                                     scheduleRow(item: item)
+                                        .swipeActions(edge: .trailing) {
+                                            Button(role: .destructive) {
+                                                deletingSchedule = item.schedule
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                            Button {
+                                                editingSchedule = item.schedule
+                                            } label: {
+                                                Label("Edit", systemImage: "pencil")
+                                            }
+                                        }
+                                        .contextMenu {
+                                            Button {
+                                                editingSchedule = item.schedule
+                                            } label: {
+                                                Label("Edit", systemImage: "pencil")
+                                            }
+                                            Button(role: .destructive) {
+                                                deletingSchedule = item.schedule
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
                                 }
                             }
                         }
                     }
                     .listStyle(.plain)
+                    .refreshable {
+                        await loadSchedules()
+                    }
                 }
             }
             .navigationTitle("Schedule")
@@ -53,6 +81,22 @@ struct ScheduleView: View {
             }
             .sheet(item: $editingSchedule) { sch in
                 EditScheduleSheet(state: state, schedule: sch, scheduleStore: scheduleStore)
+            }
+            .confirmationDialog(
+                "Delete this schedule?",
+                isPresented: Binding(
+                    get: { deletingSchedule != nil },
+                    set: { if !$0 { deletingSchedule = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let sch = deletingSchedule {
+                        Task { await deleteSchedule(sch) }
+                    }
+                    deletingSchedule = nil
+                }
+                Button("Cancel", role: .cancel) { deletingSchedule = nil }
             }
         }
         .task {
@@ -189,6 +233,13 @@ struct ScheduleView: View {
                                           followUpMinutes: nil, followUpTime: nil)
             let resp: LogResponse = try await environment.apiClient.post("/api/logs", body: body)
             state.todayLogs.insert(resp.log, at: 0)
+        } catch {}
+    }
+
+    private func deleteSchedule(_ schedule: ChoreSchedule) async {
+        do {
+            let _: StatusResponse = try await scheduleStore.deleteSchedule(id: schedule.id)
+            state.schedules.removeAll { $0.id == schedule.id }
         } catch {}
     }
 

@@ -16,8 +16,40 @@ final class ActivityStore {
         try await api.get("/api/logs/history", query: [URLQueryItem(name: "before", value: before)])
     }
 
+    /// Flat text search across note/title — spans all history, capped and
+    /// newest-first on the server, bypassing the windowed pagination.
+    func searchHistory(query: String) async throws -> HistoryResponse {
+        try await api.get("/api/logs/history", query: [URLQueryItem(name: "q", value: query)])
+    }
+
     func loadToday(date: String) async throws -> TodayResponse {
         try await api.get("/api/logs/today", query: [URLQueryItem(name: "date", value: date)])
+    }
+
+    // MARK: - Day notes
+
+    /// Loads the household's day notes (server default: last 90 days) as a
+    /// date → note map, mirroring the PWA's `state.dayNotes`.
+    func loadDayNotes() async throws -> [String: String] {
+        let data: DayNotesResponse = try await api.get("/api/day-notes")
+        return Dictionary(uniqueKeysWithValues: data.notes.map { ($0.date, $0.note) })
+    }
+
+    /// Sets (or clears, when empty) the shared note for a date.
+    func setDayNote(date: String, note: String) async throws -> DayNote {
+        let data: DayNoteResponse = try await api.put("/api/day-notes/\(date)", body: SetDayNoteRequest(note: note))
+        return data.note
+    }
+
+    // MARK: - CSV export
+
+    /// Downloads the full CSV log export (the PWA's Settings link uses the
+    /// same all-history window) and writes it to a shareable temp file.
+    func exportLogsCSV() async throws -> URL {
+        let data = try await api.getData("/api/logs/export", query: [URLQueryItem(name: "start", value: "2000-01-01")])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("nabu-logs.csv")
+        try data.write(to: url, options: .atomic)
+        return url
     }
 }
 

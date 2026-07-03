@@ -628,8 +628,10 @@ struct TodayResponse: Codable {
 struct HistoryResponse: Codable {
     let logs: [ChoreLog]
     let hasMore: Bool
-    let start: String
-    let end: String
+    // Absent on text-search responses (`?q=`), which are a flat, capped,
+    // newest-first list rather than a paginated window.
+    let start: String?
+    let end: String?
 }
 
 struct LatestLogsResponse: Codable {

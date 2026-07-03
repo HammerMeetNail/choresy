@@ -5,6 +5,7 @@ struct HomeView: View {
     @EnvironmentObject var environment: AppEnvironment
     @State private var showingQuickLog = false
     @State private var selectedChore: Chore?   // non-nil drives the log sheet
+    @State private var editingChore: Chore?    // non-nil drives the chore editor
     @State private var editingLog: ChoreLog?
     @State private var undoLogId: Int?
     @State private var undoChoreName: String?
@@ -51,6 +52,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showingQuickLog) {
                 QuickLogSheet(state: state, logStore: logStore)
+            }
+            .sheet(item: $editingChore) { chore in
+                ChoreEditView(chore: chore, choreStore: ChoreStore(api: environment.apiClient))
             }
             // Use .sheet(item:) so the chore is always non-nil in the closure — no
             // if-let race between selectedChore being set and the closure being evaluated.
@@ -120,14 +124,39 @@ struct HomeView: View {
                         editingLog = nil
                         selectedChore = chore
                     },
-                    onLongPress: { chore in
-                        editingLog = nil
-                        selectedChore = chore
+                    onEdit: { chore in
+                        editingChore = chore
+                    },
+                    onHide: { chore in
+                        hideFromHome(chore)
                     }
                 )
                 .padding()
             }
+            .refreshable {
+                await refreshHome()
+            }
         )
+    }
+
+    /// Hides a chore's tile from Home (context-menu action), persisting the
+    /// same preference the Manage list's eye toggle writes.
+    private func hideFromHome(_ chore: Chore) {
+        var hidden = Set(state.hiddenHomeChoreIDs)
+        hidden.insert(chore.id)
+        let newHidden = Array(hidden)
+        state.hiddenHomeChoreIDs = newHidden
+        let patch = PatchUserPreferencesRequest(hiddenHomeChoreIds: newHidden)
+        Task {
+            let _: UserPreferencesResponse? = try? await environment.apiClient.patch("/api/preferences", body: patch)
+        }
+    }
+
+    /// Pull-to-refresh: refetch the tiles' data (today's logs + latest-per-chore).
+    private func refreshHome() async {
+        let loader = LogDataLoader(api: environment.apiClient, state: state)
+        await loader.loadTodayData()
+        await loader.loadLatestLogsData()
     }
 
     private func sortedChores() -> [Chore] {

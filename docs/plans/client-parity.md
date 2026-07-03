@@ -38,7 +38,7 @@ Living matrix tracking feature parity between the PWA and native iOS app.
 | 5 | Home and log sheet | Built |
 | 6 | Chores management | Built |
 | 7 | Activity history (day/week calendar removed to match PWA) | Built |
-| 8 | Schedule | Built (schedules/for-date overlay pending) |
+| 8 | Schedule | Built (for-date overlay Deferred — no live PWA surface) |
 | 9 | Household, members, and multi-household | Built |
 | 10 | Notifications (in-app) | Built |
 | 10b | APNs native push | **Not built** — see notes |
@@ -61,11 +61,11 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Login/register | `auth.js`, `validation.spec.js` | `Auth/LoginView.swift`, `Auth/RegisterView.swift`, `AuthTests.swift` | `/api/auth/login`, `/api/auth/register` | Built | |
 | Magic link | `auth.js`, `magic-link.spec.js` | `Auth/MagicLinkView.swift`, `AuthTests.swift` | `/api/auth/magic-link/request`, `/api/auth/magic-link/consume` | Built | |
 | Password reset | `auth.js`, `settings-auth.spec.js` | `Auth/`, `APIContractTests.swift` | `/api/auth/password/forgot`, `/api/auth/password/reset`, `/api/auth/password` | Built | iOS has no dedicated PasswordResetView; reset is wired via the auth store |
-| Email verification | `auth.js`, `magic-link.spec.js` | — | `/api/auth/email/verify`, `/api/auth/email/verification/resend` | **iOS pending** | Endpoints not referenced anywhere in iOS source |
+| Email verification | `auth.js`, `magic-link.spec.js` | `Views/HouseholdView.swift` (resend only) | `/api/auth/email/verify`, `/api/auth/email/verification/resend` | **iOS pending** | P3 added a "Resend verification email" button in iOS Settings for unverified accounts; the verify-link flow itself (universal links) lands in P5 |
 | Google OAuth | `auth.js` | `Auth/GoogleOAuthCoordinator.swift` | `/api/auth/google/login`, `/api/auth/google/callback` | Built | |
 | Logout | `auth.js` | `Auth/AuthStore.swift`, `AuthTests.swift` | `/api/auth/logout` | Built | |
 | Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift`, `StateTests.swift` | `/api/me` | Built | iOS adds a CSRF pre-flight `GET /api/me` |
-| Account deletion | — | — | `DELETE /api/me` | **Not built** | **App Store blocker (guideline 5.1.1(v))**: backend shipped (`internal/account`, typed `{"confirm":"DELETE"}` body, sole-owner transfer guard, tested) but neither client has UI yet — lands in P3 (`ios-v1/p3-activity-schedule-settings.md`) |
+| Account deletion | `app.js` (Settings), `settings-delete-account.spec.js` | `Views/HouseholdView.swift` (`DeleteAccountSheet`) | `DELETE /api/me` | Built | Both clients: destructive entry in Settings → typed "DELETE" confirmation → logged out on success; a sole owner of a multi-member household gets the server's 409 transfer-ownership guidance verbatim. P3 also fixed a latent backend bug (Postgres `DeleteUser` referenced `household_invites`; table is `invites`) |
 | Sign in with Apple | — | — | `POST /api/auth/apple/native` | **Not built** | **App Store blocker (guideline 4.8)**: backend shipped (`internal/auth/apple.go` — JWKS-verified identity token, nonce-required, email-linked upsert; `APPLE_CLIENT_IDS` config) but no client buttons yet — iOS `SignInWithAppleButton` lands in P5 (`ios-v1/p5-push-auth.md`), PWA web-SIWA or N/A exception before P7 |
 | **Household & Members** |
 | Household CRUD | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | Built | |
@@ -94,7 +94,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Recurrence logic | `calendar.js`, `schedule.spec.js` | `API/ScheduleStore.swift`, `ScheduleTests.swift` | N/A (client-side) | Built | |
 | Pick chore sheet | `schedule.js`, `schedule-tab.spec.js` | `Views/ScheduleView.swift` | `/api/chores`, `/api/schedules` | Built | |
 | Schedule edit (sparse PATCH) | `schedule.js`, `schedule-tab.spec.js` | `API/ScheduleStore.swift`, `RequestEncodingTests.swift` | `/api/schedules/{id}` | Built | |
-| Schedule for-date overlay | `schedule.js` | — | `/api/schedules/for-date` | **iOS pending** | Endpoint not referenced in iOS |
+| Schedule for-date overlay | `schedule.js` (`loadSchedulesForDate`, unrouted) | — | `/api/schedules/for-date` | Deferred | P3 verified the PWA's only consumer is `loadTodayWithSchedules` in the unrouted calendar-era code (removed from the Activity tab, PWA `e9a9527`) — there is no live surface to mirror. Revisit if the PWA re-routes it |
 | **Chores Management** |
 | Chore CRUD | `chores.js`, `chores-management.spec.js` | `Views/ManageChoresView.swift`, `Views/ChoreEditView.swift`, `ChoreTests.swift` | `/api/chores`, `/api/chores/{id}` | Built | |
 | Seed defaults | `chores.js`, `chores-management.spec.js` | `Views/ManageChoresView.swift` | `/api/chores/defaults`, `/api/chores/seed-defaults` | Built | |
@@ -133,7 +133,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | **Baby Care** |
 | Feed Baby volume | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift`, `Views/StatsView.swift` | `/api/logs` | Built | |
 | Offline log queue + idempotency | `today.js`, `offline-queue.js`, `offline-log-queue.spec.js` | `Support/OfflineLogQueue.swift`, `API/LogStore.swift`, `OfflineLogQueueTests.swift` | `/api/logs` (`idempotencyKey`) | Built | Every log POST carries a client `idempotencyKey`; network failures enqueue to a file-backed queue replayed on foreground and connectivity restore (`NWPathMonitor`). Same replay contract as the PWA: 2xx/permanent-4xx removes, 5xx/429 keeps, network failure stops the pass |
-| CSV log export | `app.js` (Settings), `export-logs.spec.js` | — | `/api/logs/export?start&end&choreId` | **iOS pending** | New endpoint streams household logs as CSV (household-scoped, chore ownership-checked). iOS should add a share/export action |
+| CSV log export | `app.js` (Settings), `export-logs.spec.js` | `API/ActivityStore.swift`, `Views/HouseholdView.swift` | `/api/logs/export?start&end&choreId` | Built | iOS Settings button downloads the same all-history window as the PWA's link (`start=2000-01-01`) and hands `nabu-logs.csv` to the native share sheet |
 | Change Baby indicators | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | Subject tagging (multi-baby) | `chores.js`, `schedule.js`, `today.js`, `app.js` | `Views/LogSheet.swift`, `Views/ActivityView.swift`, `Views/ChoreEditView.swift`, `RequestEncodingTests.swift` | `/api/chores` (`subjects`), `/api/logs` (`subject`) | Built | Chore editor edits `subjects`; log sheet shows a single-select subject chip row; history rows show the tag. Deselecting on edit sends explicit JSON `null` to clear (wire-format tested) |
 | Volume prefill | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
@@ -143,10 +143,10 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Hidden home chores | `preferences.js`, `home-remove-chore.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
 | Timezone | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
 | Volume unit (mL/oz) | `preferences.js`, `utils.js`, `settings-volume-unit.spec.js` | `Support/VolumeUnits.swift`, `Views/HouseholdView.swift`, `VolumeUnitsTests.swift` | `/api/preferences` (`volumeUnit`) | Built | Settings toggle synced via `/api/preferences`; volumes stored canonically in mL, converted at display/input in LogSheet, history rows, and stats charts. Round-trip unit-tested against the JS cases |
-| History text search | `today.js`, `activity-search.spec.js` | — | `/api/logs/history?q=` | **iOS pending** | New `q` param returns a flat, capped, newest-first list matching note/title. iOS activity view should add a search field |
-| Per-day diary notes | `today.js`, `app.js` | — | `/api/day-notes`, `/api/day-notes/{date}` | **iOS pending** | Phase 5.4: one shared free-text note per household+date (migration 038, `day_notes`), rendered on Activity day headers with an edit sheet; 500-char cap, empty clears. iOS should add a matching per-day note affordance |
-| History infinite scroll + day counts | `today.js`, `app.js`, `history-pagination.spec.js` | — | `/api/logs/history` (reuse) | N/A | Client UX: PWA adds an IntersectionObserver sentinel (auto-load on scroll; Load-more button kept as fallback) and per-day count chips. iOS can mirror with its native list |
-| Pull-to-refresh | `app.js` (`setupPullToRefresh`) | — | N/A (client UX) | N/A | PWA overscroll gesture refetches the active tab. iOS gets pull-to-refresh natively via SwiftUI `.refreshable` |
+| History text search | `today.js`, `activity-search.spec.js` | `Views/ActivityView.swift`, `API/ActivityStore.swift` | `/api/logs/history?q=` | Built | Native `.searchable` field, debounced; flat capped newest-first results. Search mode hides the chore filter, pending rows, and pagination (PWA semantics) |
+| Per-day diary notes | `today.js`, `app.js`, `day-notes.spec.js` | `Views/ActivityView.swift` (`DayNoteSheet`) | `/api/day-notes`, `/api/day-notes/{date}` | Built | Note affordance on Activity day headers; edit sheet with 500-char cap; empty clears |
+| History infinite scroll + day counts | `today.js`, `app.js`, `history-pagination.spec.js` | `Views/ActivityView.swift` | `/api/logs/history` (reuse) | Built | iOS auto-loads the next page when the tail row appears (`onAppear` sentinel; Load-more button kept as fallback) and shows per-day count chips in headers |
+| Pull-to-refresh | `app.js` (`setupPullToRefresh`) | all tab views (`.refreshable`) | N/A (client UX) | Built | Native `.refreshable` on every tab's scroll view (Stats, Activity, Home, Schedule, Settings, Notifications), refetching that tab's data |
 | PWA manifest shortcuts | `manifest.webmanifest`, `app.js` (`?quicklog=`) | — | N/A (PWA install surface) | N/A | PWA-only: home-screen icon long-press shortcuts (Log feed / Log chore / Activity). iOS uses native Home-Screen quick actions if/when built |
 | **Navigation** |
 | Five tabs | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | |

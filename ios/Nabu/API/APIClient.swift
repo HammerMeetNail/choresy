@@ -39,8 +39,32 @@ struct APIClient {
         try await mutate("PATCH", path, body)
     }
 
+    func put<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws -> Response {
+        try await mutate("PUT", path, body)
+    }
+
     func delete<Response: Decodable>(_ path: String) async throws -> Response {
         try await mutateWithoutBody("DELETE", path)
+    }
+
+    /// DELETE with a JSON body — used by `DELETE /api/me`, whose typed
+    /// confirmation body guards against accidental account destruction.
+    func delete<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws -> Response {
+        try await mutate("DELETE", path, body)
+    }
+
+    /// GET returning the raw response body (e.g. the CSV log export).
+    func getData(_ path: String, query: [URLQueryItem] = []) async throws -> Data {
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        if !query.isEmpty {
+            components?.queryItems = query
+        }
+        guard let url = components?.url else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        return try await performData(request)
     }
 
     func postEmpty<Response: Decodable>(_ path: String) async throws -> Response {
@@ -102,5 +126,31 @@ struct APIClient {
         } catch {
             throw APIError.decodingError(error)
         }
+    }
+
+    /// Like `perform`, but returns the raw body instead of decoding JSON.
+    private func performData(_ request: URLRequest) async throws -> Data {
+        let data: Data
+        let response: URLResponse
+
+        if let handler = mockHandler, let mock = handler(request) {
+            (data, response) = mock
+        } else {
+            (data, response) = try await session.data(for: request)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if httpResponse.statusCode == 429 {
+            throw APIError.rateLimited(retryAfter: httpResponse.value(forHTTPHeaderField: "Retry-After"))
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if let apiErr = try? apiDecoder.decode(APIErrorResponse.self, from: data) {
+                throw APIError.serverError(statusCode: httpResponse.statusCode, message: apiErr.error)
+            }
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+        return data
     }
 }

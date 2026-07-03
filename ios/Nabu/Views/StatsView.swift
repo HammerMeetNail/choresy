@@ -135,6 +135,9 @@ struct StatsView: View {
                         }
                         .padding()
                     }
+                    .refreshable {
+                        await loadStats(showSpinner: false)
+                    }
                 }
             }
             .navigationTitle("Stats")
@@ -1304,8 +1307,10 @@ struct StatsView: View {
 
     // MARK: - Load
 
-    private func loadStats() async {
-        isLoading = true
+    /// `showSpinner: false` refreshes in place (pull-to-refresh) without
+    /// flipping the whole tab back to the loading state.
+    private func loadStats(showSpinner: Bool = true) async {
+        if showSpinner { isLoading = true }
 
         let ovTask: Task<OverviewResponse?, Never> = Task {
             try? await environment.apiClient.get("/api/stats/overview")

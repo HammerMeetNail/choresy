@@ -242,7 +242,7 @@ func (s *PostgresStore) DeleteUser(ctx context.Context, userID int64) error {
 	// user's invites are revoked. Everything else (sessions, tokens,
 	// preferences, notifications, push subscriptions, memberships, chore logs)
 	// is removed by ON DELETE CASCADE.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM household_invites WHERE created_by = $1`, userID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM invites WHERE created_by = $1`, userID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE chores SET created_by = NULL WHERE created_by = $1`, userID); err != nil {

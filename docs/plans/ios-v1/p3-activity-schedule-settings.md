@@ -54,16 +54,43 @@ look.
 
 ## Progress log
 
-- [ ] History search (`?q=`)
-- [ ] Per-day diary notes (read + edit sheet)
-- [ ] Infinite scroll + day count chips
-- [ ] `.refreshable` on all tabs
-- [ ] Schedule for-date overlay
-- [ ] CSV export + share sheet
-- [ ] Account deletion UI (iOS **and** PWA) → flip matrix row from Not built
-- [ ] List affordances (swipe/context menus/dialogs)
-- [ ] Matrix rows updated
+- [x] History search (`?q=`)
+- [x] Per-day diary notes (read + edit sheet)
+- [x] Infinite scroll + day count chips
+- [x] `.refreshable` on all tabs
+- [x] Schedule for-date overlay → **Deferred** (see note)
+- [x] CSV export + share sheet
+- [x] Account deletion UI (iOS **and** PWA) → flip matrix row from Not built
+- [x] List affordances (swipe/context menus/dialogs)
+- [x] Matrix rows updated
 
 ### Notes
 
-*(append dated entries here)*
+- **2026-07-03** — Phase complete in one pass.
+  - **Activity**: `.searchable` with 300 ms debounce → `?q=`; search mode
+    hides the chore filter, pending rows, and pagination (PWA semantics).
+    Day headers gained count chips and the shared note affordance
+    (`DayNoteSheet`, 500-char cap, empty clears). Tail-row `onAppear`
+    sentinel auto-loads the next page with the Load-more button kept as
+    fallback. Swipe-to-delete on log rows behind a confirmation dialog.
+  - **For-date overlay: Deferred, not built.** Per the doc's instruction to
+    verify PWA call sites first: `loadSchedulesForDate`'s only consumer is
+    `loadTodayWithSchedules` in the unrouted calendar-era code, so there is
+    no live surface to mirror. Matrix row moved to Deferred.
+  - **Settings**: CSV export downloads the same all-history window as the
+    PWA's link and hands `nabu-logs.csv` to a native share sheet.
+    `DeleteAccountSheet` (typed DELETE, destructive styling, 409
+    transfer-ownership guidance surfaced verbatim); resend-verification
+    button for unverified accounts. PWA got the equivalent delete-account
+    flow in its Account card (`settings-delete-account.spec.js`, 3 tests).
+  - **Backend fix**: Postgres `DeleteUser` referenced `household_invites`
+    but the table is `invites` — deletion 500ed against a real database.
+    The in-memory-store unit tests couldn't catch it; the new e2e spec runs
+    the flow against Postgres and now passes.
+  - **List affordances**: home tiles got a context menu (Log… / Edit chore /
+    Hide from Home — replacing the old long-press-duplicates-tap gesture);
+    schedule rows got swipe Edit/Delete + context menu with confirmation
+    dialog; notification rows got leading swipe mark-read. `.refreshable`
+    on all five tabs plus Notifications.
+  - Suites green: Go (20 pkgs), JS (76), iOS NabuTests (217), targeted e2e
+    (search/notes/export/settings-auth/delete-account: 14 tests).

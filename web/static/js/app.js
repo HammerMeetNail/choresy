@@ -653,6 +653,28 @@ function renderSettingsView() {
     </div>
   ` : "";
 
+  // In-app account deletion (App Store guideline 5.1.1(v) requires it on the
+  // native client; the PWA gets the same flow for parity). The server demands
+  // the typed confirmation {"confirm":"DELETE"}; a sole owner of a
+  // multi-member household gets a 409 telling them to transfer first.
+  const deleteAccountSection = state.deleteAccountOpen ? `
+    <div class="mt-3" data-testid="delete-account-confirm">
+      <p class="text-secondary">Deleting your account permanently removes your data.
+        Households where you are the only member are deleted with all their logs.
+        If you are the only owner of a household with other members, transfer
+        ownership (or remove the other members) first. This cannot be undone.</p>
+      <div class="form-group mt-2">
+        <label class="form-label" for="delete-account-input">Type DELETE to confirm</label>
+        <input id="delete-account-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="DELETE">
+      </div>
+      <div id="delete-account-error" class="form-error hidden"></div>
+      <button type="button" class="btn btn-danger btn-sm mt-2" data-action="confirm-delete-account">Permanently delete my account</button>
+      <button type="button" class="btn btn-ghost btn-sm mt-2" data-action="cancel-delete-account">Cancel</button>
+    </div>
+  ` : `
+    <button type="button" class="btn btn-danger btn-sm mt-3" data-action="open-delete-account">Delete account…</button>
+  `;
+
   const passwordSection = `
     <div class="card mt-3">
       <h3>Change Password</h3>
@@ -786,9 +808,9 @@ function renderSettingsView() {
     </div>` : "";
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
 }
 
 async function loadStatsData() {
@@ -1801,6 +1823,55 @@ export async function init() {
         e.preventDefault();
         doResendVerification();
         break;
+      case "open-delete-account":
+        e.preventDefault();
+        state.deleteAccountOpen = true;
+        render(app);
+        break;
+      case "cancel-delete-account":
+        e.preventDefault();
+        state.deleteAccountOpen = false;
+        render(app);
+        break;
+      case "confirm-delete-account": {
+        e.preventDefault();
+        const input = document.querySelector("#delete-account-input");
+        const errEl = document.querySelector("#delete-account-error");
+        const typed = (input?.value || "").trim();
+        if (typed !== "DELETE") {
+          if (errEl) {
+            errEl.textContent = 'Type DELETE (in capitals) to confirm.';
+            errEl.classList.remove("hidden");
+          }
+          break;
+        }
+        apiFetch("/api/me", {
+          method: "DELETE",
+          body: JSON.stringify({ confirm: "DELETE" }),
+        }).then(({ response, data }) => {
+          if (!response.ok) {
+            // 409 = sole owner of a multi-member household; surface the
+            // server's transfer-ownership guidance verbatim.
+            if (errEl) {
+              errEl.textContent = data?.error || "Account deletion failed.";
+              errEl.classList.remove("hidden");
+            }
+            return;
+          }
+          // Account (and session) are gone — land on the login screen.
+          state.deleteAccountOpen = false;
+          resetAuthedState(state);
+          state.currentRoute = "/";
+          render(app);
+          showToast("Your account has been deleted.", "success");
+        }).catch(() => {
+          if (errEl) {
+            errEl.textContent = "Account deletion failed. Please try again.";
+            errEl.classList.remove("hidden");
+          }
+        });
+        break;
+      }
       case "open-notifications": {
         e.preventDefault();
         clearAppBadge();

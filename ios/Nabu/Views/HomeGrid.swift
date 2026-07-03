@@ -5,7 +5,8 @@ struct HomeGrid: View {
     let latestLogs: [Int: ChoreLog]
     let isJiggling: Bool
     let onTap: (Chore) -> Void
-    let onLongPress: (Chore) -> Void
+    let onEdit: (Chore) -> Void
+    let onHide: (Chore) -> Void
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -21,7 +22,8 @@ struct HomeGrid: View {
                     latestLog: latestLogs[chore.id],
                     isJiggling: isJiggling,
                     onTap: { onTap(chore) },
-                    onLongPress: { onLongPress(chore) }
+                    onEdit: { onEdit(chore) },
+                    onHide: { onHide(chore) }
                 )
             }
         }
@@ -33,7 +35,8 @@ struct HomeChoreCell: View {
     let latestLog: ChoreLog?
     let isJiggling: Bool
     let onTap: () -> Void
-    let onLongPress: () -> Void
+    let onEdit: () -> Void
+    let onHide: () -> Void
 
     @State private var isPressing = false
 
@@ -85,12 +88,25 @@ struct HomeChoreCell: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(chore.name), \(latestLog != nil ? "done \(formatTimeAgo(latestLog!.completedAt))" : "never done")")
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    onLongPress()
-                }
-        )
+        // Long-press context menu replaces the old long-press-to-log gesture:
+        // native counterpart of the PWA's tile actions (§2.1 mapping).
+        .contextMenu {
+            Button {
+                onTap()
+            } label: {
+                Label("Log…", systemImage: "checkmark.circle")
+            }
+            Button {
+                onEdit()
+            } label: {
+                Label("Edit chore", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                onHide()
+            } label: {
+                Label("Hide from Home", systemImage: "eye.slash")
+            }
+        }
         .onLongPressGesture(minimumDuration: 0.1, perform: {}) {
             isPressing = $0
         }

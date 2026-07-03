@@ -28,6 +28,9 @@ struct NotificationsView: View {
                         }
                     }
                     .listStyle(.plain)
+                    .refreshable {
+                        await loadNotifications()
+                    }
                 }
             }
             .navigationTitle("Notifications")
@@ -132,6 +135,16 @@ struct NotificationRow: View {
                 onDelete()
             } label: {
                 Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if !notification.isRead {
+                Button {
+                    onMarkRead()
+                } label: {
+                    Label("Mark read", systemImage: "envelope.open")
+                }
+                .tint(.blue)
             }
         }
     }

@@ -11,6 +11,10 @@ struct HouseholdView: View {
     @State private var householdName: String = ""
     @State private var householdInitials: String = ""
     @State private var isSaving = false
+    @State private var exportFile: ExportFile?
+    @State private var isExporting = false
+    @State private var showingDeleteAccount = false
+    @State private var verificationSent = false
 
     var body: some View {
         NavigationStack {
@@ -136,6 +140,15 @@ struct HouseholdView: View {
                             Text(user.email)
                                 .foregroundColor(.secondary)
                         }
+                        if !user.emailVerified {
+                            Button(verificationSent ? "Verification email sent" : "Resend verification email") {
+                                Task { await resendVerification() }
+                            }
+                            .disabled(verificationSent)
+                        }
+                        Button("Delete Account…", role: .destructive) {
+                            showingDeleteAccount = true
+                        }
                     }
                 }
 
@@ -158,6 +171,24 @@ struct HouseholdView: View {
                     Text("Volume unit")
                 } footer: {
                     Text("How feed amounts are shown and entered. Stored values don't change.")
+                }
+
+                // Data export (same all-history window as the PWA's link)
+                Section {
+                    Button {
+                        Task { await exportCSV() }
+                    } label: {
+                        HStack {
+                            Label("Export logs as CSV", systemImage: "square.and.arrow.up")
+                            if isExporting {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isExporting)
+                } footer: {
+                    Text("Download all activity as a CSV spreadsheet.")
                 }
 
                 // Notifications
@@ -198,9 +229,18 @@ struct HouseholdView: View {
                 }
             }
             .navigationTitle("Settings")
+            .refreshable {
+                await refreshHousehold()
+            }
         }
         .onAppear {
             auth.configure(api: environment.apiClient)
+        }
+        .sheet(item: $exportFile) { file in
+            ShareSheet(items: [file.url])
+        }
+        .sheet(isPresented: $showingDeleteAccount) {
+            DeleteAccountSheet()
         }
         .sheet(isPresented: $showingEdit) {
             NavigationStack {
@@ -326,6 +366,29 @@ struct HouseholdView: View {
         } catch {}
     }
 
+    private func refreshHousehold() async {
+        do {
+            let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
+            state.household = data.household
+            state.members = data.members
+            state.invites = data.invites
+        } catch {}
+    }
+
+    private func exportCSV() async {
+        isExporting = true
+        let store = ActivityStore(api: environment.apiClient)
+        if let url = try? await store.exportLogsCSV() {
+            exportFile = ExportFile(url: url)
+        }
+        isExporting = false
+    }
+
+    private func resendVerification() async {
+        let _: StatusResponse? = try? await environment.apiClient.postEmpty("/api/auth/email/verification/resend")
+        verificationSent = true
+    }
+
     private func activateHousehold(_ id: Int) async {
         do {
             let _: StatusResponse = try await environment.apiClient.postEmpty("/api/households/\(id)/activate")
@@ -340,6 +403,106 @@ struct HouseholdView: View {
                 state.chores = chores.chores
             }
         } catch {}
+    }
+}
+
+// MARK: - CSV export support
+
+/// Wraps the downloaded export so it can drive `.sheet(item:)`.
+struct ExportFile: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+/// Native share sheet for the exported CSV file.
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Delete Account Sheet
+
+/// In-app account deletion (App Store guideline 5.1.1(v)). The server
+/// requires the typed confirmation {"confirm":"DELETE"}; a sole owner of a
+/// multi-member household gets a 409 telling them to transfer ownership
+/// first, surfaced verbatim below the button.
+struct DeleteAccountSheet: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmText = ""
+    @State private var errorMessage: String?
+    @State private var isDeleting = false
+
+    private var confirmed: Bool {
+        confirmText.trimmingCharacters(in: .whitespaces) == "DELETE"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Deleting your account permanently removes your data. Households where you are the only member are deleted with all their logs. This cannot be undone.")
+                        .font(.subheadline)
+                    Text("If you are the only owner of a household with other members, transfer ownership (or remove the other members) first.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                Section {
+                    TextField("Type DELETE to confirm", text: $confirmText)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.characters)
+
+                    Button(role: .destructive) {
+                        Task { await deleteAccount() }
+                    } label: {
+                        if isDeleting {
+                            ProgressView()
+                        } else {
+                            Text("Delete My Account")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .disabled(!confirmed || isDeleting)
+                } footer: {
+                    if let message = errorMessage {
+                        Text(message)
+                            .foregroundColor(.red)
+                    }
+                }
+            }
+            .navigationTitle("Delete Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeleting = true
+        errorMessage = nil
+        do {
+            let _: StatusResponse = try await environment.apiClient.delete(
+                "/api/me", body: DeleteAccountRequest(confirm: "DELETE"))
+            // The server cleared the session cookie; drop local state so the
+            // app lands on the login screen.
+            dismiss()
+            state.reset()
+        } catch let APIError.serverError(_, message) {
+            errorMessage = message
+        } catch {
+            errorMessage = "Account deletion failed. Please try again."
+        }
+        isDeleting = false
     }
 }
 

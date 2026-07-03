@@ -256,6 +256,21 @@ struct PatchUserPreferencesRequest: Codable {
     var statsWidgets: [StatsWidget]? = nil
 }
 
+// MARK: - Day notes
+
+/// Body of `PUT /api/day-notes/{date}`. An empty note clears the day's entry.
+struct SetDayNoteRequest: Codable {
+    let note: String
+}
+
+// MARK: - Account
+
+/// Body of `DELETE /api/me`. The server requires the literal string "DELETE"
+/// so the account cannot be destroyed by a single stray request.
+struct DeleteAccountRequest: Codable {
+    let confirm: String
+}
+
 // MARK: - Push
 
 struct PushSubscribeRequest: Codable {

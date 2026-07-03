@@ -33,6 +33,8 @@ final class AppState: ObservableObject {
     /// Offline-queued logs shown inline in Activity with a "pending" badge
     /// until the queue replays.
     @Published var pendingLogs: [PendingLog] = []
+    /// Shared per-day diary notes keyed by "YYYY-MM-DD" (Phase 5.4).
+    @Published var dayNotes: [String: String] = [:]
 
     func reset() {
         user = nil
@@ -63,6 +65,7 @@ final class AppState: ObservableObject {
         // activeTimer intentionally survives reset: the PWA's localStorage
         // timer is device-scoped, not session-scoped.
         pendingLogs = []
+        dayNotes = [:]
     }
 
     func resetHouseholdScoped() {
@@ -78,5 +81,6 @@ final class AppState: ObservableObject {
         hiddenHomeChoreIDs = []
         historyChoreFilter = nil
         historyFilterOpen = false
+        dayNotes = [:]
     }
 }
