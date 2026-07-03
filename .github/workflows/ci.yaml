@@ -27,18 +27,12 @@ jobs:
     outputs:
       code: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.code }}
       tests: ${{ steps.filter.outputs.tests }}
-      # KNOWN LIMITATION: on a tag push (a deploy), dorny/paths-filter has no
-      # meaningful base ref to diff against, so `steps.filter.outputs.ios` comes
-      # back false and the "iOS Unit Tests" job is skipped — even when the tagged
-      # commit changed ios/**. This does not block the deploy (the pipeline ships
-      # only the server/web image; the iOS app ships separately via the App
-      # Store), but it means iOS tests are NOT a release gate today.
-      # TO FIX: force iOS on for tag pushes the same way `code` is forced above,
-      # e.g. `ios: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.ios }}`.
-      # Note that would run iOS tests on EVERY release tag (adds ~1-2 min of
-      # macOS-runner time even when no iOS files changed) — acceptable, but call
-      # it out when making the change. See docs/deploy-runbook.md "Known limitations".
-      ios: ${{ steps.filter.outputs.ios }}
+      # On a tag push (a deploy), dorny/paths-filter has no meaningful base ref
+      # to diff against, so the iOS lane is forced on — the same way `code` is
+      # forced above. This runs iOS tests on EVERY release tag (~1-2 min of
+      # macOS-runner time even when no iOS files changed), making them a release
+      # gate per docs/plans/ios-v1/p1-foundations.md (D5).
+      ios: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.ios }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3

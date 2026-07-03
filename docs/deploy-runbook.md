@@ -61,26 +61,14 @@ curl -s https://nabu-app.com/ | grep 'app.js'
 
 ## Known limitations (candidates for a future fix)
 
-### iOS tests are skipped on release tags
+### iOS tests on release tags
 
-**Symptom:** on a `v*` tag push (i.e. every deploy), the **iOS Unit Tests** job shows `skipped`, even when the tagged commit changed `ios/**`.
+**Fixed (2026-07-02, iOS v1 plan P1/D5):** the `changes` job in
+`.github/workflows/ci.yaml` now forces the iOS lane on for `v*` tag pushes,
+the same way `code` is forced, so iOS unit tests are a release gate. The
+trade-off (accepted): iOS tests run on **every** release tag, including
+server/web-only releases, costing ~1–2 min of macOS-runner time per deploy.
 
-**Cause:** the `changes` (Detect Changes) job uses `dorny/paths-filter`, which needs a base ref to diff against. On a tag push there is no meaningful base, so `steps.filter.outputs.ios` returns `false` and the iOS job's `if: needs.changes.outputs.ios == 'true'` gate skips it. The `code` output dodges this by being forced `true` on tags; `ios` is not.
-
-**Impact:** iOS tests are **not a release gate** today. This does not affect the deploy itself — the pipeline builds/ships only the server + web image, and the iOS app ships separately via the App Store. But an iOS regression can land on a release tag without CI catching it. Until fixed, **run the iOS suite locally before tagging** when a change touches `ios/**`:
-
-```bash
-cd ios
-DEST="platform=iOS Simulator,id=$(xcrun simctl list devices available -j | jq -r '.devices|to_entries[]|.value[]|select(.name|test("iPhone"))|.udid' | head -1)"
-xcodebuild build -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
-xcodebuild build-for-testing -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
-xcodebuild test-without-building -project Nabu.xcodeproj -scheme Nabu -destination "$DEST" -only-testing:NabuTests
-```
-
-**Fix:** force iOS on for tag pushes in `.github/workflows/ci.yaml` (`changes` job outputs), mirroring `code`:
-
-```yaml
-ios: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.ios }}
-```
-
-Trade-off: this runs iOS tests on **every** release tag, including server/web-only releases, costing ~1–2 min of macOS-runner time per deploy. Acceptable for a real release gate, but decide deliberately (a PR-time iOS run already covers most changes; PRs get a real base ref, so the filter works there).
+If a tag-time iOS failure looks unrelated to the release (e.g. a
+simulator/runner infra flake), re-run the failed job; a genuine failure means
+the tagged commit shipped an iOS regression — fix, re-tag, push.
