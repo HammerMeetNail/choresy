@@ -81,7 +81,8 @@ xcodebuild test \
 
 ## Related documentation
 
-- [iOS conversion plan](../docs/plans/ios.md)
+- [iOS App Store v1 plan](../docs/plans/ios-appstore-v1.md) (active)
+- [iOS conversion plan](../docs/plans/ios.md) (superseded, historical)
 - [Client parity matrix](../docs/plans/client-parity.md)
 - [Repository guidelines](../AGENTS.md)
 - [iOS agent instructions](./AGENTS.md)

@@ -158,7 +158,7 @@ This repository has two first-class clients:
 - **PWA** — `web/static/js/` (plain ES modules)
 - **iOS** — `ios/` (native SwiftUI)
 
-Every feature, bug fix, validation change, security fix, API change, or UI behavior change must be evaluated for both clients. See `docs/plans/ios.md` for the full conversion plan and `docs/plans/client-parity.md` for the feature matrix.
+Every feature, bug fix, validation change, security fix, API change, or UI behavior change must be evaluated for both clients. See `docs/plans/ios-appstore-v1.md` for the active iOS parity & App Store plan and `docs/plans/client-parity.md` for the feature matrix. (`docs/plans/ios.md` is the superseded conversion plan, kept for history.)
 
 **When changing the PWA**, check whether the iOS app needs:
 - A matching SwiftUI UI change.

@@ -1,5 +1,13 @@
 # Plan: Native iOS Client Conversion
 
+> **⚠️ Superseded (2026-07-02).** This conversion plan was executed — phases
+> 0–12 are Built (see `docs/plans/client-parity.md`). It is kept for
+> historical context only. The active plan for reaching full parity and App
+> Store v1 is **[`docs/plans/ios-appstore-v1.md`](./ios-appstore-v1.md)**,
+> which also replaces this file's "mimic the PWA" design rule with
+> *behavior parity, presentation nativeness* (see its §2.1). Do not derive
+> new work from this document.
+
 ## Decisions
 
 These decisions came from the product/architecture questions before drafting this plan.

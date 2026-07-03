@@ -20,8 +20,10 @@ Living matrix tracking feature parity between the PWA and native iOS app.
   parity confirmed.
 - **iOS pending** — Not yet implemented in the native app.
 - **Deferred** — Intentionally absent from both clients' navigation.
-- **Not built** — A contract/stub exists but the feature is non-functional
-  end-to-end (currently APNs only).
+- **Not built** — The feature is non-functional end-to-end (a stub or
+  contract may exist). Currently: APNs, account deletion, Sign in with
+  Apple — the latter two are App Store admission blockers, see
+  `docs/plans/ios-appstore-v1.md` §3.
 - **N/A** — Feature applies to only one client (with justification).
 
 ## Phase progress
@@ -63,6 +65,8 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Google OAuth | `auth.js` | `Auth/GoogleOAuthCoordinator.swift` | `/api/auth/google/login`, `/api/auth/google/callback` | Built | |
 | Logout | `auth.js` | `Auth/AuthStore.swift`, `AuthTests.swift` | `/api/auth/logout` | Built | |
 | Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift`, `StateTests.swift` | `/api/me` | Built | iOS adds a CSRF pre-flight `GET /api/me` |
+| Account deletion | — | — | `DELETE /api/me` (not routed) | **Not built** | **App Store blocker (guideline 5.1.1(v))**: no endpoint, no UI on either client. Backend + PWA + iOS all required — see `ios-appstore-v1.md` §A1 |
+| Sign in with Apple | — | — | `/api/auth/apple/*` (not routed) | **Not built** | **App Store blocker (guideline 4.8)**: required because Google OAuth is offered. Native `ASAuthorizationController` on iOS; web SIWA on PWA — see `ios-appstore-v1.md` §A2 |
 | **Household & Members** |
 | Household CRUD | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | Built | |
 | Join by invite code | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/join` | Built | |
@@ -133,6 +137,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Change Baby indicators | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | Subject tagging (multi-baby) | `chores.js`, `schedule.js`, `today.js`, `app.js` | — | `/api/chores` (`subjects`), `/api/logs` (`subject`) | **iOS pending** | Phase 5.5: a chore may declare optional `subjects` (e.g. twin names, migration 039 `chores.subjects`) and each log carries an optional `subject` (`chore_logs.subject`); log sheet shows a single-select subject picker, history rows show the tag, CSV export includes it. iOS `Chore`/`ChoreLog` models + LogSheet should add both |
 | Volume prefill | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
+| Recent-value chips | `schedule.js`, `utils.js` | — | `/api/logs` (client render) | **iOS pending** | PWA Phase 5.3: last 3 distinct volumes as tappable chips above the volume picker (this row was previously missing from the matrix). iOS LogSheet should mirror |
 | **Preferences** |
 | Chore order | `preferences.js`, `home-jiggle-grid.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
 | Hidden home chores | `preferences.js`, `home-remove-chore.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |

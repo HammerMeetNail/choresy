@@ -6,7 +6,7 @@ This file provides guidance to an LLM when working on the Nabu native iOS app.
 
 The Nabu project has two clients: a PWA (`web/static/js/`) and a native iOS app (`ios/`). Every feature, bug fix, validation change, security fix, API change, or UI behavior change must be evaluated for both clients.
 
-**Before editing iOS code**, inspect the corresponding PWA module under `web/static/js/` and the corresponding Playwright E2E spec under `tests/e2e/`. The iOS app must mimic PWA behavior unless `docs/plans/ios.md` or a follow-up product decision says otherwise.
+**Before editing iOS code**, inspect the corresponding PWA module under `web/static/js/` and the corresponding Playwright E2E spec under `tests/e2e/`. The governing rule is **behavior parity, presentation nativeness** (see `docs/plans/ios-appstore-v1.md` §2.1): behavioral semantics — requests sent, `slotHour`/`completedAt` invariants, validation, what an action does — must match the PWA; presentation should use native iOS idiom (native lists, sheets, pickers, SF Symbols) rather than pixel-copying PWA CSS. Record intentional presentation differences in the parity matrix's "Known differences" column.
 
 **Before editing PWA behavior**, inspect the corresponding iOS screen, model, or test under `ios/` to check whether the iOS app needs the same change.
 
@@ -77,7 +77,8 @@ A CSRF pre-flight (`GET /api/me`) runs before the `POST /api/auth/register` to o
 
 ## Reference files
 
-- Root plan: `docs/plans/ios.md`
+- Active plan: `docs/plans/ios-appstore-v1.md` (App Store v1 parity & polish)
+- Historical plan: `docs/plans/ios.md` (superseded conversion plan)
 - Parity matrix: `docs/plans/client-parity.md`
 - Backend architecture: root `AGENTS.md`
 - PWA source: `web/static/js/`
@@ -98,7 +99,7 @@ These PWA behaviors must be preserved in the native iOS app:
 1. Before implementing a feature, read the corresponding PWA files and Playwright specs.
 2. Write or port tests first.
 3. Implement the smallest native code that makes the tests pass.
-4. Do not invent new behavior because it feels more iOS-like unless `docs/plans/ios.md` explicitly allows it.
+4. Do not invent new *behavior* (data sent, invariants, validation, feature semantics) because it feels more iOS-like. Native *presentation* is expected and encouraged per `docs/plans/ios-appstore-v1.md` §2.1.
 5. If PWA behavior appears buggy, stop and ask before intentionally diverging.
 6. If a backend endpoint lacks native support, add backend tests before changing the backend.
 7. Keep API DTO names close to server JSON names.
