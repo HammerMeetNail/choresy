@@ -294,6 +294,41 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
+// AppleNative handles POST /api/auth/apple/native: the native app obtains an
+// identity token from ASAuthorizationController and exchanges it here for a
+// session. The nonce is the same value the app set on the authorization
+// request; the verifier requires it to match the token's nonce claim.
+func (h *AuthHandler) AppleNative(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IdentityToken string `json:"identityToken"`
+		Nonce         string `json:"nonce"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.IdentityToken == "" || req.Nonce == "" {
+		writeError(w, http.StatusBadRequest, "identityToken and nonce are required")
+		return
+	}
+
+	user, session, err := h.authService.LoginWithApple(r.Context(), req.IdentityToken, req.Nonce)
+	if err != nil {
+		switch err {
+		case auth.ErrAppleUnavailable:
+			writeError(w, http.StatusServiceUnavailable, "sign in with apple is not configured")
+		case auth.ErrAppleNoEmail:
+			writeError(w, http.StatusUnauthorized, "apple account must provide a verified email")
+		default:
+			writeError(w, http.StatusUnauthorized, "apple authentication failed")
+		}
+		return
+	}
+
+	h.SetSessionCookie(w, session.ID)
+	writeJSON(w, http.StatusOK, h.authResponse(user, session))
+}
+
 func (h *AuthHandler) authResponse(user auth.User, session auth.Session) map[string]any {
 	return map[string]any{
 		"user": user,

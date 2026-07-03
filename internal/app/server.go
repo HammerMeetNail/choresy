@@ -98,6 +98,9 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService.SetAuditLogger(auditLog)
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
+	if ids := splitCommaList(cfg.AppleClientIDs); len(ids) > 0 {
+		authService.SetAppleVerifier(auth.NewAppleVerifier(ids))
+	}
 	authHandler := handlers.NewAuthHandler(authService, "nabu_session", cfg.ServerSecure, cfg.AppBaseURL)
 	accountService := account.NewService(authStore, householdStore)
 	accountHandler := handlers.NewAccountHandler(accountService, authHandler)
@@ -225,6 +228,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/auth/password", method(http.MethodPost, middleware.RequireAuth(authHandler.ChangePassword)))
 	mux.HandleFunc("/api/auth/google/login", method(http.MethodGet, authHandler.GoogleLogin))
 	mux.HandleFunc("/api/auth/google/callback", method(http.MethodGet, authHandler.GoogleCallback))
+	mux.HandleFunc("/api/auth/apple/native", method(http.MethodPost, authHandler.AppleNative))
 
 	mux.HandleFunc("/api/household", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -621,6 +625,18 @@ func buildVersionedJSCache(fsys fs.FS, ver string) map[string][]byte {
 		return nil
 	})
 	return cache
+}
+
+// splitCommaList splits a comma-separated config value into trimmed,
+// non-empty entries.
+func splitCommaList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 var swCacheNameRE = regexp.MustCompile(`("nabu-static-)v\d+(")`)

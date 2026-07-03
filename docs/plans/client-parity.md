@@ -66,7 +66,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Logout | `auth.js` | `Auth/AuthStore.swift`, `AuthTests.swift` | `/api/auth/logout` | Built | |
 | Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift`, `StateTests.swift` | `/api/me` | Built | iOS adds a CSRF pre-flight `GET /api/me` |
 | Account deletion | — | — | `DELETE /api/me` | **Not built** | **App Store blocker (guideline 5.1.1(v))**: backend shipped (`internal/account`, typed `{"confirm":"DELETE"}` body, sole-owner transfer guard, tested) but neither client has UI yet — lands in P3 (`ios-v1/p3-activity-schedule-settings.md`) |
-| Sign in with Apple | — | — | `/api/auth/apple/*` (not routed) | **Not built** | **App Store blocker (guideline 4.8)**: required because Google OAuth is offered. Native `ASAuthorizationController` on iOS; web SIWA on PWA — see `ios-appstore-v1.md` §A2 |
+| Sign in with Apple | — | — | `POST /api/auth/apple/native` | **Not built** | **App Store blocker (guideline 4.8)**: backend shipped (`internal/auth/apple.go` — JWKS-verified identity token, nonce-required, email-linked upsert; `APPLE_CLIENT_IDS` config) but no client buttons yet — iOS `SignInWithAppleButton` lands in P5 (`ios-v1/p5-push-auth.md`), PWA web-SIWA or N/A exception before P7 |
 | **Household & Members** |
 | Household CRUD | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | Built | |
 | Join by invite code | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/join` | Built | |

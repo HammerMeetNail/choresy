@@ -26,6 +26,8 @@ var (
 	ErrInvalidToken        = errors.New("invalid or expired token")
 	ErrOIDCUnavailable     = errors.New("google oidc is not configured")
 	ErrOIDCEmailUnverified = errors.New("google account email must be verified")
+	ErrAppleUnavailable    = errors.New("sign in with apple is not configured")
+	ErrAppleNoEmail        = errors.New("apple did not return a verified email")
 )
 
 type Service struct {
@@ -35,6 +37,7 @@ type Service struct {
 	auditLogger     audit.Logger
 	baseURL         string
 	oidcProvider    OIDCProvider
+	appleVerifier   AppleTokenVerifier
 	now             func() time.Time
 }
 
@@ -60,6 +63,10 @@ func (s *Service) SetMailer(sender nabumail.Sender, baseURL string) {
 
 func (s *Service) SetOIDCProvider(provider OIDCProvider) {
 	s.oidcProvider = provider
+}
+
+func (s *Service) SetAppleVerifier(verifier AppleTokenVerifier) {
+	s.appleVerifier = verifier
 }
 
 func (s *Service) SetAuditLogger(logger audit.Logger) {
@@ -448,6 +455,60 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 			return User{}, Session{}, err
 		}
 		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "google_oidc", "user_id": fmt.Sprintf("%d", user.ID)})
+		return user, session, nil
+	}
+}
+
+// LoginWithApple verifies a native Sign in with Apple identity token and
+// logs the user in, creating the account on first sign-in. Like the Google
+// flow, identities are keyed by email: an Apple sign-in with the same email
+// as an existing account (password or Google) logs into that account and
+// marks the email verified. Apple private-relay addresses are ordinary
+// working emails and get no special handling.
+func (s *Service) LoginWithApple(ctx context.Context, identityToken, nonce string) (User, Session, error) {
+	if s.appleVerifier == nil || !s.appleVerifier.Enabled() {
+		return User{}, Session{}, ErrAppleUnavailable
+	}
+
+	identity, err := s.appleVerifier.VerifyIdentityToken(ctx, identityToken, nonce)
+	if err != nil {
+		s.logAudit(ctx, "auth.login_failed", map[string]string{"method": "apple"})
+		return User{}, Session{}, err
+	}
+	if identity.Email == "" || !identity.EmailVerified {
+		s.logAudit(ctx, "auth.login_failed", map[string]string{"method": "apple", "reason": "email_missing_or_unverified"})
+		return User{}, Session{}, ErrAppleNoEmail
+	}
+
+	existingUser, existingErr := s.store.FindUserByEmail(ctx, identity.Email)
+	switch existingErr {
+	case nil:
+		session, err := s.newSession(ctx, existingUser.ID)
+		if err != nil {
+			return User{}, Session{}, err
+		}
+		if !existingUser.EmailVerified {
+			existingUser, err = s.store.VerifyEmail(ctx, existingUser.ID)
+			if err != nil {
+				return User{}, Session{}, err
+			}
+		}
+		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "apple", "user_id": fmt.Sprintf("%d", existingUser.ID)})
+		return existingUser, session, nil
+	default:
+		user, err := s.store.CreateUser(ctx, identity.Email, "")
+		if err != nil {
+			return User{}, Session{}, err
+		}
+		user, err = s.store.VerifyEmail(ctx, user.ID)
+		if err != nil {
+			return User{}, Session{}, err
+		}
+		session, err := s.newSession(ctx, user.ID)
+		if err != nil {
+			return User{}, Session{}, err
+		}
+		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "apple", "user_id": fmt.Sprintf("%d", user.ID)})
 		return user, session, nil
 	}
 }

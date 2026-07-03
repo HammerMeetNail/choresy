@@ -137,7 +137,7 @@ Checklist (tick as items land on `main`; add dated notes below):
 
 - [x] B1 model catch-up + decoding/encoding tests
 - [x] A1 `DELETE /api/me` + role-path handler tests + cascade store tests
-- [ ] A2 Apple identity provider + JWKS verification tests
+- [x] A2 Apple identity provider + JWKS verification tests
 - [ ] A3 APNs store/routes/sender/fan-out + fake-server tests
 - [ ] C1 asset-catalog semantic colors; fixed-size font audit
 - [x] D5 iOS CI lane forced on tag pushes
@@ -155,3 +155,12 @@ Checklist (tick as items land on `main`; add dated notes below):
   Caution for future callers: `users.household_id` cascades from households —
   deleting a household deletes users whose *active* household it is; only
   delete validated sole-member households. Client UI is P3.
+- **2026-07-02** — A2: `POST /api/auth/apple/native` shipped —
+  `internal/auth/apple.go` verifies RS256 identity tokens against Apple JWKS
+  (iss/aud/exp checks, **nonce mandatory**, `email_verified` normalizes
+  Apple's bool-or-"true" forms), `Service.LoginWithApple` mirrors the Google
+  upsert exactly (keyed by email; same email links, marks verified).
+  Config: `APPLE_CLIENT_IDS` (comma-separated audiences — bundle ID now,
+  Services ID later); unset disables the endpoint (503). Web code-flow SIWA
+  deliberately NOT built — decide button-vs-N/A for the PWA by P7. iOS
+  button is P5.
