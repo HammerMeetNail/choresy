@@ -1,7 +1,7 @@
 # iOS App Store v1 — Parity & Polish Plan (index)
 
-**Status:** Active — P1 in progress · **Drafted:** 2026-07-02 · **Owner
-decisions recorded:** 2026-07-02
+**Status:** Active — P1 complete (2026-07-03), P2 Logging parity is next ·
+**Drafted:** 2026-07-02 · **Owner decisions recorded:** 2026-07-02
 
 This is the **index** for the App Store v1 effort. The detailed, executable
 content lives in one document per phase under [`ios-v1/`](./ios-v1/); each
