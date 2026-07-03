@@ -1011,15 +1011,19 @@ export function renderWidgetSection(widget, state) {
     bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
   }
 
-  // Period toggle for the period-scoped types (last-done has no period).
+  // Period toggle for the period-scoped types (last-done has no period). It
+  // lives in the card header — sized to content next to the remove button —
+  // so it reads as the same compact segmented control as the other sections.
   const periodToggle = widget.type === "last-done" ? "" : renderWidgetPeriodToggle(widget);
 
   return `<div class="card mb-3 widget-card">
     <div class="widget-card-header">
       <h3>${title}</h3>
-      <button class="widget-remove-btn" data-action="widget-remove" data-widget-id="${escapeHTML(widget.id)}" aria-label="Remove widget">×</button>
+      <div class="widget-card-header-actions">
+        ${periodToggle}
+        <button class="widget-remove-btn" data-action="widget-remove" data-widget-id="${escapeHTML(widget.id)}" aria-label="Remove widget">×</button>
+      </div>
     </div>
-    ${periodToggle}
     ${bodyHTML}
   </div>`;
 }

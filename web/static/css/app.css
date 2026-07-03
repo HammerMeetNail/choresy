@@ -4384,10 +4384,19 @@ details[open] .chore-stat-chevron {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .widget-card-header h3 {
   margin: 0;
   overflow-wrap: anywhere;
+}
+/* Group the period toggle + remove button on the right so the toggle sizes to
+   its content (compact segmented control) instead of stretching the card. */
+.widget-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 .widget-remove-btn {
   flex: 0 0 auto;
