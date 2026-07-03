@@ -197,6 +197,29 @@ func (s *MemoryStore) DeleteUserSessions(_ context.Context, userID int64) error 
 	return nil
 }
 
+func (s *MemoryStore) DeleteUser(_ context.Context, userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	user, ok := s.usersByID[userID]
+	if !ok {
+		return nil
+	}
+	delete(s.usersByEmail, user.Email)
+	delete(s.usersByID, userID)
+	delete(s.passwordsByID, userID)
+	for hash, session := range s.sessionsByHash {
+		if session.UserID == userID {
+			delete(s.sessionsByHash, hash)
+		}
+	}
+	for hash, token := range s.tokensByHash {
+		if token.UserID != nil && *token.UserID == userID {
+			delete(s.tokensByHash, hash)
+		}
+	}
+	return nil
+}
+
 func (s *MemoryStore) CreateAuthToken(_ context.Context, userID *int64, email, tokenHash, kind string, expiresAt time.Time) (AuthToken, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

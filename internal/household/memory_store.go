@@ -105,6 +105,40 @@ func (s *MemoryStore) UpdateHousehold(_ context.Context, id int64, name, initial
 	return nil
 }
 
+func (s *MemoryStore) DeleteHousehold(_ context.Context, id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.households[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.households, id)
+	for uid, hhID := range s.userHH {
+		if hhID == id {
+			delete(s.userHH, uid)
+		}
+	}
+	for uid, hhList := range s.userHouseholds {
+		kept := hhList[:0]
+		for _, h := range hhList {
+			if h.ID != id {
+				kept = append(kept, h)
+			}
+		}
+		if len(kept) == 0 {
+			delete(s.userHouseholds, uid)
+		} else {
+			s.userHouseholds[uid] = kept
+		}
+	}
+	for inviteID, invite := range s.invites {
+		if invite.HouseholdID == id {
+			delete(s.invites, inviteID)
+			delete(s.inviteByCode, invite.Code)
+		}
+	}
+	return nil
+}
+
 func (s *MemoryStore) GetMembers(_ context.Context, householdID int64) ([]Member, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

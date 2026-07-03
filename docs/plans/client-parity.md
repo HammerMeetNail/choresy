@@ -65,7 +65,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Google OAuth | `auth.js` | `Auth/GoogleOAuthCoordinator.swift` | `/api/auth/google/login`, `/api/auth/google/callback` | Built | |
 | Logout | `auth.js` | `Auth/AuthStore.swift`, `AuthTests.swift` | `/api/auth/logout` | Built | |
 | Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift`, `StateTests.swift` | `/api/me` | Built | iOS adds a CSRF pre-flight `GET /api/me` |
-| Account deletion | — | — | `DELETE /api/me` (not routed) | **Not built** | **App Store blocker (guideline 5.1.1(v))**: no endpoint, no UI on either client. Backend + PWA + iOS all required — see `ios-appstore-v1.md` §A1 |
+| Account deletion | — | — | `DELETE /api/me` | **Not built** | **App Store blocker (guideline 5.1.1(v))**: backend shipped (`internal/account`, typed `{"confirm":"DELETE"}` body, sole-owner transfer guard, tested) but neither client has UI yet — lands in P3 (`ios-v1/p3-activity-schedule-settings.md`) |
 | Sign in with Apple | — | — | `/api/auth/apple/*` (not routed) | **Not built** | **App Store blocker (guideline 4.8)**: required because Google OAuth is offered. Native `ASAuthorizationController` on iOS; web SIWA on PWA — see `ios-appstore-v1.md` §A2 |
 | **Household & Members** |
 | Household CRUD | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | Built | |

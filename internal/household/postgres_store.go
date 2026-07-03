@@ -77,6 +77,16 @@ func (s *PostgresStore) UpdateHousehold(ctx context.Context, id int64, name, ini
 	return err
 }
 
+func (s *PostgresStore) DeleteHousehold(ctx context.Context, id int64) error {
+	// Chores, logs, schedules, invites, memberships, and day notes all cascade
+	// from households(id). CAUTION: users.household_id also cascades — any user
+	// whose ACTIVE household is this one is deleted with it. Callers must
+	// guarantee the household has no members beyond the account being deleted
+	// (see internal/account).
+	_, err := s.db.ExecContext(ctx, `DELETE FROM households WHERE id = $1`, id)
+	return err
+}
+
 func (s *PostgresStore) GetMembers(ctx context.Context, householdID int64) ([]Member, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role

@@ -56,6 +56,10 @@ type Store interface {
 	GetHousehold(ctx context.Context, id int64) (Household, error)
 	GetUserHousehold(ctx context.Context, userID int64) (Household, error)
 	UpdateHousehold(ctx context.Context, id int64, name, initials string) error
+	// DeleteHousehold permanently deletes the household and (in Postgres) all
+	// household-scoped data via FK cascade. Used by account deletion when the
+	// departing user is the household's only member.
+	DeleteHousehold(ctx context.Context, id int64) error
 	GetMembers(ctx context.Context, householdID int64) ([]Member, error)
 	AddMember(ctx context.Context, householdID, userID int64, role string) error
 	RemoveMember(ctx context.Context, householdID, userID int64) error

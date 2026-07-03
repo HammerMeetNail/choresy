@@ -229,6 +229,34 @@ func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int64) er
 	return err
 }
 
+func (s *PostgresStore) DeleteUser(ctx context.Context, userID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// These FKs reference users(id) without ON DELETE actions, so they must be
+	// cleared explicitly before the user row can go. Household-shared content
+	// (chores, schedules) survives with authorship/assignment cleared; the
+	// user's invites are revoked. Everything else (sessions, tokens,
+	// preferences, notifications, push subscriptions, memberships, chore logs)
+	// is removed by ON DELETE CASCADE.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM household_invites WHERE created_by = $1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE chores SET created_by = NULL WHERE created_by = $1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE chore_schedules SET assigned_to_user_id = NULL WHERE assigned_to_user_id = $1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *PostgresStore) CreateAuthToken(ctx context.Context, userID *int64, email, tokenHash, kind string, expiresAt time.Time) (AuthToken, error) {
 	var token AuthToken
 	err := s.db.QueryRowContext(ctx, `

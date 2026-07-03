@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HammerMeetNail/nabu/internal/account"
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -98,6 +99,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
 	authHandler := handlers.NewAuthHandler(authService, "nabu_session", cfg.ServerSecure, cfg.AppBaseURL)
+	accountService := account.NewService(authStore, householdStore)
+	accountHandler := handlers.NewAccountHandler(accountService, authHandler)
 	householdService := household.NewService(householdStore, authService)
 	householdService.SetAuditLogger(auditLog)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
@@ -202,7 +205,17 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/auth/register", method(http.MethodPost, authHandler.Register))
 	mux.HandleFunc("/api/auth/login", method(http.MethodPost, authHandler.Login))
 	mux.HandleFunc("/api/auth/logout", method(http.MethodPost, authHandler.Logout))
-	mux.HandleFunc("/api/me", method(http.MethodGet, authHandler.Me))
+	mux.HandleFunc("/api/me", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			authHandler.Me(w, r)
+		case http.MethodDelete:
+			middleware.RequireAuth(accountHandler.DeleteMe)(w, r)
+		default:
+			w.Header().Set("Allow", "GET, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	mux.HandleFunc("/api/auth/email/verification/resend", method(http.MethodPost, authHandler.ResendVerification))
 	mux.HandleFunc("/api/auth/email/verify", method(http.MethodGet, authHandler.VerifyEmail))
 	mux.HandleFunc("/api/auth/magic-link/request", method(http.MethodPost, authHandler.RequestMagicLink))

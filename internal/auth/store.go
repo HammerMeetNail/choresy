@@ -51,4 +51,9 @@ type Store interface {
 	DeleteUserSessions(ctx context.Context, userID int64) error
 	CreateAuthToken(ctx context.Context, userID *int64, email, tokenHash, kind string, expiresAt time.Time) (AuthToken, error)
 	ConsumeAuthToken(ctx context.Context, tokenHash, kind string) (AuthToken, error)
+	// DeleteUser permanently deletes the user and their personal data
+	// (sessions, tokens, preferences, notifications, push subscriptions, logs
+	// via FK cascade). Household-shared content survives with authorship
+	// cleared. Deleting an already-deleted user is not an error.
+	DeleteUser(ctx context.Context, userID int64) error
 }

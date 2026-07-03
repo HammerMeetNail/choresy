@@ -135,13 +135,23 @@ device and Apple credentials — that is P5's gate, not P1's.
 
 Checklist (tick as items land on `main`; add dated notes below):
 
-- [ ] B1 model catch-up + decoding/encoding tests
-- [ ] A1 `DELETE /api/me` + role-path handler tests + cascade store tests
+- [x] B1 model catch-up + decoding/encoding tests
+- [x] A1 `DELETE /api/me` + role-path handler tests + cascade store tests
 - [ ] A2 Apple identity provider + JWKS verification tests
 - [ ] A3 APNs store/routes/sender/fan-out + fake-server tests
 - [ ] C1 asset-catalog semantic colors; fixed-size font audit
-- [ ] D5 iOS CI lane forced on tag pushes
+- [x] D5 iOS CI lane forced on tag pushes
 
 ### Notes
 
-*(append dated entries here)*
+- **2026-07-02** — D5: iOS lane forced on `v*` tags in `ci.yaml`; runbook
+  updated. B1: all migration-034–039 fields decode/encode
+  (`ios/Nabu/API/Models.swift`, `RequestModels.swift`); NabuTests 164 green.
+  A1: `DELETE /api/me` shipped — new `internal/account` service (sole-member
+  household deleted, only-owner-with-members → 409 transfer-first, member =
+  leave), `auth.Store.DeleteUser` (Postgres tx nulls `chores.created_by` and
+  `chore_schedules.assigned_to_user_id`, revokes the user's invites, then
+  deletes; everything else cascades), `household.Store.DeleteHousehold`.
+  Caution for future callers: `users.household_id` cascades from households —
+  deleting a household deletes users whose *active* household it is; only
+  delete validated sole-member households. Client UI is P3.
