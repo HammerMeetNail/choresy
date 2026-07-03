@@ -14,68 +14,34 @@ extension Color {
         self = Color(hex: hex) ?? .black
     }
 
-    /// Creates a Color that automatically adapts to light/dark mode.
-    init(lightHex: String, darkHex: String) {
-        let light = UIColor(red: Color.hexChannel(lightHex, shift: 16),
-                            green: Color.hexChannel(lightHex, shift: 8),
-                            blue: Color.hexChannel(lightHex, shift: 0),
-                            alpha: 1)
-        let dark  = UIColor(red: Color.hexChannel(darkHex, shift: 16),
-                            green: Color.hexChannel(darkHex, shift: 8),
-                            blue: Color.hexChannel(darkHex, shift: 0),
-                            alpha: 1)
-        let adaptive = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? dark : light
-        }
-        self.init(uiColor: adaptive)
-    }
-
-    private static func hexChannel(_ hex: String, shift: Int) -> Double {
-        let h = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        guard h.count == 6, let int = UInt64(h, radix: 16) else { return 0 }
-        return Double((int >> shift) & 0xFF) / 255.0
-    }
 }
 
-/// PWA-matching colors with automatic dark mode support.
-/// Light values match CSS `:root`. Dark values match CSS `prefers-color-scheme: dark`.
+/// Semantic design tokens (iOS v1 plan P1/C1).
+///
+/// Brand hues and branded surfaces live as named colors in Assets.xcassets
+/// (light + dark variants, high-contrast where the hue is used as tint/text),
+/// so the system resolves appearance and accessibility variants. Structural
+/// roles — text, separators — use UIKit semantic colors and inherit correct
+/// dark-mode, elevated-context, and increased-contrast behavior for free.
 enum DesignColors {
-    // bg: #F4EFE7 → #0E1117
-    static let pageBackground   = Color(lightHex: "F4EFE7", darkHex: "0E1117")
+    // Branded surfaces (asset catalog: light / dark)
+    static let pageBackground   = Color("PaperBackground")
+    static let surface          = Color("Surface")
+    static let surfaceSecondary = Color("SurfaceSecondary")
+    static let calendarBg       = Color("CalendarBackground")
 
-    // surface: #FFFFFF → #181C27
-    static let surface          = Color(lightHex: "FFFFFF", darkHex: "181C27")
+    // Brand hues (asset catalog; BrandPrimary/BrandAccent carry
+    // high-contrast variants because they appear as tints and text)
+    static let brand   = Color("BrandTeal")
+    static let primary = Color("BrandPrimary")
+    static let accent  = Color("BrandAccent")
+    static let success = Color("BrandSuccess")
+    static let danger  = Color("BrandDanger")
 
-    // brand: #19323C → #5BBEDD
-    static let brand            = Color(lightHex: "19323C", darkHex: "5BBEDD")
-
-    // primary: #2E86AB → #4DABCE
-    static let primary          = Color(lightHex: "2E86AB", darkHex: "4DABCE")
-
-    // accent: #F18F01 → #F4A634
-    static let accent           = Color(lightHex: "F18F01", darkHex: "F4A634")
-
-    // success: #386641 → #4CAF6E
-    static let success          = Color(lightHex: "386641", darkHex: "4CAF6E")
-
-    // danger: #BC4742 → #E05252
-    static let danger           = Color(lightHex: "BC4742", darkHex: "E05252")
-
-    // text: #1A1A2E → #E6EDF3
-    static let textPrimary      = Color(lightHex: "1A1A2E", darkHex: "E6EDF3")
-
-    // text-secondary: #6B7280 → #8B949E
-    static let textSecondary    = Color(lightHex: "6B7280", darkHex: "8B949E")
-
-    // border: #D1D5DB → #2A3042
-    static let border           = Color(lightHex: "D1D5DB", darkHex: "2A3042")
-
-    // calendar-bg: #E8F4FB → #10141C
-    static let calendarBg       = Color(lightHex: "E8F4FB", darkHex: "10141C")
-
-    // surface-secondary (used for chips, pill backgrounds, segment controls)
-    // PWA uses a darker bg variant: #E8E2D6 light, no exact dark match — use a tinted surface
-    static let surfaceSecondary = Color(lightHex: "E8E2D6", darkHex: "252A35")
+    // Structural roles: system semantics, not brand
+    static let textPrimary   = Color(uiColor: .label)
+    static let textSecondary = Color(uiColor: .secondaryLabel)
+    static let border        = Color(uiColor: .separator)
 }
 
 enum Typography {

@@ -13,7 +13,7 @@ struct RegisterView: View {
         ScrollView {
             VStack(spacing: 24) {
                 Text("Create Account")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.title.weight(.bold))
                     .foregroundColor(DesignColors.textPrimary)
                     .padding(.top, 48)
 

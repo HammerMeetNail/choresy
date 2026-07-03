@@ -65,7 +65,7 @@ struct GoogleIconSimple: View {
     var body: some View {
         HStack(spacing: 0) {
             Text("G")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(.callout, design: .rounded).weight(.bold))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [

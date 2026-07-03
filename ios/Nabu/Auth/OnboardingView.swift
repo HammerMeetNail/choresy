@@ -17,7 +17,7 @@ struct OnboardingView: View {
 
                 VStack(spacing: 4) {
                     Text("Welcome!")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.title.weight(.bold))
                         .foregroundColor(DesignColors.textPrimary)
                     Text("You need a household to get started.")
                         .foregroundColor(DesignColors.textSecondary)

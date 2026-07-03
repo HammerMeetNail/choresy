@@ -139,7 +139,7 @@ Checklist (tick as items land on `main`; add dated notes below):
 - [x] A1 `DELETE /api/me` + role-path handler tests + cascade store tests
 - [x] A2 Apple identity provider + JWKS verification tests
 - [x] A3 APNs store/routes/sender/fan-out + fake-server tests
-- [ ] C1 asset-catalog semantic colors; fixed-size font audit
+- [x] C1 asset-catalog semantic colors; fixed-size font audit (chart labels deferred to P4, decorative emoji sizes to P6 — see note)
 - [x] D5 iOS CI lane forced on tag pushes
 
 ### Notes
@@ -175,3 +175,13 @@ Checklist (tick as items land on `main`; add dated notes below):
   APNs through one `notification.PushSender`. `APNS_AUTH_KEY_P8/KEY_ID/
   TEAM_ID/BUNDLE_ID` config (PEM, \n-escaped, or base64) no-ops when unset.
   End-to-end delivery still needs Apple credentials + a physical device — P5.
+- **2026-07-03** — C1: ten named colorsets in `Assets.xcassets` (brand hues +
+  branded surfaces, light/dark; BrandPrimary/BrandAccent/AccentColor carry
+  high-contrast variants), `DesignColors` re-pointed at them; text/border
+  roles now `UIColor.label`/`.secondaryLabel`/`.separator`; the
+  `Color(lightHex:darkHex:)` initializer is gone. Global tint wired via
+  `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor` in the
+  pbxproj. Auth-screen titles + Google "G" moved to Dynamic Type styles.
+  Deliberately left: StatsView chart micro-labels (whole file is rewritten
+  with Swift Charts in P4) and decorative emoji glyph sizes (24/48pt icons,
+  not text — P6 polish). App builds; NabuTests 164 green.

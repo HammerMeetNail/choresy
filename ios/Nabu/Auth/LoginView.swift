@@ -21,7 +21,7 @@ struct LoginView: View {
                 VStack(spacing: 24) {
                     // Logo
                     Text("Nabu")
-                        .font(.system(size: 36, weight: .bold))
+                        .font(.largeTitle.weight(.bold))
                         .foregroundColor(DesignColors.brand)
                         .padding(.top, 48)
 
