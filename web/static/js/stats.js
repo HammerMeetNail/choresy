@@ -344,7 +344,7 @@ export function renderStatsPage(state) {
         const id = parseInt(k.slice("chore:".length), 10);
         const chore = choreMap[id];
         if (!chore) return "";
-        return renderChoreAnalyticsSection(chore, choreTimeSeries[id], members);
+        return renderChoreAnalyticsSection(chore, choreTimeSeries[id], members, state.stats?.choreAnalyticsPeriod?.[id]);
       }
       if (isWidgetSectionKey(k)) {
         const w = widgets.find(x => widgetSectionKey(x.id) === k);
@@ -864,15 +864,46 @@ export function renderBabyCareSection(state) {
   </div>`;
 }
 
+// choreAnalyticsGrain maps a per-chore section's day/week/month period to the
+// time-series grain the endpoint understands (daily/weekly/monthly buckets),
+// so the toggle picks how the chart is bucketed.
+export function choreAnalyticsGrain(period) {
+  switch (period) {
+    case "week": return "weekly";
+    case "month": return "monthly";
+    default: return "daily";
+  }
+}
+
+// renderChoreAnalyticsPeriodToggle renders the day/week/month segmented control
+// on a per-chore analytics card, matching the other stats sections. The period
+// selects the chart's bucket grain (see choreAnalyticsGrain).
+function renderChoreAnalyticsPeriodToggle(chore, activePeriod) {
+  const periods = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+  ];
+  return `<div class="period-toggle" role="group" aria-label="Time period for ${escapeHTML(chore.name)}">
+    ${periods.map(p => {
+      const on = p.value === activePeriod ? " period-toggle--active" : "";
+      return `<button class="period-toggle-btn${on}" data-action="chore-analytics-period" data-chore-id="${chore.id}" data-period="${p.value}" aria-pressed="${p.value === activePeriod}">${p.label}</button>`;
+    }).join("")}
+  </div>`;
+}
+
 // renderChoreAnalyticsSection renders the generalized per-chore analytics
 // (Phase 3): a member split plus a metric-appropriate chart, for any chore that
 // tracks a metric or has indicator labels. Reuses the same chart primitives as
-// the baby section. `ts` is the chore's time-series (daily) or undefined.
-export function renderChoreAnalyticsSection(chore, ts, members) {
+// the baby section. `ts` is the chore's time-series (at `period`'s grain) or
+// undefined; `period` is the day/week/month selection driving the toggle.
+export function renderChoreAnalyticsSection(chore, ts, members, period) {
   const memberMap = {};
   (members || []).forEach(m => { memberMap[m.userId] = m; });
   const periods = ts?.periods || [];
   const metricType = chore.metricType || "none";
+  const activePeriod = period || "day";
+  const grain = choreAnalyticsGrain(activePeriod);
 
   let chartHTML;
   if (metricType === "amount") {
@@ -881,26 +912,30 @@ export function renderChoreAnalyticsSection(chore, ts, members) {
       valueFn: p => p.totalML || 0,
       unitLabel: unit,
       fmt: v => `${v}${unit ? " " + unit : ""}`,
+      grain,
     });
   } else if (metricType === "duration") {
     chartHTML = renderSimpleMetricChart(periods, {
       valueFn: p => Math.round((p.totalDuration || 0) / 60),
       unitLabel: "min",
       fmt: v => `${v} min`,
+      grain,
     });
   } else if ((chore.indicatorLabels || []).length > 0) {
-    chartHTML = renderIndicatorChart(periods, "daily");
+    chartHTML = renderIndicatorChart(periods, grain);
   } else {
     chartHTML = renderSimpleMetricChart(periods, {
       valueFn: p => p.count || 0,
       unitLabel: "count",
       fmt: v => `${v}`,
+      grain,
     });
   }
 
   return `<div class="card mb-3">
     <div class="baby-col-header">
       <h3 class="baby-col-title">${chore.icon} ${escapeHTML(chore.name)}</h3>
+      ${renderChoreAnalyticsPeriodToggle(chore, activePeriod)}
     </div>
     ${renderMemberList(ts?.byMember, memberMap)}
     <div class="baby-chart">${chartHTML}</div>
@@ -1102,6 +1137,7 @@ function renderSimpleMetricChart(periods, opts) {
   }
   const valueFn = opts.valueFn;
   const fmt = opts.fmt || (v => String(v));
+  const grain = opts.grain || "daily";
   const values = periods.map(valueFn);
   const maxV = Math.max(1, ...values);
 
@@ -1128,14 +1164,14 @@ function renderSimpleMetricChart(periods, opts) {
     const x = leftM + i * colW;
     const baseY = topM + chartH;
     const barH = v > 0 ? Math.max(Math.round((v / maxV) * chartH), 0.5) : 0;
-    const label = formatPeriodLabel(p, "daily");
+    const label = formatPeriodLabel(p, grain);
     svg += `<g data-action="chart-tap" data-bar="${i}" role="button" aria-label="${label}: ${fmt(v)}">`;
     if (v > 0) {
       svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="var(--chart-bar, #2E86AB)" opacity="0.85"/>`;
     }
     svg += `</g>`;
     if (i % 2 === 0) {
-      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${formatXLabel(p, "daily")}</text>`;
+      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="var(--chart-label)" font-family="system-ui, sans-serif">${formatXLabel(p, grain)}</text>`;
     }
   });
 
