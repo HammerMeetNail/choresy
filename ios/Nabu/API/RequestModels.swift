@@ -64,11 +64,28 @@ struct CreateChoreRequest: Codable {
     let indicatorLabels: [String]?
     let indicatorDefaults: [String]?
     let followUpEnabled: Bool?
+    let metricType: String?   // none | amount | rating | duration
+    let metricUnit: String?   // unit label for amount metrics (mL/oz/g/min/custom)
+    let subjects: [String]?
+
+    init(name: String, icon: String?, color: String?, category: String?, indicatorLabels: [String]?, indicatorDefaults: [String]?, followUpEnabled: Bool?, metricType: String? = nil, metricUnit: String? = nil, subjects: [String]? = nil) {
+        self.name = name
+        self.icon = icon
+        self.color = color
+        self.category = category
+        self.indicatorLabels = indicatorLabels
+        self.indicatorDefaults = indicatorDefaults
+        self.followUpEnabled = followUpEnabled
+        self.metricType = metricType
+        self.metricUnit = metricUnit
+        self.subjects = subjects
+    }
 
     enum CodingKeys: String, CodingKey {
         case name, icon, color, category
         case indicatorLabels, indicatorDefaults
         case followUpEnabled
+        case metricType, metricUnit, subjects
     }
 
     func encode(to encoder: Encoder) throws {
@@ -80,6 +97,9 @@ struct CreateChoreRequest: Codable {
         try container.encodeIfPresent(indicatorLabels, forKey: .indicatorLabels)
         try container.encodeIfPresent(indicatorDefaults, forKey: .indicatorDefaults)
         try container.encodeIfPresent(followUpEnabled, forKey: .followUpEnabled)
+        try container.encodeIfPresent(metricType, forKey: .metricType)
+        try container.encodeIfPresent(metricUnit, forKey: .metricUnit)
+        try container.encodeIfPresent(subjects, forKey: .subjects)
     }
 }
 
@@ -101,6 +121,29 @@ struct CreateLogRequest: Codable {
     let indicatorVolumes: [String: Int]?
     let followUpMinutes: Int?
     let followUpTime: String?
+    let rating: Int?
+    let durationSeconds: Int?
+    let subject: String?
+    /// Client-generated token (≤64 chars) so offline replays de-dup server-side.
+    let idempotencyKey: String?
+
+    init(choreId: Int, note: String?, indicators: [String]?, date: String?, hour: Int?, completedAt: String?, volumeML: Int?, userId: Int?, indicatorVolumes: [String: Int]?, followUpMinutes: Int?, followUpTime: String?, rating: Int? = nil, durationSeconds: Int? = nil, subject: String? = nil, idempotencyKey: String? = nil) {
+        self.choreId = choreId
+        self.note = note
+        self.indicators = indicators
+        self.date = date
+        self.hour = hour
+        self.completedAt = completedAt
+        self.volumeML = volumeML
+        self.userId = userId
+        self.indicatorVolumes = indicatorVolumes
+        self.followUpMinutes = followUpMinutes
+        self.followUpTime = followUpTime
+        self.rating = rating
+        self.durationSeconds = durationSeconds
+        self.subject = subject
+        self.idempotencyKey = idempotencyKey
+    }
 
     enum CodingKeys: String, CodingKey {
         case choreId, note, indicators, date, hour, completedAt
@@ -109,6 +152,7 @@ struct CreateLogRequest: Codable {
         case indicatorVolumes
         case followUpMinutes
         case followUpTime
+        case rating, durationSeconds, subject, idempotencyKey
     }
 }
 
@@ -121,12 +165,30 @@ struct UpdateLogRequest: Codable {
     let hour: Int?
     let date: String?
     let indicatorVolumes: [String: Int]?
+    let rating: Int?
+    let durationSeconds: Int?
+    let subject: String?
+
+    init(note: String?, indicators: [String]?, volumeML: Int?, userId: Int?, completedAt: String?, hour: Int?, date: String?, indicatorVolumes: [String: Int]?, rating: Int? = nil, durationSeconds: Int? = nil, subject: String? = nil) {
+        self.note = note
+        self.indicators = indicators
+        self.volumeML = volumeML
+        self.userId = userId
+        self.completedAt = completedAt
+        self.hour = hour
+        self.date = date
+        self.indicatorVolumes = indicatorVolumes
+        self.rating = rating
+        self.durationSeconds = durationSeconds
+        self.subject = subject
+    }
 
     enum CodingKeys: String, CodingKey {
         case note, indicators, date, hour, completedAt
         case volumeML = "volumeML"
         case userId
         case indicatorVolumes
+        case rating, durationSeconds, subject
     }
 }
 
@@ -182,6 +244,10 @@ struct PatchUserPreferencesRequest: Codable {
     var choreOrder: [Int]? = nil
     var hiddenHomeChoreIds: [Int]? = nil
     var timezone: String? = nil
+    var volumeUnit: String? = nil
+    var statsSectionOrder: [String]? = nil
+    var statsSectionHidden: [String]? = nil
+    var statsWidgets: [StatsWidget]? = nil
 }
 
 // MARK: - Push

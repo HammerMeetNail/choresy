@@ -130,6 +130,14 @@ struct Chore: Codable, Identifiable, Equatable {
     let hasVolumeML: Bool
     let followUpEnabled: Bool
     let lastFollowUpMinutes: Int
+    let hasRating: Bool
+    /// Generalized metric config (migration 036): "none" | "amount" | "rating" | "duration".
+    /// Source of truth going forward; hasVolumeML/hasRating are kept in sync server-side.
+    let metricType: String
+    /// Display unit label for "amount" metrics (e.g. "mL", "oz", "g", "min").
+    let metricUnit: String
+    /// Optional subject tags (migration 039), e.g. twin names for Feed Baby.
+    let subjects: [String]
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -149,9 +157,13 @@ struct Chore: Codable, Identifiable, Equatable {
         hasVolumeML = try container.decode(Bool.self, forKey: .hasVolumeML)
         followUpEnabled = try container.decodeIfPresent(Bool.self, forKey: .followUpEnabled) ?? true
         lastFollowUpMinutes = try container.decodeIfPresent(Int.self, forKey: .lastFollowUpMinutes) ?? 0
+        hasRating = try container.decodeIfPresent(Bool.self, forKey: .hasRating) ?? false
+        metricType = try container.decodeIfPresent(String.self, forKey: .metricType) ?? "none"
+        metricUnit = try container.decodeIfPresent(String.self, forKey: .metricUnit) ?? ""
+        subjects = try container.decodeIfPresent([String].self, forKey: .subjects) ?? []
     }
 
-    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool) {
+    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool, hasRating: Bool = false, metricType: String = "none", metricUnit: String = "", subjects: [String] = []) {
         self.id = id
         self.householdId = householdId
         self.name = name
@@ -168,6 +180,10 @@ struct Chore: Codable, Identifiable, Equatable {
         self.hasVolumeML = hasVolumeML
         self.followUpEnabled = true
         self.lastFollowUpMinutes = 0
+        self.hasRating = hasRating
+        self.metricType = metricType
+        self.metricUnit = metricUnit
+        self.subjects = subjects
     }
 
     enum CodingKeys: String, CodingKey {
@@ -175,6 +191,7 @@ struct Chore: Codable, Identifiable, Equatable {
         case isPredefined, predefinedKey, createdBy, createdAt
         case indicatorLabels, indicatorDefaults, hasVolumeML
         case followUpEnabled, lastFollowUpMinutes
+        case hasRating, metricType, metricUnit, subjects
     }
 }
 
@@ -192,6 +209,30 @@ struct ChoreLog: Codable, Identifiable, Equatable {
     let createdAt: Date
     let volumeML: Int?
     let indicatorVolumes: [String: Int]?
+    let title: String?
+    let rating: Int?
+    /// Elapsed seconds for duration-metric chores (migration 036). nil = no duration.
+    let durationSeconds: Int?
+    /// Subject tag (migration 039), e.g. which twin this log is about. nil = untagged.
+    let subject: String?
+
+    init(id: Int, householdId: Int, userId: Int, choreId: Int, completedAt: Date, note: String, indicators: [String], slotHour: Int?, createdAt: Date, volumeML: Int?, indicatorVolumes: [String: Int]?, title: String? = nil, rating: Int? = nil, durationSeconds: Int? = nil, subject: String? = nil) {
+        self.id = id
+        self.householdId = householdId
+        self.userId = userId
+        self.choreId = choreId
+        self.completedAt = completedAt
+        self.note = note
+        self.indicators = indicators
+        self.slotHour = slotHour
+        self.createdAt = createdAt
+        self.volumeML = volumeML
+        self.indicatorVolumes = indicatorVolumes
+        self.title = title
+        self.rating = rating
+        self.durationSeconds = durationSeconds
+        self.subject = subject
+    }
 }
 
 // MARK: - DailySummary
@@ -342,6 +383,84 @@ struct UserPreferences: Codable, Equatable {
     let choreOrder: [Int]
     let hiddenHomeChoreIds: [Int]
     let timezone: String
+    /// "ml" (canonical, default) or "oz". Volumes are stored in mL; this is display-only.
+    let volumeUnit: String
+    let statsSectionOrder: [String]
+    let statsSectionHidden: [String]
+    let statsWidgets: [StatsWidget]
+
+    init(choreOrder: [Int], hiddenHomeChoreIds: [Int], timezone: String, volumeUnit: String = "ml", statsSectionOrder: [String] = [], statsSectionHidden: [String] = [], statsWidgets: [StatsWidget] = []) {
+        self.choreOrder = choreOrder
+        self.hiddenHomeChoreIds = hiddenHomeChoreIds
+        self.timezone = timezone
+        self.volumeUnit = volumeUnit
+        self.statsSectionOrder = statsSectionOrder
+        self.statsSectionHidden = statsSectionHidden
+        self.statsWidgets = statsWidgets
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        choreOrder = try container.decodeIfPresent([Int].self, forKey: .choreOrder) ?? []
+        hiddenHomeChoreIds = try container.decodeIfPresent([Int].self, forKey: .hiddenHomeChoreIds) ?? []
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone) ?? ""
+        volumeUnit = try container.decodeIfPresent(String.self, forKey: .volumeUnit) ?? "ml"
+        statsSectionOrder = try container.decodeIfPresent([String].self, forKey: .statsSectionOrder) ?? []
+        statsSectionHidden = try container.decodeIfPresent([String].self, forKey: .statsSectionHidden) ?? []
+        statsWidgets = try container.decodeIfPresent([StatsWidget].self, forKey: .statsWidgets) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case choreOrder, hiddenHomeChoreIds, timezone, volumeUnit
+        case statsSectionOrder, statsSectionHidden, statsWidgets
+    }
+}
+
+/// A user-defined stats widget (migration 037). Server-validated closed schema:
+/// every field is an enum/allowlist server-side; `title` is data — render it
+/// only as plain Text, never as attributed/markdown content.
+struct StatsWidget: Codable, Identifiable, Equatable {
+    let id: String
+    let type: String     // timeseries | total | last-done | interval | member-split | top-list
+    let choreIds: [Int]
+    let metric: String   // count | amount | rating | duration
+    let agg: String      // sum | avg | min | max
+    let period: String   // day | week | month | all
+    let grain: String    // daily | weekly | monthly
+    let title: String
+
+    init(id: String, type: String, choreIds: [Int], metric: String, agg: String, period: String, grain: String, title: String) {
+        self.id = id
+        self.type = type
+        self.choreIds = choreIds
+        self.metric = metric
+        self.agg = agg
+        self.period = period
+        self.grain = grain
+        self.title = title
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        type = try container.decode(String.self, forKey: .type)
+        choreIds = try container.decodeIfPresent([Int].self, forKey: .choreIds) ?? []
+        metric = try container.decodeIfPresent(String.self, forKey: .metric) ?? ""
+        agg = try container.decodeIfPresent(String.self, forKey: .agg) ?? ""
+        period = try container.decodeIfPresent(String.self, forKey: .period) ?? ""
+        grain = try container.decodeIfPresent(String.self, forKey: .grain) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    }
+}
+
+// MARK: - Day Notes
+
+/// One shared free-text diary note per household+date (migration 038).
+struct DayNote: Codable, Equatable {
+    let date: String // YYYY-MM-DD
+    let note: String
+    let updatedBy: Int?
+    let updatedAt: Date
 }
 
 // MARK: - Stats DTOs
@@ -420,6 +539,7 @@ struct TimeSeriesPeriod: Codable, Equatable {
     let end: String
     let count: Int
     let totalML: Int?
+    let totalDuration: Int?
     let indicators: [String: Int]?
     let volumeByIndicator: [String: Int]?
 }
@@ -433,8 +553,22 @@ struct ChoreTimeSeries: Codable, Equatable {
     let choreId: Int
     let choreName: String
     let choreIcon: String
+    let metricType: String?
+    let metricUnit: String?
     let byMember: [TimeSeriesByMember]
     let periods: [TimeSeriesPeriod]
+}
+
+/// Period-scoped aggregate for one chore (`GET /api/stats/chores/{id}/summary`).
+/// Backs the total / member-split widget types.
+struct ChoreSummary: Codable, Equatable {
+    let choreId: Int
+    let count: Int
+    let totalML: Int
+    let totalDuration: Int
+    let byMember: [LeaderboardEntry]
+    let metricType: String?
+    let metricUnit: String?
 }
 
 // MARK: - Response Wrappers
@@ -583,4 +717,16 @@ struct SingleChoreStatsResponse: Codable {
 
 struct TimeSeriesResponse: Codable {
     let timeSeries: ChoreTimeSeries
+}
+
+struct ChoreSummaryResponse: Codable {
+    let summary: ChoreSummary
+}
+
+struct DayNotesResponse: Codable {
+    let notes: [DayNote]
+}
+
+struct DayNoteResponse: Codable {
+    let note: DayNote
 }

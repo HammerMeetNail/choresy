@@ -253,4 +253,125 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(dict["specific_time"] as? String, "08:00")
         XCTAssertTrue(dict["is_active"] as? Bool ?? false)
     }
+
+    // MARK: - Wire-format tests for migration 035-039 fields
+    // These use the real apiEncoder: the Go server expects camelCase keys.
+
+    func testCreateLogRequestOfflineAndMetricFieldsWireFormat() throws {
+        let req = CreateLogRequest(
+            choreId: 5,
+            note: nil,
+            indicators: nil,
+            date: "2026-07-02",
+            hour: 9,
+            completedAt: "2026-07-02T09:15:00Z",
+            volumeML: nil,
+            userId: nil,
+            indicatorVolumes: nil,
+            followUpMinutes: nil,
+            followUpTime: nil,
+            rating: 40,
+            durationSeconds: 1800,
+            subject: "Ada",
+            idempotencyKey: "client-key-123"
+        )
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertEqual(dict["idempotencyKey"] as? String, "client-key-123")
+        XCTAssertEqual(dict["durationSeconds"] as? Int, 1800)
+        XCTAssertEqual(dict["subject"] as? String, "Ada")
+        XCTAssertEqual(dict["rating"] as? Int, 40)
+        XCTAssertEqual(dict["choreId"] as? Int, 5)
+        XCTAssertEqual(dict["completedAt"] as? String, "2026-07-02T09:15:00Z")
+    }
+
+    func testCreateLogRequestOmitsNewFieldsWhenNil() throws {
+        let req = CreateLogRequest(
+            choreId: 1,
+            note: nil,
+            indicators: nil,
+            date: nil,
+            hour: 14,
+            completedAt: "2026-07-02T14:00:00Z",
+            volumeML: nil,
+            userId: nil,
+            indicatorVolumes: nil,
+            followUpMinutes: nil,
+            followUpTime: nil
+        )
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertNil(dict["idempotencyKey"])
+        XCTAssertNil(dict["durationSeconds"])
+        XCTAssertNil(dict["subject"])
+        XCTAssertNil(dict["rating"])
+    }
+
+    func testUpdateLogRequestNewFieldsWireFormat() throws {
+        let req = UpdateLogRequest(
+            note: nil,
+            indicators: nil,
+            volumeML: nil,
+            userId: nil,
+            completedAt: nil,
+            hour: nil,
+            date: nil,
+            indicatorVolumes: nil,
+            rating: nil,
+            durationSeconds: 900,
+            subject: "Grace"
+        )
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertEqual(dict["durationSeconds"] as? Int, 900)
+        XCTAssertEqual(dict["subject"] as? String, "Grace")
+        XCTAssertNil(dict["rating"])
+    }
+
+    func testCreateChoreRequestMetricFieldsWireFormat() throws {
+        let req = CreateChoreRequest(
+            name: "Nap",
+            icon: "😴",
+            color: nil,
+            category: nil,
+            indicatorLabels: nil,
+            indicatorDefaults: nil,
+            followUpEnabled: nil,
+            metricType: "duration",
+            metricUnit: "",
+            subjects: ["Ada", "Grace"]
+        )
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertEqual(dict["metricType"] as? String, "duration")
+        XCTAssertEqual(dict["metricUnit"] as? String, "")
+        XCTAssertEqual(dict["subjects"] as? [String], ["Ada", "Grace"])
+    }
+
+    func testCreateChoreRequestOmitsMetricFieldsWhenNil() throws {
+        let req = CreateChoreRequest(name: "Simple", icon: nil, color: nil, category: nil, indicatorLabels: nil, indicatorDefaults: nil, followUpEnabled: nil)
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertNil(dict["metricType"])
+        XCTAssertNil(dict["metricUnit"])
+        XCTAssertNil(dict["subjects"])
+    }
+
+    func testPatchUserPreferencesNewFieldsWireFormat() throws {
+        var req = PatchUserPreferencesRequest()
+        req.volumeUnit = "oz"
+        req.statsWidgets = [
+            StatsWidget(id: "abc-123", type: "total", choreIds: [5], metric: "amount",
+                        agg: "sum", period: "week", grain: "daily", title: "Bottles this week")
+        ]
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertEqual(dict["volumeUnit"] as? String, "oz")
+        let widgets = try XCTUnwrap(dict["statsWidgets"] as? [[String: Any]])
+        XCTAssertEqual(widgets.count, 1)
+        XCTAssertEqual(widgets[0]["id"] as? String, "abc-123")
+        XCTAssertEqual(widgets[0]["choreIds"] as? [Int], [5])
+        XCTAssertNil(dict["choreOrder"])
+        XCTAssertNil(dict["statsSectionOrder"])
+    }
 }

@@ -639,4 +639,231 @@ final class ModelDecodingTests: XCTestCase {
         let response = try decoder.decode(StatusResponse.self, from: json)
         XCTAssertEqual(response.status, "ok")
     }
+
+    // MARK: - Metric config (migration 036/039)
+
+    func testDecodeChoreWithMetricFields() throws {
+        let json = #"""
+        {
+          "chore": {
+            "id": 5,
+            "householdId": 1,
+            "name": "Feed Baby",
+            "icon": "🍼",
+            "color": "#2E86AB",
+            "sortOrder": 0,
+            "category": "Baby",
+            "isPredefined": true,
+            "predefinedKey": "feed_baby",
+            "createdBy": null,
+            "createdAt": "2024-12-25T14:30:00Z",
+            "indicatorLabels": ["🍼 formula", "🤱 breast"],
+            "indicatorDefaults": [],
+            "hasVolumeML": true,
+            "hasRating": false,
+            "metricType": "amount",
+            "metricUnit": "mL",
+            "subjects": ["Ada", "Grace"]
+          }
+        }
+        """#.data(using: .utf8)!
+        let chore = try decoder.decode(ChoreResponse.self, from: json).chore
+        XCTAssertEqual(chore.metricType, "amount")
+        XCTAssertEqual(chore.metricUnit, "mL")
+        XCTAssertEqual(chore.subjects, ["Ada", "Grace"])
+        XCTAssertFalse(chore.hasRating)
+    }
+
+    func testDecodeChoreLegacyPayloadDefaultsMetricFields() throws {
+        // A server (or fixture) that predates migrations 036/039 sends no
+        // metric fields; the model must default rather than fail.
+        let json = #"""
+        {
+          "chore": {
+            "id": 6,
+            "householdId": 1,
+            "name": "Dishes",
+            "icon": "🍽️",
+            "color": "#386641",
+            "sortOrder": 1,
+            "category": "Kitchen",
+            "isPredefined": false,
+            "createdAt": "2024-12-25T14:30:00Z",
+            "indicatorLabels": null,
+            "indicatorDefaults": null,
+            "hasVolumeML": false,
+            "subjects": null
+          }
+        }
+        """#.data(using: .utf8)!
+        let chore = try decoder.decode(ChoreResponse.self, from: json).chore
+        XCTAssertEqual(chore.metricType, "none")
+        XCTAssertEqual(chore.metricUnit, "")
+        XCTAssertEqual(chore.subjects, [])
+        XCTAssertFalse(chore.hasRating)
+    }
+
+    func testDecodeLogWithDurationSubjectAndRating() throws {
+        let json = #"""
+        {
+          "log": {
+            "id": 3,
+            "householdId": 1,
+            "userId": 1,
+            "choreId": 5,
+            "completedAt": "2024-12-25T14:30:00Z",
+            "title": "Nap",
+            "note": "",
+            "indicators": [],
+            "createdAt": "2024-12-25T14:30:01Z",
+            "rating": 45,
+            "durationSeconds": 1800,
+            "subject": "Ada"
+          }
+        }
+        """#.data(using: .utf8)!
+        let log = try decoder.decode(LogResponse.self, from: json).log
+        XCTAssertEqual(log.title, "Nap")
+        XCTAssertEqual(log.rating, 45)
+        XCTAssertEqual(log.durationSeconds, 1800)
+        XCTAssertEqual(log.subject, "Ada")
+    }
+
+    // MARK: - Preferences (volumeUnit / stats sections / widgets)
+
+    func testDecodeUserPreferencesWithWidgetFields() throws {
+        let json = #"""
+        {
+          "preferences": {
+            "choreOrder": [1],
+            "hiddenHomeChoreIds": [],
+            "timezone": "UTC",
+            "volumeUnit": "oz",
+            "statsSectionOrder": ["overview", "widget:abc-123"],
+            "statsSectionHidden": ["recap"],
+            "statsWidgets": [
+              {
+                "id": "abc-123",
+                "type": "total",
+                "choreIds": [5],
+                "metric": "amount",
+                "agg": "sum",
+                "period": "week",
+                "grain": "daily",
+                "title": "Bottles this week"
+              }
+            ]
+          }
+        }
+        """#.data(using: .utf8)!
+        let prefs = try decoder.decode(UserPreferencesResponse.self, from: json).preferences
+        XCTAssertEqual(prefs.volumeUnit, "oz")
+        XCTAssertEqual(prefs.statsSectionOrder, ["overview", "widget:abc-123"])
+        XCTAssertEqual(prefs.statsSectionHidden, ["recap"])
+        XCTAssertEqual(prefs.statsWidgets.count, 1)
+        let w = try XCTUnwrap(prefs.statsWidgets.first)
+        XCTAssertEqual(w.id, "abc-123")
+        XCTAssertEqual(w.type, "total")
+        XCTAssertEqual(w.choreIds, [5])
+        XCTAssertEqual(w.metric, "amount")
+        XCTAssertEqual(w.agg, "sum")
+        XCTAssertEqual(w.period, "week")
+        XCTAssertEqual(w.grain, "daily")
+        XCTAssertEqual(w.title, "Bottles this week")
+    }
+
+    func testDecodeUserPreferencesLegacyDefaultsNewFields() throws {
+        // Go marshals nil slices as null and older payloads omit the fields
+        // entirely — both must decode with defaults.
+        let json = #"""
+        {
+          "preferences": {
+            "choreOrder": [2, 1],
+            "hiddenHomeChoreIds": null,
+            "timezone": "America/New_York",
+            "statsWidgets": null
+          }
+        }
+        """#.data(using: .utf8)!
+        let prefs = try decoder.decode(UserPreferencesResponse.self, from: json).preferences
+        XCTAssertEqual(prefs.choreOrder, [2, 1])
+        XCTAssertEqual(prefs.hiddenHomeChoreIds, [])
+        XCTAssertEqual(prefs.volumeUnit, "ml")
+        XCTAssertEqual(prefs.statsSectionOrder, [])
+        XCTAssertEqual(prefs.statsSectionHidden, [])
+        XCTAssertEqual(prefs.statsWidgets, [])
+    }
+
+    // MARK: - Day notes
+
+    func testDecodeDayNotesResponse() throws {
+        let json = #"""
+        {
+          "notes": [
+            {"date": "2026-07-01", "note": "First solid food!", "updatedBy": 1, "updatedAt": "2026-07-01T19:00:00Z"},
+            {"date": "2026-06-30", "note": "Rough night", "updatedAt": "2026-06-30T22:00:00Z"}
+          ]
+        }
+        """#.data(using: .utf8)!
+        let response = try decoder.decode(DayNotesResponse.self, from: json)
+        XCTAssertEqual(response.notes.count, 2)
+        XCTAssertEqual(response.notes[0].date, "2026-07-01")
+        XCTAssertEqual(response.notes[0].note, "First solid food!")
+        XCTAssertEqual(response.notes[0].updatedBy, 1)
+        XCTAssertNil(response.notes[1].updatedBy)
+    }
+
+    func testDecodeDayNoteResponse() throws {
+        let json = #"""
+        {"note": {"date": "2026-07-02", "note": "Checkup day", "updatedBy": 2, "updatedAt": "2026-07-02T09:00:00Z"}}
+        """#.data(using: .utf8)!
+        let response = try decoder.decode(DayNoteResponse.self, from: json)
+        XCTAssertEqual(response.note.date, "2026-07-02")
+        XCTAssertEqual(response.note.note, "Checkup day")
+    }
+
+    // MARK: - Chore summary + time-series metric fields
+
+    func testDecodeChoreSummaryResponse() throws {
+        let json = #"""
+        {
+          "summary": {
+            "choreId": 5,
+            "count": 12,
+            "totalML": 960,
+            "totalDuration": 0,
+            "byMember": [{"userId": 1, "count": 8}, {"userId": 2, "count": 4}],
+            "metricType": "amount",
+            "metricUnit": "mL"
+          }
+        }
+        """#.data(using: .utf8)!
+        let summary = try decoder.decode(ChoreSummaryResponse.self, from: json).summary
+        XCTAssertEqual(summary.choreId, 5)
+        XCTAssertEqual(summary.count, 12)
+        XCTAssertEqual(summary.totalML, 960)
+        XCTAssertEqual(summary.byMember.count, 2)
+        XCTAssertEqual(summary.metricType, "amount")
+    }
+
+    func testDecodeTimeSeriesWithDurationAndMetric() throws {
+        let json = #"""
+        {
+          "timeSeries": {
+            "choreId": 7,
+            "choreName": "Nap",
+            "choreIcon": "😴",
+            "metricType": "duration",
+            "byMember": [{"userId": 1, "count": 3}],
+            "periods": [
+              {"start": "2026-06-29", "end": "2026-06-30", "count": 2, "totalML": 0, "totalDuration": 5400}
+            ]
+          }
+        }
+        """#.data(using: .utf8)!
+        let ts = try decoder.decode(TimeSeriesResponse.self, from: json).timeSeries
+        XCTAssertEqual(ts.metricType, "duration")
+        XCTAssertNil(ts.metricUnit)
+        XCTAssertEqual(ts.periods[0].totalDuration, 5400)
+    }
 }
