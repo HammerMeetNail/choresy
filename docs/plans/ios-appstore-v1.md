@@ -1,6 +1,6 @@
 # iOS App Store v1 — Parity & Polish Plan (index)
 
-**Status:** Active — P1–P3 complete (2026-07-03), P4 Stats parity is next ·
+**Status:** Active — P1–P4 complete (2026-07-03), P5 Push + auth completion is next ·
 **Drafted:** 2026-07-02 · **Owner decisions recorded:** 2026-07-02
 
 This is the **index** for the App Store v1 effort. The detailed, executable

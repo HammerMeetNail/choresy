@@ -16,8 +16,55 @@ final class PreferencesDataLoader {
             state.choreOrder = data.preferences.choreOrder
             state.hiddenHomeChoreIDs = data.preferences.hiddenHomeChoreIds
             state.volumeUnit = data.preferences.volumeUnit == "oz" ? "oz" : "ml"
+            state.statsSectionOrder = data.preferences.statsSectionOrder
+            state.statsSectionHidden = data.preferences.statsSectionHidden
+            state.statsWidgets = data.preferences.statsWidgets
         } catch {
             // Silent failure
+        }
+    }
+
+    /// Persists the stats section order; the server echo wins (PWA
+    /// `saveStatsSectionOrder`).
+    @discardableResult
+    func saveStatsSectionOrder(_ order: [String]) async -> Bool {
+        state.statsSectionOrder = order
+        do {
+            let patch = PatchUserPreferencesRequest(statsSectionOrder: order)
+            let data: UserPreferencesResponse = try await api.patch("/api/preferences", body: patch)
+            state.statsSectionOrder = data.preferences.statsSectionOrder
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Persists the hidden stats sections (PWA `saveStatsSectionHidden`).
+    @discardableResult
+    func saveStatsSectionHidden(_ hidden: [String]) async -> Bool {
+        state.statsSectionHidden = hidden
+        do {
+            let patch = PatchUserPreferencesRequest(statsSectionHidden: hidden)
+            let data: UserPreferencesResponse = try await api.patch("/api/preferences", body: patch)
+            state.statsSectionHidden = data.preferences.statsSectionHidden
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Persists the user-defined stats widgets. The server validates the
+    /// schema and echoes back the normalized list (with server-assigned ids),
+    /// which we store (PWA `saveStatsWidgets`).
+    @discardableResult
+    func saveStatsWidgets(_ widgets: [StatsWidget]) async -> Bool {
+        do {
+            let patch = PatchUserPreferencesRequest(statsWidgets: widgets)
+            let data: UserPreferencesResponse = try await api.patch("/api/preferences", body: patch)
+            state.statsWidgets = data.preferences.statsWidgets
+            return true
+        } catch {
+            return false
         }
     }
 

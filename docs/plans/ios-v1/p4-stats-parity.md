@@ -53,17 +53,50 @@ state, light/dark.
 
 ## Progress log
 
-- [ ] `swift-snapshot-testing` adopted; harness in place
-- [ ] Swift Charts migration of existing charts
-- [ ] Breakdown / Streaks / Recap / Feeding gaps / Last done sections
-- [ ] `colorForIndicator` port + hash-output tests
-- [ ] Generalized `chore:<id>` sections; baby = saved config
-- [ ] Interval analysis (`choreId` param)
-- [ ] Custom widgets: decode, render all six types, per-card period toggle, wizard
-- [ ] Period-toggle convergence (#84/#85)
-- [ ] Customize panel (reorder/hide, all key kinds)
-- [ ] Matrix rows updated
+- [x] `swift-snapshot-testing` adopted; harness in place
+- [x] Swift Charts migration of existing charts
+- [x] Breakdown / Streaks / Recap / Feeding gaps / Last done sections
+- [x] `colorForIndicator` port + hash-output tests
+- [x] Generalized `chore:<id>` sections; baby = saved config
+- [x] Interval analysis (`choreId` param)
+- [x] Custom widgets: decode, render all six types, per-card period toggle, wizard
+- [x] Period-toggle convergence (#84/#85)
+- [x] Customize panel (reorder/hide, all key kinds)
+- [x] Matrix rows updated
 
 ### Notes
 
-*(append dated entries here)*
+- **2026-07-03 — Phase complete.** Landed in one pass:
+  - **Architecture:** `StatsView` is now registry-driven — `StatsModel`
+    (`Views/Stats/StatsModel.swift`) mirrors `app.js`'s stats loading
+    (same endpoints/params/caches, `MAX_ANALYTICS_FETCHES=15` cap) and
+    `Support/StatsSections.swift` ports `resolveStatsLayout` + dynamic
+    `chore:<id>`/`widget:<uuid>` keys. Section/chart views split into
+    `Views/Stats/` (charts, sections, widgets/customize).
+  - **Swift Charts:** all plots are `Chart`-based (`StatsCharts.swift`):
+    stacked period bars with `.chartXSelection` tap summaries, busy-hours
+    bars, heatmap `RectangleMark` grid (Monday-start, asset-catalog
+    `Heatmap*` ramp from the PWA CSS tokens), cluster-feeding scatter with
+    the 2h rule and ported dot classification.
+  - **Snapshot testing:** `swift-snapshot-testing` 1.17+ added to the
+    project; 16 chart/widget states × light/dark recorded on iOS 26
+    (`NabuTests/__Snapshots__/`). Tests `XCTSkipUnless` on other iOS majors
+    so the CI runner's older simulator skips rather than pixel-mismatches.
+    Includes the hostile-widget-title XSS-intent snapshot (plain `Text`).
+  - **Found & fixed a latent P1 bug:** `Assets.xcassets` was wired into the
+    Xcode project as a *folder group* whose only resource was the top-level
+    `Contents.json` — no `Assets.car` was ever compiled into the app, so
+    every named color (`BrandPrimary`, `Surface`, …) silently resolved to
+    clear at runtime. The first snapshot recordings exposed it (invisible
+    bars/numbers). The catalog is now a `folder.assetcatalog` reference in
+    the Resources phase; `Assets.car` verified present in the built app.
+  - **Interval analysis:** the `?choreId=` generalization is server-side;
+    the PWA UI never sends `choreId` today, so iOS intentionally matches
+    (default Feed Baby). Revisit only if the PWA grows a chore picker.
+  - **Presentation choices** (allowed by §2.1, recorded in the matrix):
+    segmented pickers for all period toggles, native sheet + `Form` wizard,
+    `List` drag-reorder in the customize panel, no per-heatmap-cell tap
+    tooltip, top-chores pills keep the PWA's default-to-current-user with
+    no deselect.
+  - Verified: iOS build + full `NabuTests` green on iPhone 17 (iOS 26.5)
+    simulator; `make test-go` green; `make test-js` 76/76.

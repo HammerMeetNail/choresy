@@ -522,11 +522,43 @@ struct ChoreStat: Codable, Equatable {
     let choreIcon: String
     let totalThisWeek: Int
     let totalThisMonth: Int
+    /// Count within the requested range/period (`?period=day|week|month`).
+    /// The PWA's Chores section renders this; defaults 0 for old fixtures.
+    let totalInRange: Int
     let indicatorCounts: [String: Int]?
     let volumeHistory: [VolumePoint]?
     let avgVolume: Double?
     let hasVolume: Bool
     let hasIndicators: Bool
+
+    init(choreId: Int, choreName: String, choreIcon: String, totalThisWeek: Int, totalThisMonth: Int, totalInRange: Int = 0, indicatorCounts: [String: Int]? = nil, volumeHistory: [VolumePoint]? = nil, avgVolume: Double? = nil, hasVolume: Bool = false, hasIndicators: Bool = false) {
+        self.choreId = choreId
+        self.choreName = choreName
+        self.choreIcon = choreIcon
+        self.totalThisWeek = totalThisWeek
+        self.totalThisMonth = totalThisMonth
+        self.totalInRange = totalInRange
+        self.indicatorCounts = indicatorCounts
+        self.volumeHistory = volumeHistory
+        self.avgVolume = avgVolume
+        self.hasVolume = hasVolume
+        self.hasIndicators = hasIndicators
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        choreId = try container.decode(Int.self, forKey: .choreId)
+        choreName = try container.decode(String.self, forKey: .choreName)
+        choreIcon = try container.decodeIfPresent(String.self, forKey: .choreIcon) ?? ""
+        totalThisWeek = try container.decodeIfPresent(Int.self, forKey: .totalThisWeek) ?? 0
+        totalThisMonth = try container.decodeIfPresent(Int.self, forKey: .totalThisMonth) ?? 0
+        totalInRange = try container.decodeIfPresent(Int.self, forKey: .totalInRange) ?? 0
+        indicatorCounts = try container.decodeIfPresent([String: Int].self, forKey: .indicatorCounts)
+        volumeHistory = try container.decodeIfPresent([VolumePoint].self, forKey: .volumeHistory)
+        avgVolume = try container.decodeIfPresent(Double.self, forKey: .avgVolume)
+        hasVolume = try container.decodeIfPresent(Bool.self, forKey: .hasVolume) ?? false
+        hasIndicators = try container.decodeIfPresent(Bool.self, forKey: .hasIndicators) ?? false
+    }
 }
 
 struct VolumePoint: Codable, Equatable {
@@ -557,6 +589,16 @@ struct ChoreTimeSeries: Codable, Equatable {
     let metricUnit: String?
     let byMember: [TimeSeriesByMember]
     let periods: [TimeSeriesPeriod]
+}
+
+/// One inter-feed gap from `GET /api/stats/feeding-gaps` (cluster-feeding
+/// analysis; `?choreId=` generalizes it to any chore).
+struct FeedingGap: Codable, Equatable {
+    let hour: Int
+    let gapMinutes: Int
+    let precedingVolume: Int
+    let followUpVolume: Int
+    let date: String
 }
 
 /// Period-scoped aggregate for one chore (`GET /api/stats/chores/{id}/summary`).
@@ -723,6 +765,10 @@ struct TimeSeriesResponse: Codable {
 
 struct ChoreSummaryResponse: Codable {
     let summary: ChoreSummary
+}
+
+struct FeedingGapsResponse: Codable {
+    let feedingGaps: [FeedingGap]
 }
 
 struct DayNotesResponse: Codable {

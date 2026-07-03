@@ -35,6 +35,11 @@ final class AppState: ObservableObject {
     @Published var pendingLogs: [PendingLog] = []
     /// Shared per-day diary notes keyed by "YYYY-MM-DD" (Phase 5.4).
     @Published var dayNotes: [String: String] = [:]
+    /// Stats customization (P4): stored section order/hidden sets and the
+    /// user-defined widgets, synced via `/api/preferences`.
+    @Published var statsSectionOrder: [String] = []
+    @Published var statsSectionHidden: [String] = []
+    @Published var statsWidgets: [StatsWidget] = []
 
     func reset() {
         user = nil
@@ -66,6 +71,9 @@ final class AppState: ObservableObject {
         // timer is device-scoped, not session-scoped.
         pendingLogs = []
         dayNotes = [:]
+        statsSectionOrder = []
+        statsSectionHidden = []
+        statsWidgets = []
     }
 
     func resetHouseholdScoped() {
@@ -82,5 +90,8 @@ final class AppState: ObservableObject {
         historyChoreFilter = nil
         historyFilterOpen = false
         dayNotes = [:]
+        statsSectionOrder = []
+        statsSectionHidden = []
+        statsWidgets = []
     }
 }

@@ -42,6 +42,11 @@ enum DesignColors {
     static let textPrimary   = Color(uiColor: .label)
     static let textSecondary = Color(uiColor: .secondaryLabel)
     static let border        = Color(uiColor: .separator)
+
+    // Activity heatmap intensity ramp (asset catalog, light/dark variants
+    // mirroring the PWA's --heatmap-* CSS tokens)
+    static let heatmapEmpty = Color("HeatmapEmpty")
+    static let heatmapRamp  = [Color("Heatmap1"), Color("Heatmap2"), Color("Heatmap3"), Color("Heatmap4")]
 }
 
 enum Typography {
