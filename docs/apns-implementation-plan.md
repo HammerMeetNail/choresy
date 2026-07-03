@@ -1,8 +1,14 @@
 # APNs (Native iOS Push) — Implementation Plan
 
-**Status: Not built.** This document replaces the previous, inaccurate "Phase 10
-— Done" claim for native push. As of `main`, native iOS push is **non-functional
-end to end** and the work below is required to make it real.
+**Status: backend shipped (2026-07-02, iOS v1 plan P1/A3); iOS client half
+pending (P5).** The backend section below is implemented on `main`:
+migration 040 (`mobile_device_tokens`), `internal/apns` (store, ES256
+provider-token signer, HTTP/2 sender with terminal-token pruning), routed
+`/api/mobile/apns/register|unregister` handlers, fan-out to Web Push + APNs
+via `push.FanoutSender`, and `APNS_*` config that no-ops when unset. The
+"1. iOS client" section and the physical-device verification remain — they
+are scheduled in `docs/plans/ios-v1/p5-push-auth.md` and still require the
+Apple credentials described below.
 
 ## Why this is a plan and not an implementation
 

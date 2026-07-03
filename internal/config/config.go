@@ -30,6 +30,12 @@ type Config struct {
 	VAPIDPublicKey     string
 	VAPIDPrivateKey    string
 	VAPIDSubject       string
+	// APNs (native iOS push). All four must be set to enable the sender;
+	// unset leaves APNs a graceful no-op like the VAPID signer.
+	APNSAuthKeyP8 string // contents of the .p8 auth key (PEM, or base64 of it)
+	APNSKeyID     string
+	APNSTeamID    string
+	APNSBundleID  string
 }
 
 func Load() (Config, error) {
@@ -53,6 +59,10 @@ func Load() (Config, error) {
 		VAPIDPublicKey:     getenv("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey:    getenv("VAPID_PRIVATE_KEY", ""),
 		VAPIDSubject:       getenv("VAPID_SUBJECT", ""),
+		APNSAuthKeyP8:      getenv("APNS_AUTH_KEY_P8", ""),
+		APNSKeyID:          getenv("APNS_KEY_ID", ""),
+		APNSTeamID:         getenv("APNS_TEAM_ID", ""),
+		APNSBundleID:       getenv("APNS_BUNDLE_ID", ""),
 	}
 
 	if cfg.Port == "" {

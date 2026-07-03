@@ -138,7 +138,7 @@ Checklist (tick as items land on `main`; add dated notes below):
 - [x] B1 model catch-up + decoding/encoding tests
 - [x] A1 `DELETE /api/me` + role-path handler tests + cascade store tests
 - [x] A2 Apple identity provider + JWKS verification tests
-- [ ] A3 APNs store/routes/sender/fan-out + fake-server tests
+- [x] A3 APNs store/routes/sender/fan-out + fake-server tests
 - [ ] C1 asset-catalog semantic colors; fixed-size font audit
 - [x] D5 iOS CI lane forced on tag pushes
 
@@ -164,3 +164,14 @@ Checklist (tick as items land on `main`; add dated notes below):
   Services ID later); unset disables the endpoint (503). Web code-flow SIWA
   deliberately NOT built — decide button-vs-N/A for the PWA by P7. iOS
   button is P5.
+- **2026-07-02** — A3 backend: migration 040 `mobile_device_tokens` (unique
+  on token; re-register by another user takes the token over), new
+  `internal/apns` (memory+Postgres store, ES256 provider-token signer cached
+  50 min, HTTP/2 sender pruning on 410/`Unregistered`/`BadDeviceToken`,
+  `category` data key → `aps.category` for P5 action buttons), routed
+  `POST /api/mobile/apns/register|unregister` (auth+CSRF, hex-token +
+  environment validation, cross-user isolation tested), and
+  `push.FanoutSender` so notifications + reminders fan out to Web Push and
+  APNs through one `notification.PushSender`. `APNS_AUTH_KEY_P8/KEY_ID/
+  TEAM_ID/BUNDLE_ID` config (PEM, \n-escaped, or base64) no-ops when unset.
+  End-to-end delivery still needs Apple credentials + a physical device — P5.

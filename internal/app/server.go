@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"html/template"
 	"io"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/account"
+	"github.com/HammerMeetNail/nabu/internal/apns"
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -72,6 +74,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var notifStore notification.Store
 	var pushStore push.Store
 	var dayNoteStore daynote.Store
+	var apnsStore apns.Store
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
@@ -82,6 +85,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		notifStore = notification.NewPostgresStore(db)
 		pushStore = push.NewPostgresStore(db)
 		dayNoteStore = daynote.NewPostgresStore(db)
+		apnsStore = apns.NewPostgresStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
@@ -91,6 +95,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		notifStore = notification.NewMemoryStore()
 		pushStore = push.NewMemoryStore()
 		dayNoteStore = daynote.NewMemoryStore()
+		apnsStore = apns.NewMemoryStore()
 	}
 
 	authService := auth.NewService(authStore)
@@ -147,15 +152,32 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		}
 	}
 	pushService := push.NewService(pushStore, vapidSigner)
-	if vapidSigner != nil {
-		notifService.WithPushSender(pushService)
-	}
 	pushHandler := handlers.NewPushHandler(pushStore)
 	pushHandler.SetAuditLogger(auditLog)
 
+	// APNs sender for the native iOS app; a graceful no-op unless all four
+	// APNS_* settings are configured (mirrors the VAPID signer's behavior).
+	apnsClient := newAPNsClient(cfg, apnsStore)
+	apnsHandler := handlers.NewAPNsHandler(apnsStore)
+	apnsHandler.SetAuditLogger(auditLog)
+
+	// Every push fans out to all configured channels: Web Push for the PWA,
+	// APNs for the native app.
+	var pushChannels []push.DataSender
+	if vapidSigner != nil {
+		pushChannels = append(pushChannels, pushService)
+	}
+	if apnsClient != nil {
+		pushChannels = append(pushChannels, apnsClient)
+	}
+	pushFanout := push.NewFanoutSender(pushChannels...)
+	if len(pushChannels) > 0 {
+		notifService.WithPushSender(pushFanout)
+	}
+
 	reminderSched := reminder.NewScheduler(
 		reminderStore, scheduleStore, scheduleService,
-		notifStore, choreStore, householdStore, userPrefsStore, pushService,
+		notifStore, choreStore, householdStore, userPrefsStore, pushFanout,
 	)
 	// Guard the scheduler with a Postgres advisory lock so that running multiple
 	// app instances does not emit duplicate reminders (only the leader ticks).
@@ -354,6 +376,9 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))
+
+	mux.HandleFunc("/api/mobile/apns/register", method(http.MethodPost, middleware.RequireAuth(apnsHandler.Register)))
+	mux.HandleFunc("/api/mobile/apns/unregister", method(http.MethodPost, middleware.RequireAuth(apnsHandler.Unregister)))
 
 	mux.HandleFunc("/api/push/subscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Subscribe)))
 	mux.HandleFunc("/api/push/unsubscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Unsubscribe)))
@@ -556,6 +581,28 @@ func newMailer(cfg config.Config) mail.Sender {
 		return mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
 	}
 	return mail.UnavailableSender{}
+}
+
+// newAPNsClient builds the APNs sender when all APNS_* settings are present,
+// or returns nil (a disabled channel) when they are not. The .p8 key may be
+// provided as literal PEM, PEM with escaped newlines (env-var style), or
+// base64 of the PEM.
+func newAPNsClient(cfg config.Config, store apns.Store) *apns.Client {
+	if cfg.APNSAuthKeyP8 == "" || cfg.APNSKeyID == "" || cfg.APNSTeamID == "" || cfg.APNSBundleID == "" {
+		return nil
+	}
+	keyPEM := strings.ReplaceAll(cfg.APNSAuthKeyP8, `\n`, "\n")
+	if !strings.Contains(keyPEM, "-----BEGIN") {
+		if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(keyPEM)); err == nil {
+			keyPEM = string(decoded)
+		}
+	}
+	signer, err := apns.NewProviderTokenSigner(keyPEM, cfg.APNSKeyID, cfg.APNSTeamID)
+	if err != nil {
+		log.Printf("warning: APNs disabled: %v", err)
+		return nil
+	}
+	return apns.NewClient(store, signer, cfg.APNSBundleID)
 }
 
 func newOIDCProvider(cfg config.Config) auth.OIDCProvider {
