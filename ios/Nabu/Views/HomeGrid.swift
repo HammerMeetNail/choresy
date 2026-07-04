@@ -38,6 +38,7 @@ struct HomeChoreCell: View {
     let onEdit: () -> Void
     let onHide: () -> Void
 
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var isPressing = false
     @State private var wobbleAngle: Double = 0
 
@@ -53,22 +54,28 @@ struct HomeChoreCell: View {
                     .frame(width: 4)
 
                 VStack(spacing: 4) {
+                    // A text style (not a fixed size) so the emoji scales
+                    // with Dynamic Type, capped at the first accessibility
+                    // size — it's a pictograph, and past that it clips
+                    // inside the tile instead of communicating more.
                     Text(chore.icon)
-                        .font(.system(size: 24))
+                        .font(.title)
+                        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
                     Text(chore.name)
                         .font(.caption)
                         .fontWeight(.semibold)
-                        .lineLimit(2)
+                        // Two lines normally; at accessibility sizes wrap
+                        // fully instead of clipping (the tile grows).
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
                         .multilineTextAlignment(.center)
-                    if let log = latestLog {
-                        Text(formatTimeAgo(log.completedAt))
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text("never")
-                            .font(.caption2)
-                            .foregroundColor(DesignColors.textSecondary)
-                    }
+                    // .footnote, not .caption2: the smallest styles cap their
+                    // Dynamic Type growth early enough that the accessibility
+                    // audit calls them partially unsupported. Primary label at
+                    // 75% instead of secondaryLabel, which sits below the
+                    // 4.5:1 contrast floor on the white tile.
+                    Text(latestLog.map { formatTimeAgo($0.completedAt) } ?? "never")
+                        .font(.footnote)
+                        .foregroundColor(.primary.opacity(0.75))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
@@ -90,6 +97,11 @@ struct HomeChoreCell: View {
             .rotationEffect(.degrees(wobbleAngle))
         }
         .buttonStyle(.plain)
+        // VoiceOver (C6): the context-menu actions exposed as custom actions
+        // so rotor users can edit/hide without discovering the long-press.
+        .accessibilityAction(named: "Edit chore") { onEdit() }
+        .accessibilityAction(named: "Hide from Home") { onHide() }
+        .accessibilityHint("Logs \(chore.name)")
         // Jiggle-mode wobble (C3); Reduce Motion keeps tiles still — the
         // context menu and toolbar checkmark already signal edit mode.
         .onChange(of: isJiggling) { _, jiggling in

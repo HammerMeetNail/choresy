@@ -79,7 +79,17 @@ struct PeriodBarChart: View {
             }
             .chartYAxisLabel(unitLabel, position: .leading)
             .frame(height: 150)
+            // VoiceOver summary (C6): totals instead of per-bar mark values.
+            .accessibilityLabel(accessibilitySummary)
         }
+    }
+
+    private var accessibilitySummary: String {
+        let total = segments.map(\.value).reduce(0, +)
+        let totalText = total == total.rounded()
+            ? String(Int(total))
+            : String(format: "%.1f", total)
+        return "\(grain.capitalized) chart, \(periods.count) periods, \(totalText) \(unitLabel) total"
     }
 
     /// Daily buckets label every other column, like the PWA.
@@ -211,6 +221,14 @@ struct BusyHoursChart: View {
         .chartYScale(domain: busyHours.map { StatsFormat.hourLabel($0.hour) })
         .chartXAxis(.hidden)
         .frame(height: CGFloat(busyHours.count) * 16 + 16)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var accessibilitySummary: String {
+        guard let busiest = busyHours.max(by: { $0.count < $1.count }) else {
+            return "Busy hours chart, no data"
+        }
+        return "Busy hours chart, busiest at \(StatsFormat.hourLabel(busiest.hour)) with \(busiest.count) logs"
     }
 }
 
@@ -264,6 +282,7 @@ struct HeatmapChart: View {
                     }
                 }
                 .frame(width: CGFloat(weekStarts.count) * 14 + 30, height: 7 * 14 + 8)
+                .accessibilityLabel("Activity heatmap, \(heatmap.map(\.count).reduce(0, +)) logs across \(weekStarts.count) weeks")
             }
 
             HStack(spacing: 4) {
@@ -416,6 +435,7 @@ struct FeedingGapsScatter: View {
                 }
             }
             .frame(height: 160)
+            .accessibilityLabel("Feeding gaps scatter plot, \(gaps.count) feeds, red line marks the two hour gap")
 
             ChartTotalsLegend(entries: [
                 .init(label: Kind.fullFeed.label, color: Kind.fullFeed.color),

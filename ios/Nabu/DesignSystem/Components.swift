@@ -215,26 +215,35 @@ struct PillTabBar<T: Hashable>: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(tabs, id: \.self) { tab in
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { selection = tab }
-                } label: {
-                    Text(labelFor(tab))
-                        .font(.subheadline)
-                        .fontWeight(selection == tab ? .semibold : .regular)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            selection == tab
-                                ? DesignColors.surface
-                                : Color.clear
-                        )
-                        .clipShape(Capsule())
-                        .foregroundColor(
-                            selection == tab ? DesignColors.primary : DesignColors.textSecondary
-                        )
-                }
-                .buttonStyle(.plain)
+                Text(labelFor(tab))
+                    .font(.subheadline)
+                    .fontWeight(selection == tab ? .semibold : .regular)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 44) // ≥44pt hit target (C6)
+                    .background(
+                        selection == tab
+                            ? DesignColors.surface
+                            : Color.clear
+                    )
+                    .clipShape(Capsule())
+                    .foregroundColor(
+                        selection == tab ? DesignColors.primary : DesignColors.textSecondary
+                    )
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) { selection = tab }
+                    }
+                    // One element per pill with the full padded frame — a
+                    // plain Button here vends only the text glyph bounds,
+                    // which fails the ≥44pt hit-target audit (C6).
+                    .accessibilityElement()
+                    .accessibilityLabel(labelFor(tab))
+                    .accessibilityAddTraits(selection == tab ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityAction {
+                        selection = tab
+                    }
             }
         }
         .padding(4)
