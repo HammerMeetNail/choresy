@@ -70,7 +70,7 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: state.user) { _, newUser in
+        .onChange(of: state.user) { oldUser, newUser in
             if newUser == nil {
                 state.reset()
                 hasLoadedData = false
@@ -78,9 +78,75 @@ struct ContentView: View {
             } else if newUser?.householdId != nil {
                 Task { await loadAppData() }
             }
+            if oldUser == nil, newUser != nil {
+                // Fresh sign-in: re-register the push token if permission was
+                // already granted (mirrors the PWA's maybeSubscribePush after
+                // login), and consume a /join link that arrived logged-out.
+                Task { await PushRegistrationController.shared.syncIfAuthorized() }
+                if let code = state.pendingInviteCode, newUser?.householdId == nil {
+                    Task { await consumePendingInvite(code) }
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await dataLoader.foregroundRefresh() }
+        }
+        // Universal links (verify email, magic login, invite) and the
+        // quicklog deep link. SwiftUI delivers universal links through
+        // onOpenURL; the NSUserActivity path covers hand-off style delivery.
+        .onOpenURL { url in
+            Task { await handleIncomingURL(url) }
+        }
+        .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+            if let url = activity.webpageURL {
+                Task { await handleIncomingURL(url) }
+            }
+        }
+    }
+
+    /// Handles a universal link or deep link — same endpoints and outcomes as
+    /// the PWA's route handling for /verify-email, /magic-login, and /join.
+    func handleIncomingURL(_ url: URL) async {
+        guard let link = DeepLink.parse(url) else { return }
+        switch link {
+        case .verifyEmail(let token):
+            let _: StatusResponse? = try? await environment.apiClient.get(
+                "/api/auth/email/verify", query: [URLQueryItem(name: "token", value: token)])
+            // Refresh the session so emailVerified flips in Settings.
+            if let user = await auth.loadSession() {
+                state.user = user
+            }
+        case .magicLogin(let token):
+            do {
+                let response: UserResponse = try await environment.apiClient.get(
+                    "/api/auth/magic-link/consume", query: [URLQueryItem(name: "token", value: token)])
+                if let user = response.user {
+                    state.user = user
+                }
+            } catch {
+                // Invalid/expired link: stay where we are, like the PWA.
+            }
+        case .joinHousehold(let code):
+            if state.user == nil {
+                // Consumed after sign-in; OnboardingView also prefills from it.
+                state.pendingInviteCode = code
+            } else if state.household == nil {
+                await consumePendingInvite(code)
+            }
+            // Already in a household: the link just opens the app (PWA parity).
+        case .quickLog(let choreId):
+            state.currentTab = .home
+            state.homeView = .log
+            state.pendingQuickLogChoreId = choreId
+        }
+    }
+
+    private func consumePendingInvite(_ code: String) async {
+        if let household = await auth.joinHousehold(code: code) {
+            state.pendingInviteCode = nil
+            _ = await auth.seedDefaults()
+            state.household = household
+            state.activeHouseholdId = household.id
         }
     }
 

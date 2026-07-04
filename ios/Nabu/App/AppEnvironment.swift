@@ -14,12 +14,25 @@ final class AppEnvironment: ObservableObject {
     private(set) var apiClient: APIClient = APIClient(baseURL: URL(string: "https://nabu-app.com")!)
 
     init() {
+        baseURL = AppEnvironment.resolveBaseURL()
+        apiClient = APIClient(baseURL: baseURL)
+    }
+
+    /// The server base URL from launch arguments / env, falling back to
+    /// production. Static so contexts that exist before SwiftUI state (the
+    /// notification-action handler in AppDelegate) resolve identically.
+    static func resolveBaseURL() -> URL {
+        let fallback = URL(string: "https://nabu-app.com")!
         let args = ProcessInfo.processInfo.arguments
-        if let urlStr = launchArgumentValue(for: "-nabuBaseURL", in: args)
-            ?? ProcessInfo.processInfo.environment["NABU_BASE_URL"] {
-            baseURL = URL(string: urlStr) ?? baseURL
-            apiClient = APIClient(baseURL: baseURL)
+        if let idx = args.firstIndex(of: "-nabuBaseURL"), idx + 1 < args.count,
+           let url = URL(string: args[idx + 1]) {
+            return url
         }
+        if let env = ProcessInfo.processInfo.environment["NABU_BASE_URL"],
+           let url = URL(string: env) {
+            return url
+        }
+        return fallback
     }
 
     func configure(with state: AppState) {

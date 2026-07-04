@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct NabuApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
     @StateObject private var environment = AppEnvironment()
 
@@ -12,6 +13,8 @@ struct NabuApp: App {
                 .environmentObject(environment)
                 .onAppear {
                     environment.configure(with: state)
+                    appDelegate.attach(appState: state)
+                    PushRegistrationController.shared.configure(api: environment.apiClient)
                 }
                 .tint(DesignColors.primary)
         }

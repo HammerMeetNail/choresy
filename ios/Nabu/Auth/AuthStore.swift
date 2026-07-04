@@ -64,6 +64,9 @@ final class AuthStore: ObservableObject {
     }
 
     func logout() async {
+        // Remove this device's APNs token first — the unregister endpoint
+        // needs the session that logout is about to destroy.
+        await PushRegistrationController.shared.unregisterForLogout()
         do {
             let _: StatusResponse = try await api.postEmpty("/api/auth/logout")
         } catch {}

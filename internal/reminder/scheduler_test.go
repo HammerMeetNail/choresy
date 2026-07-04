@@ -138,3 +138,18 @@ func TestIsBetween(t *testing.T) {
 		}
 	}
 }
+
+func TestReminderPushData(t *testing.T) {
+	data := reminderPushData(42)
+	if got := data["choreId"]; got != int64(42) {
+		t.Errorf("choreId = %v, want 42", got)
+	}
+	if got := data["type"]; got != "schedule_reminder" {
+		t.Errorf("type = %v, want schedule_reminder", got)
+	}
+	// The APNs sender maps this to aps.category so the iOS notification
+	// action buttons (Log now / Snooze 30m) attach.
+	if got := data["category"]; got != "NABU_REMINDER" {
+		t.Errorf("category = %v, want NABU_REMINDER", got)
+	}
+}

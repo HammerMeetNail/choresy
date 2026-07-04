@@ -27,6 +27,18 @@ final class NabuUITests: XCTestCase {
         XCTAssertTrue(app.secureTextFields["Confirm Password"].exists)
     }
 
+    // P5 exit gate: the Sign in with Apple button renders on both auth
+    // screens (App Store guideline 4.8).
+    func testSignInWithAppleButtonOnLogin() throws {
+        XCTAssertTrue(app.buttons["siwa-button"].waitForExistence(timeout: 5))
+    }
+
+    func testSignInWithAppleButtonOnRegister() throws {
+        XCTAssertTrue(app.buttons["Create Account"].waitForExistence(timeout: 5))
+        app.buttons["Create Account"].tap()
+        XCTAssertTrue(app.buttons["siwa-button"].waitForExistence(timeout: 5))
+    }
+
     func testNavigateToMagicLink() throws {
         XCTAssertTrue(app.buttons["Sign in with magic link"].waitForExistence(timeout: 5))
         app.buttons["Sign in with magic link"].tap()

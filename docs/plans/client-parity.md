@@ -21,9 +21,9 @@ Living matrix tracking feature parity between the PWA and native iOS app.
 - **iOS pending** — Not yet implemented in the native app.
 - **Deferred** — Intentionally absent from both clients' navigation.
 - **Not built** — The feature is non-functional end-to-end (a stub or
-  contract may exist). Currently: APNs, account deletion, Sign in with
-  Apple — the latter two are App Store admission blockers, see
-  `docs/plans/ios-appstore-v1.md` §3.
+  contract may exist). Currently: none — the last three (APNs, account
+  deletion, Sign in with Apple) were built across P1–P5; APNs still needs
+  physical-device verification, see `docs/plans/ios-v1/p5-push-auth.md`.
 - **N/A** — Feature applies to only one client (with justification).
 
 ## Phase progress
@@ -33,7 +33,7 @@ Living matrix tracking feature parity between the PWA and native iOS app.
 | 0 | Guardrails and parity infrastructure | Done |
 | 1 | iOS project skeleton | Done |
 | 2 | API models and contract tests | Done |
-| 3 | Auth, session, and onboarding | Built (email verification pending) |
+| 3 | Auth, session, and onboarding | Built |
 | 4 | Bootstrap data loading and preferences | Built |
 | 5 | Home and log sheet | Built |
 | 6 | Chores management | Built |
@@ -41,7 +41,7 @@ Living matrix tracking feature parity between the PWA and native iOS app.
 | 8 | Schedule | Built (for-date overlay Deferred — no live PWA surface) |
 | 9 | Household, members, and multi-household | Built |
 | 10 | Notifications (in-app) | Built |
-| 10b | APNs native push | **Not built** — see notes |
+| 10b | APNs native push | Built (physical-device verification pending) |
 | 11 | Stats | Built (P4 parity complete: all sections, widgets, customize, Swift Charts + snapshots) |
 | 12 | Security, accessibility, and polish | Built |
 | 13 | Release readiness | In progress |
@@ -61,12 +61,12 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Login/register | `auth.js`, `validation.spec.js` | `Auth/LoginView.swift`, `Auth/RegisterView.swift`, `AuthTests.swift` | `/api/auth/login`, `/api/auth/register` | Built | |
 | Magic link | `auth.js`, `magic-link.spec.js` | `Auth/MagicLinkView.swift`, `AuthTests.swift` | `/api/auth/magic-link/request`, `/api/auth/magic-link/consume` | Built | |
 | Password reset | `auth.js`, `settings-auth.spec.js` | `Auth/`, `APIContractTests.swift` | `/api/auth/password/forgot`, `/api/auth/password/reset`, `/api/auth/password` | Built | iOS has no dedicated PasswordResetView; reset is wired via the auth store |
-| Email verification | `auth.js`, `magic-link.spec.js` | `Views/HouseholdView.swift` (resend only) | `/api/auth/email/verify`, `/api/auth/email/verification/resend` | **iOS pending** | P3 added a "Resend verification email" button in iOS Settings for unverified accounts; the verify-link flow itself (universal links) lands in P5 |
+| Email verification | `auth.js`, `magic-link.spec.js` | `Support/DeepLink.swift`, `ContentView.swift`, `Views/HouseholdView.swift`, `DeepLinkTests.swift` | `/api/auth/email/verify`, `/api/auth/email/verification/resend` | Built | P5: `/verify-email` universal link calls the same verify endpoint then refreshes `/api/me`; the cross-device fallback (verify in browser, app picks up verified state via `/api/me` foreground refresh) ships too. Magic-login and `/join` invite links ride the same AASA plumbing (`/.well-known/apple-app-site-association`, served when `APNS_TEAM_ID`/`APNS_BUNDLE_ID` are set). Owner-gated: Associated Domains capability on the App ID before links open natively |
 | Google OAuth | `auth.js` | `Auth/GoogleOAuthCoordinator.swift` | `/api/auth/google/login`, `/api/auth/google/callback` | Built | |
 | Logout | `auth.js` | `Auth/AuthStore.swift`, `AuthTests.swift` | `/api/auth/logout` | Built | |
 | Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift`, `StateTests.swift` | `/api/me` | Built | iOS adds a CSRF pre-flight `GET /api/me` |
 | Account deletion | `app.js` (Settings), `settings-delete-account.spec.js` | `Views/HouseholdView.swift` (`DeleteAccountSheet`) | `DELETE /api/me` | Built | Both clients: destructive entry in Settings → typed "DELETE" confirmation → logged out on success; a sole owner of a multi-member household gets the server's 409 transfer-ownership guidance verbatim. P3 also fixed a latent backend bug (Postgres `DeleteUser` referenced `household_invites`; table is `invites`) |
-| Sign in with Apple | — | — | `POST /api/auth/apple/native` | **Not built** | **App Store blocker (guideline 4.8)**: backend shipped (`internal/auth/apple.go` — JWKS-verified identity token, nonce-required, email-linked upsert; `APPLE_CLIENT_IDS` config) but no client buttons yet — iOS `SignInWithAppleButton` lands in P5 (`ios-v1/p5-push-auth.md`), PWA web-SIWA or N/A exception before P7 |
+| Sign in with Apple | — (web-SIWA or N/A exception before P7) | `Auth/SignInWithAppleCoordinator.swift`, `Auth/LoginView.swift`, `Auth/RegisterView.swift`, `APNsContractTests.swift` | `POST /api/auth/apple/native` | **PWA pending** | iOS Built in P5: native `SignInWithAppleButton` on login + register, placed above the Google button (guideline 4.8 prominence); per-request random nonce echoed through the identity token and verified server-side (`internal/auth/apple.go`). UI test asserts the button renders on both screens. Owner-gated: SIWA capability on the App ID + `APPLE_CLIENT_IDS` in prod. PWA web-SIWA still open — ship or record N/A exception before P7 |
 | **Household & Members** |
 | Household CRUD | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | Built | |
 | Join by invite code | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/join` | Built | |
@@ -112,7 +112,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Notification preferences | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift` | `/api/notification-preferences` | Built | |
 | **Push** |
 | Web Push (VAPID) | `notifications.js` | N/A (PWA only) | `/api/push/subscribe`, `/api/push/unsubscribe` | N/A | PWA-only feature |
-| APNs (native iOS) | N/A (iOS only) | `API/RequestModels.swift` (structs only) | `/api/mobile/apns/register`, `/api/mobile/apns/unregister` | **Not built** | **Backend shipped** (`internal/apns`: device-token store + migration 040, routed handlers, ES256 HTTP/2 sender with token pruning, fan-out via `push.FanoutSender`, `APNS_*` config no-ops when unset). iOS client half (registration lifecycle, `UNUserNotificationCenter`, action categories) lands in P5 (`ios-v1/p5-push-auth.md`); end-to-end unverifiable until Apple credentials + physical device |
+| APNs (native iOS) | N/A (iOS only) | `App/PushRegistrationController.swift`, `App/AppDelegate.swift`, `Support/PushRegistration.swift`, `Views/PushPrePromptView.swift`, `APNsContractTests.swift`, `PushRegistrationTests.swift` | `/api/mobile/apns/register`, `/api/mobile/apns/unregister` | Built | P5 client half: permission pre-prompt (system dialog never fired cold), authorization → `registerForRemoteNotifications` → hex token → register (`sandbox` for DEBUG builds, `production` otherwise), silent re-register on launch when already authorized, unregister on logout before the session is destroyed. Backend shipped in P1 (`internal/apns`). **End-to-end unverified**: needs Push capability on the App ID, `.p8` provisioned, and a physical device (simulator cannot receive remote push) |
 | **Stats** |
 | Overview | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/overview` | Built | |
 | Last done section | `stats.js`, `stats-last-done.spec.js` | `Views/Stats/StatsSectionViews.swift`, `StatsSectionsTests.swift` | `/api/logs/latest-per-chore` (reuse) | Built | Registry key `last-done`; time-since-last-log per chore, most recent first, never-logged last, reading `latestLogs` already in app state (no new fetch) — same as PWA |
@@ -159,8 +159,8 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIContractTests.swift` | All state-changing endpoints | Built | |
 | **Schedule Reminders** |
 | Schedule reminder notification type | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift`, `NotificationTests.swift` | `/api/notification-preferences` | Built | |
-| Reminder "Log now" action | `service-worker.js`, `app.js`, `quicklog-deeplink.spec.js` | — | push payload (`choreId`,`type`) | **iOS pending** | Web push notification gains a "Log now" action deep-linking to `/?quicklog=chore:<id>`; server includes choreId/type in the reminder push payload. iOS should add an APNs action category |
-| Reminder "Snooze 30m" action | `service-worker.js`, `reminder_snooze.go` | — | `/api/reminders/snooze` | **iOS pending** | Phase 2.6: the reminder push gains a "Snooze 30m" action; the SW silently POSTs to `/api/reminders/snooze` which re-emits the reminder as a one-off follow-up at now+30m (ownership-checked, CSRF-exempt because SW-invoked + SameSite=Lax session). iOS should add a matching APNs snooze action |
+| Reminder "Log now" action | `service-worker.js`, `app.js`, `quicklog-deeplink.spec.js` | `App/AppDelegate.swift` (`NABU_REMINDER` category), `Views/HomeView.swift`, `DeepLinkTests.swift` | push payload (`choreId`,`type`,`category`) | Built | P5: reminder push now carries `category: NABU_REMINDER` (mapped to `aps.category`; ignored by the SW); the iOS action opens the log sheet pre-filled for the chore — same outcome as the PWA's `/?quicklog=chore:<id>`, routed in-process instead of via URL. Missing chore falls back to the home grid like the PWA |
+| Reminder "Snooze 30m" action | `service-worker.js`, `reminder_snooze.go` | `App/AppDelegate.swift`, `APNsContractTests.swift` | `/api/reminders/snooze` | Built | P5: background notification action POSTs `{choreId, minutes: 30}` without opening the app — same CSRF-exempt, session-authenticated call the PWA service worker makes |
 | Offline pending log badge | `today.js`, `app.js`, `offline-queue.js` | `Views/ActivityView.swift`, `Support/OfflineLogQueue.swift`, `OfflineLogQueueTests.swift` | N/A (client UX) | Built | Queued logs render inline in Activity with a non-tappable "pending" badge (synthesized from the queued body), reconciled on the next successful replay — same UX as the PWA |
 | iOS Home-Screen widget / Live Activity | — | — (iOS roadmap) | `/api/logs/latest-per-chore` (reuse) | **iOS pending** | Phase 5.6: native-only "time since last <chore>" Home-Screen widget (and optional Live Activity) feeding off latest-per-chore. WidgetKit target to be added on the iOS roadmap; no PWA counterpart |
 | Per-chore reminder pref | `chores.js`, `app.js` | `Views/ChoreEditView.swift`, `ModelDecodingTests.swift` | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | Done | |

@@ -291,6 +291,25 @@ struct PushUnsubscribeRequest: Codable {
     let endpoint: String
 }
 
+// MARK: - Reminders
+
+/// Body of `POST /api/reminders/snooze` — sent by the notification
+/// "Snooze 30m" action (parity with the PWA service worker).
+struct ReminderSnoozeRequest: Codable {
+    let choreId: Int
+    let minutes: Int
+}
+
+// MARK: - Sign in with Apple
+
+/// Body of `POST /api/auth/apple/native`: the identity token from
+/// ASAuthorizationController plus the nonce the app set on the request
+/// (the server verifies Apple echoed it into the token).
+struct AppleNativeAuthRequest: Codable {
+    let identityToken: String
+    let nonce: String
+}
+
 // MARK: - APNs
 
 struct APNsRegisterRequest: Codable {

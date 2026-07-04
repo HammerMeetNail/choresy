@@ -94,6 +94,14 @@ final class DataLoader: ObservableObject {
     func foregroundRefresh() async {
         guard state.user != nil else { return }
         await flushOfflineQueue()
+        // Refresh the session so account-level changes made outside the app
+        // are picked up — e.g. the user verified their email in the browser
+        // (the cross-device fallback for verification links).
+        if let response: UserResponse = try? await api.get("/api/me"),
+           state.user != response.user {
+            state.user = response.user
+        }
+        guard state.user != nil else { return }
         await notifs.loadNotifData()
         if state.household != nil {
             await household.loadHouseholdData()

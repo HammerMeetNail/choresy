@@ -203,10 +203,7 @@ func (s *Scheduler) tick(ctx context.Context) error {
 			if ds, ok := s.pushSender.(interface {
 				SendPushToUserWithData(ctx context.Context, userID int64, title, body string, data map[string]any) error
 			}); ok {
-				pushErr = ds.SendPushToUserWithData(ctx, userID, title, body, map[string]any{
-					"choreId": sch.ChoreID,
-					"type":    "schedule_reminder",
-				})
+				pushErr = ds.SendPushToUserWithData(ctx, userID, title, body, reminderPushData(sch.ChoreID))
 			} else {
 				pushErr = s.pushSender.SendPushToUser(ctx, userID, title, body)
 			}
@@ -382,6 +379,18 @@ func computeScheduleTime(now time.Time, specificTime string) time.Time {
 		return now
 	}
 	return time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, now.Location())
+}
+
+// reminderPushData is the extra payload a schedule reminder carries so
+// clients can attach actions: the PWA service worker reads choreId/type to
+// offer "Log now"/"Snooze 30m" buttons, and the APNs sender maps "category"
+// to aps.category so the iOS app's NABU_REMINDER action category attaches.
+func reminderPushData(choreID int64) map[string]any {
+	return map[string]any{
+		"choreId":  choreID,
+		"type":     "schedule_reminder",
+		"category": "NABU_REMINDER",
+	}
 }
 
 func formatTime(specificTime string) string {

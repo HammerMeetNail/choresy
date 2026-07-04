@@ -1,9 +1,12 @@
+import AuthenticationServices
 import SwiftUI
 
 struct RegisterView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var auth: AuthStore
     @ObservedObject var googleAuth: GoogleOAuthCoordinator
+    @StateObject private var appleAuth = SignInWithAppleCoordinator()
     @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var password = ""
@@ -40,7 +43,7 @@ struct RegisterView: View {
                                 .textFieldStyle(NabuTextFieldStyle())
                         }
 
-                        if let error = auth.errorMessage ?? googleAuth.errorMessage {
+                        if let error = auth.errorMessage ?? googleAuth.errorMessage ?? appleAuth.errorMessage {
                             Text(error)
                                 .font(.callout)
                                 .foregroundColor(DesignColors.danger)
@@ -62,6 +65,19 @@ struct RegisterView: View {
                         .accessibilityIdentifier("register-submit-button")
 
                         OrDivider()
+
+                        // Sign up with Apple — App Store guideline 4.8
+                        // requires it at least as prominent as other
+                        // third-party sign-in options, hence above Google.
+                        SignInWithAppleButton(.signUp) { request in
+                            appleAuth.prepare(request)
+                        } onCompletion: { result in
+                            performAppleSignIn(result)
+                        }
+                        .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                        .frame(height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier("siwa-button")
 
                         // Google
                         Button(action: performGoogleSignIn) {
@@ -109,6 +125,14 @@ struct RegisterView: View {
     private func performGoogleSignIn() {
         Task {
             if let user = await googleAuth.authenticate() {
+                state.user = user
+            }
+        }
+    }
+
+    private func performAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        Task {
+            if let user = await appleAuth.handle(result, api: auth.api) {
                 state.user = user
             }
         }

@@ -1,13 +1,17 @@
 import SwiftUI
+import UserNotifications
 
 struct NotificationPreferencesView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
+    @ObservedObject private var push = PushRegistrationController.shared
     @State private var prefs: ReminderPreference?
     @State private var types: [NotificationTypeInfo] = []
     @State private var loading = true
     @State private var saving = false
     @State private var lastKnownEnabledTypes: [String] = []
+    @State private var showingPrePrompt = false
+    @State private var systemAuthorization: UNAuthorizationStatus = .notDetermined
 
     private let leadTimes = [5, 10, 15, 30, 60]
 
@@ -36,6 +40,10 @@ struct NotificationPreferencesView: View {
                                 }
                             ))
                             .labelsHidden()
+                        }
+                    } footer: {
+                        if prefs.pushEnabled && systemAuthorization == .denied {
+                            Text("Notifications are turned off for Nabu in iOS Settings, so reminders can't be delivered to this device.")
                         }
                     }
 
@@ -99,6 +107,14 @@ struct NotificationPreferencesView: View {
         }
         .task {
             await loadPrefs()
+            systemAuthorization = await push.authorizationStatus
+        }
+        .sheet(isPresented: $showingPrePrompt) {
+            PushPrePromptView {
+                _ = await push.requestAuthorizationAndRegister()
+                systemAuthorization = await push.authorizationStatus
+            }
+            .presentationDetents([.medium])
         }
     }
 
@@ -161,6 +177,21 @@ struct NotificationPreferencesView: View {
         }
         await savePrefs(PatchNotificationPrefsRequest(
             pushEnabled: enabled, emailEnabled: nil, enabledPushTypes: types, defaultReminderLeadMinutes: nil))
+
+        // The account-level preference is saved either way (shared behavior
+        // with the PWA); delivering to *this device* additionally needs iOS
+        // notification permission and an APNs registration.
+        guard enabled else { return }
+        switch await push.authorizationStatus {
+        case .notDetermined:
+            // Never fire the system dialog cold — explain first.
+            showingPrePrompt = true
+        case .authorized, .provisional, .ephemeral:
+            await push.syncIfAuthorized()
+        default:
+            break // denied: the section footer points at iOS Settings
+        }
+        systemAuthorization = await push.authorizationStatus
     }
 
     private func toggleType(_ type: String, enabled: Bool) async {

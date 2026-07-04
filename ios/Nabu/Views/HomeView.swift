@@ -71,6 +71,11 @@ struct HomeView: View {
                     }
                 )
             }
+            // Notification "Log now" deep link: open the log sheet pre-filled
+            // for the reminder's chore (parity with /?quicklog=chore:<id>).
+            .onAppear { consumePendingQuickLog() }
+            .onChange(of: state.pendingQuickLogChoreId) { _, _ in consumePendingQuickLog() }
+            .onChange(of: state.chores) { _, _ in consumePendingQuickLog() }
             .overlay(alignment: .bottom) {
                 if let logId = undoLogId, let name = undoChoreName {
                     UndoToast(choreName: name) {
@@ -137,6 +142,17 @@ struct HomeView: View {
                 await refreshHome()
             }
         )
+    }
+
+    /// Opens the log sheet for a pending "Log now" deep link once the chore
+    /// list is loaded. An id that no longer exists just lands on the grid,
+    /// one tap from logging — same fallback as the PWA.
+    private func consumePendingQuickLog() {
+        guard let id = state.pendingQuickLogChoreId, !state.chores.isEmpty else { return }
+        state.pendingQuickLogChoreId = nil
+        guard let chore = state.chores.first(where: { $0.id == id }) else { return }
+        editingLog = nil
+        selectedChore = chore
     }
 
     /// Hides a chore's tile from Home (context-menu action), persisting the

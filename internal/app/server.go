@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"html/template"
 	"io"
 	"io/fs"
@@ -478,6 +479,17 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		w.Write(versionedSW) //nolint:errcheck
 	})
 
+	// Universal links (iOS): Apple's CDN fetches this file to associate
+	// https links on this host with the app, letting verification, magic-link,
+	// and invite emails open natively. Served only when the Apple team/bundle
+	// IDs are configured (the same env vars the APNs sender uses).
+	if aasa := appleAppSiteAssociation(cfg); aasa != nil {
+		mux.HandleFunc("/.well-known/apple-app-site-association", method(http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(aasa) //nolint:errcheck
+		}))
+	}
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
@@ -603,6 +615,33 @@ func newAPNsClient(cfg config.Config, store apns.Store) *apns.Client {
 		return nil
 	}
 	return apns.NewClient(store, signer, cfg.APNSBundleID)
+}
+
+// appleAppSiteAssociation renders the AASA JSON for universal links, or nil
+// when the Apple team/bundle IDs are unset. The paths listed here must stay in
+// sync with the deep links the iOS app handles (DeepLink.swift): email
+// verification, magic-link sign-in, and household invites.
+func appleAppSiteAssociation(cfg config.Config) []byte {
+	if cfg.APNSTeamID == "" || cfg.APNSBundleID == "" {
+		return nil
+	}
+	appID := cfg.APNSTeamID + "." + cfg.APNSBundleID
+	aasa, err := json.Marshal(map[string]any{
+		"applinks": map[string]any{
+			"details": []map[string]any{{
+				"appIDs": []string{appID},
+				"components": []map[string]string{
+					{"/": "/verify-email"},
+					{"/": "/magic-login"},
+					{"/": "/join"},
+				},
+			}},
+		},
+	})
+	if err != nil {
+		return nil
+	}
+	return aasa
 }
 
 func newOIDCProvider(cfg config.Config) auth.OIDCProvider {

@@ -471,3 +471,61 @@ func TestServerStaticFilePaths(t *testing.T) {
 		t.Errorf("SW Cache-Control: want no-store, got %q", rec.Header().Get("Cache-Control"))
 	}
 }
+
+func TestAppleAppSiteAssociation(t *testing.T) {
+	t.Run("served when Apple IDs configured", func(t *testing.T) {
+		t.Setenv("PORT", "8080")
+		t.Setenv("APP_BASE_URL", "http://localhost:8080")
+		t.Setenv("APNS_TEAM_ID", "TEAM123456")
+		t.Setenv("APNS_BUNDLE_ID", "com.nabu.app")
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+
+		server := NewServer(cfg)
+
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Content-Type = %q, want application/json", ct)
+		}
+		body, _ := io.ReadAll(rec.Body)
+		for _, want := range []string{
+			`"TEAM123456.com.nabu.app"`,
+			`"/verify-email"`,
+			`"/magic-login"`,
+			`"/join"`,
+		} {
+			if !strings.Contains(string(body), want) {
+				t.Errorf("AASA body missing %s; body = %s", want, body)
+			}
+		}
+	})
+
+	t.Run("index fallback when Apple IDs unset", func(t *testing.T) {
+		t.Setenv("PORT", "8080")
+		t.Setenv("APP_BASE_URL", "http://localhost:8080")
+		cfg, err := config.Load()
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+
+		server := NewServer(cfg)
+
+		req := httptest.NewRequest(http.MethodGet, "/.well-known/apple-app-site-association", nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+
+		// The route is not registered, so the catch-all serves the app shell —
+		// the important part is Apple gets no half-configured JSON.
+		if ct := rec.Header().Get("Content-Type"); ct == "application/json" {
+			t.Errorf("unconfigured AASA served JSON: %s", rec.Body.String())
+		}
+	})
+}

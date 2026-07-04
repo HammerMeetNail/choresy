@@ -5,6 +5,10 @@ struct OnboardingView: View {
     @ObservedObject var auth: AuthStore
     @State private var mode: OnboardingMode = .create
 
+    /// An invite link opened before sign-in lands the user on the Join tab
+    /// with the code filled in.
+    private var pendingInviteCode: String? { state.pendingInviteCode }
+
     enum OnboardingMode {
         case create
         case join
@@ -49,6 +53,11 @@ struct OnboardingView: View {
             }
         }
         .pageBackground()
+        .onAppear {
+            if pendingInviteCode != nil {
+                mode = .join
+            }
+        }
     }
 }
 
@@ -143,11 +152,18 @@ struct JoinHouseholdView: View {
             .buttonStyle(NabuPrimaryButtonStyle())
             .disabled(code.isEmpty || auth.isLoading)
         }
+        .onAppear {
+            // Prefill from a /join universal link opened before sign-in.
+            if code.isEmpty, let pending = state.pendingInviteCode {
+                code = pending.uppercased()
+            }
+        }
     }
 
     private func join() {
         Task {
             if let household = await auth.joinHousehold(code: code) {
+                state.pendingInviteCode = nil
                 // Seed defaults BEFORE setting state.household — same race
                 // condition fix as CreateHouseholdView.createAndSeed().
                 let _ = await auth.seedDefaults()
