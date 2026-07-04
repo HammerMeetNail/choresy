@@ -97,16 +97,61 @@ materially helps the guideline-4.2 impression:
 
 ## Progress log
 
-- [ ] Haptics + spring motion + Reduce Motion fallbacks
-- [ ] Four-state pass (loading/empty/error/offline) on every screen
-- [ ] Screen polish PRs: Auth · Home · Log sheet · Activity · Schedule · Stats · Settings · Notifications
-- [ ] App icon (light/dark/tinted) + launch screen
-- [ ] Accessibility: labels, AX3 sweep, contrast, Inspector audit, AX-size XCUITest
-- [ ] WidgetKit widget · quick actions · Live Activity (or explicit v1.1 deferral)
-- [ ] A5 privacy metadata + Settings links
-- [ ] Snapshot suite covering C4 states (light/dark × two type sizes)
-- [ ] Matrix rows updated
+- [x] Haptics + spring motion + Reduce Motion fallbacks
+- [x] Four-state pass (loading/empty/error/offline) on every screen
+- [x] Screen polish PRs: Auth · Home · Log sheet · Activity · Schedule · Stats · Settings · Notifications — targeted pass, see notes
+- [x] App icon (light/dark/tinted) + launch screen
+- [x] Accessibility: labels, AX3 sweep, contrast, automated audit (green + regression-gated), AX-size XCUITest
+- [x] WidgetKit widget · quick actions · Live Activity (**explicit v1.1 deferral — owner sign-off requested**)
+- [x] A5 privacy metadata + Settings links
+- [x] Snapshot suite covering C4 states (light/dark × AX type size)
+- [x] Matrix rows updated
+- [ ] Marketing screenshots (6.9″/6.5″, seeded demo household, light+dark) — **owner** (needs demo data + final review; exit-gate item shared with P7 metadata)
 
 ### Notes
 
-*(append dated entries here)*
+**2026-07-04 — P6 code complete; marketing screenshots owner-gated.**
+Landed across five commits (C3+C4, C5, C6, B8, A5), all suites green
+(`NabuTests` incl. new snapshot suites, all four local `NabuUITests`
+classes, `make test-go`, `make test-js`, `make e2e` 306 passing):
+
+- *C3*: `Motion` spring helpers (collapse under Reduce Motion /
+  `-disableAnimations`); tile tap bounce + jiggle wobble; toast spring
+  slide; haptics — success on log, impact on undo/jiggle, warning on
+  delete-account and leave-household confirms. Leave Household also gained
+  the PWA's confirmation dialog (was a real parity gap).
+- *C4*: `SkeletonScreen`/`SkeletonCards` (redacted layouts, no full-screen
+  spinners), `ContentUnavailableView` empties with a single CTA per screen,
+  Stats inline error retry, global offline banner off the existing
+  `NWPathMonitor`. `StateQualitySnapshotTests` covers light/dark + AX1.
+- *C5*: Activity → large title; hierarchical chrome symbols; Settings
+  reordered Account → Household → Notifications → Data (+ About in A5);
+  single-size app icon with generated dark and tinted (grayscale)
+  variants; launch screen = `PaperBackground`. Most C5 table items were
+  already native from P2–P5 (detents, `.searchable`, swipe actions,
+  toolbar add button).
+- *C6*: driven by `performAccessibilityAudit` in a new
+  `NabuAccessibilityUITests` (kept as a regression gate). Real fixes:
+  **BrandPrimary light deepened `#2E86AB` → `#236886`** (old value was
+  4.11:1 on white, below the 4.5:1 floor; new is 6.18:1 — snapshots
+  re-recorded), pill tab bar rebuilt with true ≥44pt hit targets, tile
+  timestamps footnote @ 75% primary (secondaryLabel fails 4.5:1), emoji
+  scale with Dynamic Type capped at AX1, chore names wrap at AX sizes,
+  VoiceOver custom actions on tiles, chart summary labels. In-code
+  exemptions (documented): emoji-only elements; one pixel-verified checker
+  artifact on the pill text.
+- *B8*: `NabuWidgets` extension — "Last Logged" small+medium widget off an
+  app-group snapshot (`group.com.nabu.app`) refreshed with
+  latest-per-chore; taps deep-link via `?quicklog=chore:<id>`. Quick
+  actions Log Feed / Log Chore / Activity = the PWA manifest shortcuts;
+  `DeepLink` now parses all four `?quicklog=` forms. **Live Activity
+  deferred to v1.1** (plan-sanctioned; owner sign-off requested).
+- *A5*: `/privacy` + `/support` pages served by the Go backend (tested);
+  Settings → About links them + version; `ITSAppUsesNonExemptEncryption=NO`.
+  App Privacy labels themselves are entered in App Store Connect (owner).
+- *Also*: pre-existing broken UI test fixed (`volume-picker` identifier
+  was lost in the P2 metrics rework; restored on the shared picker), CSRF
+  unit test made hermetic.
+- *Owner-gated*: marketing screenshots; App Store Connect privacy labels;
+  app group registration on the App ID (widget on device); Live Activity
+  deferral sign-off.

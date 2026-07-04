@@ -80,13 +80,29 @@ Submit to App Review only when **all** of the following hold:
 
 ## Progress log
 
-- [ ] External TestFlight beta live
-- [ ] Metadata complete (screenshots, description, privacy, review notes)
-- [ ] Full test sweep green on release candidate
-- [ ] D6 device checklist signed off
+- [ ] External TestFlight beta live — **owner**
+- [ ] Metadata complete (screenshots, description, privacy, review notes) — **owner** (privacy/support URLs are live: `/privacy`, `/support`)
+- [x] Full test sweep green (2026-07-04, local): `make test-go` · `make test-js` · `make e2e` (306) · `NabuTests` (unit/contract/snapshot) · all four local `NabuUITests` classes incl. the accessibility audit
+- [ ] D6 device checklist signed off — **owner** (physical device)
 - [ ] `check-parity.sh --strict` passes (or owner-signed exceptions recorded)
-- [ ] Submitted to App Review
+- [ ] Submitted to App Review — **owner**
 
 ### Notes
 
-*(append dated entries here)*
+**2026-07-04 — non-owner-gated P7 groundwork done during the P6 session.**
+
+- Full test sweep run and green (see checklist). The iOS CI lane running on
+  every `v*` tag push was verified in `.github/workflows/ci.yaml` (the
+  `changes` job forces `ios: true` on tag refs — P1/D5).
+- `check-parity.sh` is well-formed; `--strict` will keep failing by design
+  until rows are promoted from **Built** to **Done** (CI-run coverage) and
+  the two open pendings resolve: **Sign in with Apple** (PWA web-SIWA or
+  owner-signed N/A exception) and nothing else — the widget row flipped to
+  Built in P6.
+- Everything else in this phase needs the Apple developer account: portal
+  capabilities (Push, SIWA, Associated Domains, App Group on
+  `com.nabu.app`), `.p8` + prod env (`APNS_*`, `APPLE_CLIENT_IDS`),
+  TestFlight, the D6 physical-device checklist (APNs end-to-end sandbox +
+  production, universal links, Dynamic Type/VoiceOver on hardware, widget
+  timeline), marketing screenshots, App Store Connect metadata + privacy
+  labels, and submission itself.

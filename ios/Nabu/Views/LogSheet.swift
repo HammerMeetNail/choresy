@@ -238,6 +238,7 @@ struct LogSheet: View {
             }
         }
         .pickerStyle(.menu)
+        .accessibilityIdentifier("volume-picker")
     }
 
     private var subjectChips: some View {
