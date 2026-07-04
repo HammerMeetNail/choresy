@@ -231,6 +231,23 @@ struct HouseholdView: View {
                     Text("Download all activity as a CSV spreadsheet.")
                 }
 
+                // About (A5): the same privacy/support URLs App Store
+                // Connect metadata points at.
+                Section("About") {
+                    Link(destination: environment.baseURL.appendingPathComponent("privacy")) {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                    }
+                    Link(destination: environment.baseURL.appendingPathComponent("support")) {
+                        Label("Support", systemImage: "questionmark.circle")
+                    }
+                    HStack {
+                        Text("Version")
+                        Spacer()
+                        Text(appVersion)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
                 Section {
                     Button("Sign Out", role: .destructive) {
                         Task {
@@ -312,6 +329,12 @@ struct HouseholdView: View {
                 Text("Share this code: \(code)")
             }
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(version) (\(build))"
     }
 
     private func saveHousehold() async {

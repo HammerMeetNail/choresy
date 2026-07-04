@@ -490,6 +490,9 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		}))
 	}
 
+	// Privacy policy + support pages (App Store metadata requirement).
+	registerStaticPages(mux)
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)

@@ -529,3 +529,28 @@ func TestAppleAppSiteAssociation(t *testing.T) {
 		}
 	})
 }
+
+func TestStaticLegalPages(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "http://localhost:8080")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	server := NewServer(cfg)
+
+	for path, want := range map[string]string{
+		"/privacy": "Privacy Policy",
+		"/support": "Support",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		server.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s status = %d, want 200", path, rec.Code)
+		}
+		if body := rec.Body.String(); !strings.Contains(body, want) {
+			t.Errorf("%s body missing %q", path, want)
+		}
+	}
+}
