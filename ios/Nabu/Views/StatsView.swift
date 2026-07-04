@@ -61,6 +61,7 @@ struct StatsView: View {
                         customizeOpen = true
                     } label: {
                         Image(systemName: "slider.horizontal.3")
+                            .symbolRenderingMode(.hierarchical)
                     }
                     .accessibilityLabel("Customize stats")
                     .accessibilityIdentifier("stats-customize")

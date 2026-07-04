@@ -37,7 +37,6 @@ struct ActivityView: View {
                 choreFilter: $choreFilter, searchResults: $searchResults
             )
             .navigationTitle("Activity")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     // Chore chips filter the loaded (windowed) pages; they
@@ -50,6 +49,7 @@ struct ActivityView: View {
                             Image(systemName: choreFilter.isEmpty
                                 ? "line.3.horizontal.decrease.circle"
                                 : "line.3.horizontal.decrease.circle.fill")
+                                .symbolRenderingMode(.hierarchical)
                         }
                         .accessibilityLabel("Filter activity")
                     }

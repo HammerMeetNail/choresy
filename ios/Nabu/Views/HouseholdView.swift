@@ -20,6 +20,28 @@ struct HouseholdView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Account — first, per the settings hierarchy (C5): the
+                // things about *you*, then the household, then device prefs.
+                if let user = state.user {
+                    Section("Account") {
+                        HStack {
+                            Text("Email")
+                            Spacer()
+                            Text(user.email)
+                                .foregroundColor(.secondary)
+                        }
+                        if !user.emailVerified {
+                            Button(verificationSent ? "Verification email sent" : "Resend verification email") {
+                                Task { await resendVerification() }
+                            }
+                            .disabled(verificationSent)
+                        }
+                        Button("Delete Account…", role: .destructive) {
+                            showingDeleteAccount = true
+                        }
+                    }
+                }
+
                 // Household info
                 if let household = state.household {
                     Section("Household") {
@@ -142,24 +164,31 @@ struct HouseholdView: View {
                     }
                 }
 
-                // Account
-                if let user = state.user {
-                    Section("Account") {
+                // Notifications
+                Section {
+                    NavigationLink {
+                        NotificationsView()
+                    } label: {
                         HStack {
-                            Text("Email")
+                            Label("Notifications", systemImage: "bell")
                             Spacer()
-                            Text(user.email)
-                                .foregroundColor(.secondary)
-                        }
-                        if !user.emailVerified {
-                            Button(verificationSent ? "Verification email sent" : "Resend verification email") {
-                                Task { await resendVerification() }
+                            if state.unreadNotifications > 0 {
+                                Text("\(state.unreadNotifications)")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(Color.red)
+                                    .clipShape(Capsule())
                             }
-                            .disabled(verificationSent)
                         }
-                        Button("Delete Account…", role: .destructive) {
-                            showingDeleteAccount = true
-                        }
+                    }
+
+                    NavigationLink {
+                        NotificationPreferencesView()
+                    } label: {
+                        Label("Notification Preferences", systemImage: "bell.badge")
                     }
                 }
 
@@ -200,34 +229,6 @@ struct HouseholdView: View {
                     .disabled(isExporting)
                 } footer: {
                     Text("Download all activity as a CSV spreadsheet.")
-                }
-
-                // Notifications
-                Section {
-                    NavigationLink {
-                        NotificationsView()
-                    } label: {
-                        HStack {
-                            Label("Notifications", systemImage: "bell")
-                            Spacer()
-                            if state.unreadNotifications > 0 {
-                                Text("\(state.unreadNotifications)")
-                                    .font(.caption)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.red)
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-
-                    NavigationLink {
-                        NotificationPreferencesView()
-                    } label: {
-                        Label("Notification Preferences", systemImage: "bell.badge")
-                    }
                 }
 
                 Section {

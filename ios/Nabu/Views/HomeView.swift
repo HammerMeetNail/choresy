@@ -35,6 +35,7 @@ struct HomeView: View {
                         } label: {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title2)
+                                .symbolRenderingMode(.hierarchical)
                         }
                         .accessibilityIdentifier("quick-log-button")
                     }
