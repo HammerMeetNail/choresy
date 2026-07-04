@@ -40,13 +40,24 @@ final class DeepLinkTests: XCTestCase {
         // Parity with the PWA's /?quicklog=chore:<id> notification deep link.
         XCTAssertEqual(
             parse("https://nabu-app.com/?quicklog=chore:42"),
-            .quickLog(choreId: 42)
+            .quickLog(.chore(id: 42))
         )
+    }
+
+    func testQuickLogManifestShortcutTargets() {
+        // Parity with the PWA manifest shortcuts (Log feed / Log chore /
+        // Activity), reused by the iOS Home-Screen quick actions.
+        XCTAssertEqual(
+            parse("https://nabu-app.com/?quicklog=feed-baby"),
+            .quickLog(.predefined(key: "Feed Baby"))
+        )
+        XCTAssertEqual(parse("https://nabu-app.com/?quicklog=chore"), .showHomeLog)
+        XCTAssertEqual(parse("https://nabu-app.com/?quicklog=activity"), .showActivity)
     }
 
     func testQuickLogMalformedIdIsIgnored() {
         XCTAssertNil(parse("https://nabu-app.com/?quicklog=chore:abc"))
-        XCTAssertNil(parse("https://nabu-app.com/?quicklog=activity"))
+        XCTAssertNil(parse("https://nabu-app.com/?quicklog=unknown"))
     }
 
     func testUnrelatedURLsAreIgnored() {

@@ -9,7 +9,11 @@ enum DeepLink: Equatable {
     case verifyEmail(token: String)
     case magicLogin(token: String)
     case joinHousehold(code: String)
-    case quickLog(choreId: Int)
+    case quickLog(QuickLogTarget)
+    /// `?quicklog=activity` — the Activity manifest shortcut.
+    case showActivity
+    /// `?quicklog=chore` (no id) — land on the home log grid.
+    case showHomeLog
 
     static func parse(_ url: URL) -> DeepLink? {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
@@ -32,9 +36,21 @@ enum DeepLink: Equatable {
                 return .joinHousehold(code: code)
             }
         case "", "/":
-            if let quicklog = query("quicklog"), quicklog.hasPrefix("chore:"),
-               let id = Int(quicklog.dropFirst("chore:".count)) {
-                return .quickLog(choreId: id)
+            // The PWA's ?quicklog= targets (manifest shortcuts + the
+            // notification "Log now" deep link), handled identically.
+            switch query("quicklog") {
+            case let quicklog? where quicklog.hasPrefix("chore:"):
+                if let id = Int(quicklog.dropFirst("chore:".count)) {
+                    return .quickLog(.chore(id: id))
+                }
+            case "feed-baby":
+                return .quickLog(.predefined(key: "Feed Baby"))
+            case "activity":
+                return .showActivity
+            case "chore":
+                return .showHomeLog
+            default:
+                break
             }
         default:
             break

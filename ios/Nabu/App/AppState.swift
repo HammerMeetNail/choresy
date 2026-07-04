@@ -35,9 +35,10 @@ final class AppState: ObservableObject {
     @Published var pendingLogs: [PendingLog] = []
     /// Shared per-day diary notes keyed by "YYYY-MM-DD" (Phase 5.4).
     @Published var dayNotes: [String: String] = [:]
-    /// Deep-link target from a notification "Log now" action (parity with the
-    /// PWA's `/?quicklog=chore:<id>`); HomeView consumes it once chores exist.
-    @Published var pendingQuickLogChoreId: Int?
+    /// Deep-link target from a notification "Log now" action, widget tap, or
+    /// quick action (parity with the PWA's `?quicklog=`); HomeView consumes
+    /// it once chores exist.
+    @Published var pendingQuickLog: QuickLogTarget?
     /// Invite code from a `/join?code=…` universal link opened while logged
     /// out; OnboardingView prefills its Join tab from it.
     @Published var pendingInviteCode: String?
@@ -80,7 +81,7 @@ final class AppState: ObservableObject {
         // timer is device-scoped, not session-scoped.
         pendingLogs = []
         dayNotes = [:]
-        pendingQuickLogChoreId = nil
+        pendingQuickLog = nil
         pendingInviteCode = nil
         statsSectionOrder = []
         statsSectionHidden = []

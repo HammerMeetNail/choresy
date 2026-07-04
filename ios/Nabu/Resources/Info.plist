@@ -33,6 +33,39 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.nabu.app.shortcut.log-feed</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Log Feed</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Open the log sheet for Feed Baby</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>waterbottle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.nabu.app.shortcut.log-chore</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Log Chore</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Jump to the home grid</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>checkmark.circle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>com.nabu.app.shortcut.activity</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Activity</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>View recent history</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>waveform</string>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

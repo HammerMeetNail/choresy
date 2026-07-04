@@ -40,6 +40,16 @@ enum HomeViewMode: CaseIterable, Hashable {
     }
 }
 
+/// What a quick-log entry point wants pre-filled — from a notification
+/// "Log now" action, a widget tap, or a Home-Screen quick action. Mirrors the
+/// PWA's `?quicklog=` targets.
+enum QuickLogTarget: Equatable {
+    case chore(id: Int)
+    /// Resolved against `predefinedKey` (falling back to name) once the
+    /// chore list is loaded — e.g. "Feed Baby" for the Log-feed shortcut.
+    case predefined(key: String)
+}
+
 enum ActiveSheet: Identifiable {
     case logSheet
     case pickChore

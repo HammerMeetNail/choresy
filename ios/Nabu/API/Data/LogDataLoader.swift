@@ -30,6 +30,9 @@ final class LogDataLoader {
                 }
             }
             state.latestLogs = dict
+            // Refresh the Home-Screen widget's app-group snapshot — this is
+            // exactly the data ("time since last log") the widget renders.
+            WidgetDataCache.write(chores: WidgetDataCache.snapshots(from: state))
         } catch {
             // Silent failure
         }
@@ -39,5 +42,28 @@ final class LogDataLoader {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
         return formatter.string(from: Date())
+    }
+}
+
+extension WidgetDataCache {
+    /// Snapshots from app state: home-visible chores in the user's order,
+    /// with their latest log time. Lives here (app target) — the shared
+    /// WidgetDataCache file also compiles into the widget extension, which
+    /// has no AppState.
+    @MainActor
+    static func snapshots(from state: AppState) -> [WidgetChoreSnapshot] {
+        let hidden = Set(state.hiddenHomeChoreIDs)
+        let orderMap = Dictionary(uniqueKeysWithValues: state.choreOrder.enumerated().map { ($1, $0) })
+        return state.chores
+            .filter { !hidden.contains($0.id) }
+            .sorted { (orderMap[$0.id] ?? Int.max, $0.id) < (orderMap[$1.id] ?? Int.max, $1.id) }
+            .map { chore in
+                WidgetChoreSnapshot(
+                    id: chore.id,
+                    name: chore.name,
+                    icon: chore.icon,
+                    lastCompletedAt: state.latestLogs[chore.id]?.completedAt
+                )
+            }
     }
 }

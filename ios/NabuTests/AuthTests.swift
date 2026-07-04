@@ -43,6 +43,10 @@ final class AuthTests: XCTestCase {
 
     func testCSRFTokenProviderReturnsNilWhenNoCookie() {
         let store = CookieStore()
+        // CookieStore wraps HTTPCookieStorage.shared, which the test host
+        // shares with any app session previously run on this simulator —
+        // clear it so a stray nabu_csrf cookie can't leak in.
+        store.clearAll()
         let provider = CSRFTokenProvider(cookieStore: store)
         XCTAssertNil(provider.token)
     }

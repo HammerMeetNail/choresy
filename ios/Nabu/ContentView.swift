@@ -134,10 +134,15 @@ struct ContentView: View {
                 await consumePendingInvite(code)
             }
             // Already in a household: the link just opens the app (PWA parity).
-        case .quickLog(let choreId):
+        case .quickLog(let target):
             state.currentTab = .home
             state.homeView = .log
-            state.pendingQuickLogChoreId = choreId
+            state.pendingQuickLog = target
+        case .showHomeLog:
+            state.currentTab = .home
+            state.homeView = .log
+        case .showActivity:
+            state.currentTab = .activity
         }
     }
 
