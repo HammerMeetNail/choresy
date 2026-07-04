@@ -290,6 +290,22 @@ input:focus, select:focus, textarea:focus {
   flex-shrink: 0;
 }
 
+/* Apple's HIG sanctions the solid black button on light and dark alike. */
+.btn-apple {
+  background: #000;
+  color: #fff;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-apple:hover {
+  background: #1a1a1a;
+}
+
+.btn-apple svg {
+  flex-shrink: 0;
+}
+
 .btn-sm {
   padding: 6px 12px;
   font-size: 13px;

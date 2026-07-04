@@ -157,7 +157,7 @@ export function render(root) {
   } else if (!state.user) {
     switch (route) {
       case "/register":
-        html = renderRegisterView(state.googleOAuthEnabled);
+        html = renderRegisterView(state.googleOAuthEnabled, state.appleSignInEnabled);
         break;
       case "/magic-link":
         html = renderMagicLinkRequestView();
@@ -166,7 +166,7 @@ export function render(root) {
         html = renderForgotPasswordView();
         break;
       default:
-        html = renderLoginView(state.googleOAuthEnabled);
+        html = renderLoginView(state.googleOAuthEnabled, state.appleSignInEnabled);
     }
   } else {
     switch (route) {
@@ -1581,6 +1581,7 @@ export async function init() {
   state = createAppState();
 
   state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
+  state.appleSignInEnabled = document.body?.dataset?.appleSigninEnabled === "true";
 
   // Restore an in-progress duration timer (Phase 5.2) so it survives reloads.
   state.activeTimer = loadTimer();
@@ -1785,16 +1786,21 @@ export async function init() {
 
     switch (action) {
       case "google-signin":
+      case "apple-signin": {
+        const oauthURL = action === "apple-signin"
+          ? "/api/auth/apple/web/login"
+          : "/api/auth/google/login";
         if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
           Notification.requestPermission().then(() => {
-            window.location.href = "/api/auth/google/login";
+            window.location.href = oauthURL;
           }).catch(() => {
-            window.location.href = "/api/auth/google/login";
+            window.location.href = oauthURL;
           });
         } else {
-          window.location.href = "/api/auth/google/login";
+          window.location.href = oauthURL;
         }
         break;
+      }
       case "show-login":
       case "show-register":
       case "show-magic-link":

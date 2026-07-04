@@ -33,6 +33,12 @@ variables → Actions**, create the following secrets:
 | `SMTP_FROM`          | Must match `/opt/nabu/.env` on the server |
 | `GOOGLE_CLIENT_ID`   | Must match `/opt/nabu/.env` on the server |
 | `GOOGLE_CLIENT_SECRET` | Must match `/opt/nabu/.env` on the server |
+| `APNS_AUTH_KEY_P8`   | **Base64 of the .p8 PEM** (single line — the deploy writes `.env` line-per-var, so the raw multiline PEM would break it; the server decodes base64 automatically). Optional until the Apple account exists — leave unset and APNs stays disabled |
+| `APNS_KEY_ID`        | Key ID of the APNs auth key (Apple portal). Optional as above |
+| `APNS_TEAM_ID`       | Apple developer team ID. Optional as above |
+| `APNS_BUNDLE_ID`     | iOS bundle ID (`com.nabu.app`). Optional as above |
+| `APPLE_CLIENT_IDS`   | Sign in with Apple audiences (the iOS bundle ID). Optional; unset disables native SIWA |
+| `APPLE_WEB_CLIENT_ID`| Services ID for web SIWA (domain + `/api/auth/apple/web/callback` return URL registered in the portal). Optional; unset hides the PWA button |
 
 ## Phase 7 — Verify server can pull from Quay.io
 

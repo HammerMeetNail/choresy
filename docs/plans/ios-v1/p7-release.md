@@ -84,7 +84,7 @@ Submit to App Review only when **all** of the following hold:
 - [ ] Metadata complete (screenshots, description, privacy, review notes) — **owner** (privacy/support URLs are live: `/privacy`, `/support`)
 - [x] Full test sweep green (2026-07-04, local): `make test-go` · `make test-js` · `make e2e` (306) · `NabuTests` (unit/contract/snapshot) · all four local `NabuUITests` classes incl. the accessibility audit
 - [ ] D6 device checklist signed off — **owner** (physical device)
-- [ ] `check-parity.sh --strict` passes (or owner-signed exceptions recorded)
+- [x] `check-parity.sh --strict` passes (2026-07-04, after PWA web-SIWA landed — zero pending, zero not-built)
 - [ ] Submitted to App Review — **owner**
 
 ### Notes
@@ -99,6 +99,34 @@ Submit to App Review only when **all** of the following hold:
   the two open pendings resolve: **Sign in with Apple** (PWA web-SIWA or
   owner-signed N/A exception) and nothing else — the widget row flipped to
   Built in P6.
+
+**2026-07-04 (later) — PWA web-SIWA shipped; `check-parity.sh --strict` now
+passes.** The last non-owner code item closed:
+
+- *Backend*: `GET /api/auth/apple/web/login` (state+nonce → redirect to
+  appleid.apple.com) and `POST /api/auth/apple/web/callback` (Apple's
+  form_post response). The flow requests `response_type=code id_token` +
+  `response_mode=form_post`, so the identity token arrives directly and is
+  verified by the same `AppleVerifier`/`LoginWithApple` path as the native
+  flow — nonce and all, **no client secret needed**. State/nonce/redirect
+  cookies are `SameSite=None; Secure` (the callback is a cross-site POST;
+  Lax cookies wouldn't ride along) scoped to `/api/auth/apple/web`; the
+  callback is CSRF-exempt with the state cookie as the double-submit
+  (`internal/middleware/csrf.go`, tested). New env: `APPLE_WEB_CLIENT_ID`
+  (Services ID; auto-added to the verifier's accepted audiences), README
+  documents it plus the previously undocumented `APNS_*`/`APPLE_CLIENT_IDS`.
+- *PWA*: "Continue with Apple" (black HIG button) above the Google button on
+  login + register — same 4.8 ordering as iOS — rendered only when the
+  server sets `data-apple-signin-enabled` from config. Shared
+  `renderOAuthButtons` helper deduplicates the old per-view Google markup.
+- *Tests*: Go handler suite (redirect params/cookies, state forgery,
+  cancellation, missing token, happy path via fake verifier, rejection),
+  `AppleWebAuthCodeURL` unit tests, CSRF exemption cases; JS view tests for
+  button presence/absence and Apple-above-Google ordering. Flow also
+  smoke-tested against a running server (redirect + cookie flags verified).
+- *Owner-gated to activate in prod*: create the Services ID in the portal,
+  register the domain + `/api/auth/apple/web/callback` return URL, set
+  `APPLE_WEB_CLIENT_ID`.
 - Everything else in this phase needs the Apple developer account: portal
   capabilities (Push, SIWA, Associated Domains, App Group on
   `com.nabu.app`), `.p8` + prod env (`APNS_*`, `APPLE_CLIENT_IDS`),

@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -104,8 +105,18 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService.SetAuditLogger(auditLog)
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
-	if ids := splitCommaList(cfg.AppleClientIDs); len(ids) > 0 {
-		authService.SetAppleVerifier(auth.NewAppleVerifier(ids))
+	appleClientIDs := splitCommaList(cfg.AppleClientIDs)
+	if cfg.AppleWebClientID != "" && !slices.Contains(appleClientIDs, cfg.AppleWebClientID) {
+		appleClientIDs = append(appleClientIDs, cfg.AppleWebClientID)
+	}
+	if len(appleClientIDs) > 0 {
+		authService.SetAppleVerifier(auth.NewAppleVerifier(appleClientIDs))
+	}
+	if cfg.AppleWebClientID != "" {
+		authService.SetAppleWebAuth(&auth.AppleWebAuth{
+			ClientID:    cfg.AppleWebClientID,
+			RedirectURL: strings.TrimRight(cfg.AppBaseURL, "/") + "/api/auth/apple/web/callback",
+		})
 	}
 	authHandler := handlers.NewAuthHandler(authService, "nabu_session", cfg.ServerSecure, cfg.AppBaseURL)
 	accountService := account.NewService(authStore, householdStore)
@@ -252,6 +263,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/auth/google/login", method(http.MethodGet, authHandler.GoogleLogin))
 	mux.HandleFunc("/api/auth/google/callback", method(http.MethodGet, authHandler.GoogleCallback))
 	mux.HandleFunc("/api/auth/apple/native", method(http.MethodPost, authHandler.AppleNative))
+	mux.HandleFunc("/api/auth/apple/web/login", method(http.MethodGet, authHandler.AppleWebLogin))
+	mux.HandleFunc("/api/auth/apple/web/callback", method(http.MethodPost, authHandler.AppleWebCallback))
 
 	mux.HandleFunc("/api/household", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -569,11 +582,13 @@ func renderIndex(w http.ResponseWriter, cfg config.Config) {
 		Version            string
 		VAPIDPublicKey     string
 		GoogleOAuthEnabled bool
+		AppleSignInEnabled bool
 	}{
 		AppName:            "Nabu",
 		Version:            version.Version,
 		VAPIDPublicKey:     cfg.VAPIDPublicKey,
 		GoogleOAuthEnabled: googleOAuthEnabled,
+		AppleSignInEnabled: cfg.AppleWebClientID != "",
 	}
 	if err := indexTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -94,6 +94,33 @@ describe("Auth Views", () => {
     assert.ok(html.includes("Confirm Password"));
   });
 
+  it("hides third-party sign-in buttons when not configured", async () => {
+    const { renderLoginView, renderRegisterView } = await import("../auth.js");
+    for (const html of [renderLoginView(false, false), renderRegisterView(false, false)]) {
+      assert.ok(!html.includes("google-signin"));
+      assert.ok(!html.includes("apple-signin"));
+    }
+  });
+
+  it("renders Apple above Google on login and register when both enabled", async () => {
+    const { renderLoginView, renderRegisterView } = await import("../auth.js");
+    for (const html of [renderLoginView(true, true), renderRegisterView(true, true)]) {
+      assert.ok(html.includes("Continue with Apple"));
+      assert.ok(html.includes("Continue with Google"));
+      assert.ok(
+        html.indexOf("apple-signin") < html.indexOf("google-signin"),
+        "Apple button must render above Google (guideline 4.8 prominence)",
+      );
+    }
+  });
+
+  it("renders Apple button alone when only Apple is enabled", async () => {
+    const { renderLoginView } = await import("../auth.js");
+    const html = renderLoginView(false, true);
+    assert.ok(html.includes("apple-signin"));
+    assert.ok(!html.includes("google-signin"));
+  });
+
   it("renders magic link request view", async () => {
     const { renderMagicLinkRequestView } = await import("../auth.js");
     const html = renderMagicLinkRequestView();

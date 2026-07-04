@@ -43,12 +43,19 @@ func CSRF(cookieName string, secure bool) func(http.Handler) http.Handler {
 }
 
 // isCSRFExempt lists endpoints intentionally exempt from double-submit CSRF.
-// These are invoked by the service worker (which has no access to the CSRF
-// cookie/header) and are safe: they require a valid session cookie — which
-// SameSite=Lax already prevents cross-site POSTs from carrying — and only
-// mutate the caller's own data behind an ownership check.
+//
+//   - /api/reminders/snooze is invoked by the service worker (which has no
+//     access to the CSRF cookie/header) and is safe: it requires a valid
+//     session cookie — which SameSite=Lax already prevents cross-site POSTs
+//     from carrying — and only mutates the caller's own data behind an
+//     ownership check.
+//   - /api/auth/apple/web/callback receives Sign in with Apple's form_post
+//     response, a cross-site POST from appleid.apple.com that cannot carry
+//     our header token. The handler's OAuth state cookie is the
+//     double-submit protection there, and the posted identity token is
+//     signature- and nonce-verified before any session is created.
 func isCSRFExempt(path string) bool {
-	return path == "/api/reminders/snooze"
+	return path == "/api/reminders/snooze" || path == "/api/auth/apple/web/callback"
 }
 
 func isStateChanging(method string) bool {

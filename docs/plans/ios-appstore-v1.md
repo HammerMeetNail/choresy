@@ -1,6 +1,6 @@
 # iOS App Store v1 — Parity & Polish Plan (index)
 
-**Status:** Active — P1–P4 complete; P5 and P6 code complete (2026-07-04); P7 test sweep done — everything left is owner-gated (Apple portal setup, physical-device verification, TestFlight, screenshots/metadata, submission) ·
+**Status:** Active — P1–P4 complete; P5 and P6 code complete; P7 test sweep done and PWA web-SIWA shipped (2026-07-04), `check-parity.sh --strict` passes — everything left is owner-gated (Apple portal setup incl. web Services ID, physical-device verification, TestFlight, screenshots/metadata, submission) ·
 **Drafted:** 2026-07-02 · **Owner decisions recorded:** 2026-07-02
 
 This is the **index** for the App Store v1 effort. The detailed, executable

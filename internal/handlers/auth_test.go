@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -622,6 +625,200 @@ func TestAuthGoogleCallbackOIDCError(t *testing.T) {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
+
+// fakeAppleVerifier satisfies auth.AppleTokenVerifier so callback tests can
+// exercise the handler without minting real RS256 tokens.
+type fakeAppleVerifier struct {
+	err      error
+	identity auth.OIDCIdentity
+	gotToken string
+	gotNonce string
+}
+
+func (f *fakeAppleVerifier) Enabled() bool { return true }
+
+func (f *fakeAppleVerifier) VerifyIdentityToken(ctx context.Context, token, nonce string) (auth.OIDCIdentity, error) {
+	f.gotToken, f.gotNonce = token, nonce
+	if f.err != nil {
+		return auth.OIDCIdentity{}, f.err
+	}
+	return f.identity, nil
+}
+
+func setupAppleWebHandler(t *testing.T) (*AuthHandler, *fakeAppleVerifier) {
+	t.Helper()
+	handler, svc := setupAuthHandler(t)
+	verifier := &fakeAppleVerifier{
+		identity: auth.OIDCIdentity{Subject: "001234.abcdef", Email: "user@privaterelay.appleid.com", EmailVerified: true},
+	}
+	svc.SetAppleVerifier(verifier)
+	svc.SetAppleWebAuth(&auth.AppleWebAuth{
+		ClientID:    "com.nabu.web",
+		RedirectURL: "http://localhost:8080/api/auth/apple/web/callback",
+	})
+	return handler, verifier
+}
+
+func postAppleCallback(handler *AuthHandler, form url.Values, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/apple/web/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	rec := httptest.NewRecorder()
+	handler.AppleWebCallback(rec, req)
+	return rec
+}
+
+func TestAuthAppleWebLoginNotConfigured(t *testing.T) {
+	handler, _ := setupAuthHandler(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/apple/web/login", nil)
+	rec := httptest.NewRecorder()
+	handler.AppleWebLogin(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestAuthAppleWebLoginRedirects(t *testing.T) {
+	handler, _ := setupAppleWebHandler(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/apple/web/login", nil)
+	rec := httptest.NewRecorder()
+	handler.AppleWebLogin(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+
+	loc, err := url.Parse(rec.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("parse Location: %v", err)
+	}
+	if loc.Host != "appleid.apple.com" || loc.Path != "/auth/authorize" {
+		t.Fatalf("Location = %s, want appleid.apple.com/auth/authorize", loc)
+	}
+	q := loc.Query()
+	if q.Get("client_id") != "com.nabu.web" {
+		t.Fatalf("client_id = %q", q.Get("client_id"))
+	}
+	if q.Get("response_type") != "code id_token" || q.Get("response_mode") != "form_post" {
+		t.Fatalf("response_type=%q response_mode=%q", q.Get("response_type"), q.Get("response_mode"))
+	}
+	if q.Get("scope") != "email" {
+		t.Fatalf("scope = %q", q.Get("scope"))
+	}
+
+	cookies := map[string]*http.Cookie{}
+	for _, c := range rec.Result().Cookies() {
+		cookies[c.Name] = c
+	}
+	for _, name := range []string{"nabu_apple_state", "nabu_apple_nonce"} {
+		c, ok := cookies[name]
+		if !ok {
+			t.Fatalf("cookie %s not set", name)
+		}
+		// The callback arrives as a cross-site POST from appleid.apple.com;
+		// anything stricter than SameSite=None (which requires Secure) would
+		// strip these cookies from it.
+		if c.SameSite != http.SameSiteNoneMode || !c.Secure || !c.HttpOnly {
+			t.Fatalf("cookie %s must be SameSite=None, Secure, HttpOnly; got %+v", name, c)
+		}
+	}
+	if cookies["nabu_apple_state"].Value != q.Get("state") {
+		t.Fatal("state cookie does not match the state query param")
+	}
+	if cookies["nabu_apple_nonce"].Value != q.Get("nonce") {
+		t.Fatal("nonce cookie does not match the nonce query param")
+	}
+}
+
+func TestAuthAppleWebCallbackInvalidState(t *testing.T) {
+	handler, _ := setupAppleWebHandler(t)
+	rec := postAppleCallback(handler, url.Values{"state": {"bogus"}, "id_token": {"tok"}})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestAuthAppleWebCallbackUserCancelled(t *testing.T) {
+	handler, _ := setupAppleWebHandler(t)
+	rec := postAppleCallback(handler, url.Values{"error": {"user_cancelled_authorize"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "http://localhost:8080" {
+		t.Fatalf("Location = %q", loc)
+	}
+	if len(rec.Result().Cookies()) != 0 {
+		t.Fatal("cancelled sign-in must not set cookies")
+	}
+}
+
+func TestAuthAppleWebCallbackMissingToken(t *testing.T) {
+	handler, _ := setupAppleWebHandler(t)
+	rec := postAppleCallback(handler, url.Values{"state": {"mystate"}},
+		&http.Cookie{Name: "nabu_apple_state", Value: "mystate"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestAuthAppleWebCallbackSuccess(t *testing.T) {
+	handler, verifier := setupAppleWebHandler(t)
+	rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}, "code": {"unused"}},
+		&http.Cookie{Name: "nabu_apple_state", Value: "mystate"},
+		&http.Cookie{Name: "nabu_apple_nonce", Value: "mynonce"})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303, body=%s", rec.Code, rec.Body.String())
+	}
+	if loc := rec.Header().Get("Location"); loc != "http://localhost:8080" {
+		t.Fatalf("Location = %q", loc)
+	}
+	if verifier.gotToken != "apple-token" || verifier.gotNonce != "mynonce" {
+		t.Fatalf("verifier saw token=%q nonce=%q; the nonce must come from the cookie", verifier.gotToken, verifier.gotNonce)
+	}
+
+	var session *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "nabu_session" {
+			session = c
+		}
+	}
+	if session == nil || session.Value == "" {
+		t.Fatal("session cookie not set")
+	}
+}
+
+func TestAuthAppleWebCallbackRedirectCookieHonored(t *testing.T) {
+	handler, _ := setupAppleWebHandler(t)
+	rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},
+		&http.Cookie{Name: "nabu_apple_state", Value: "mystate"},
+		&http.Cookie{Name: "nabu_apple_nonce", Value: "mynonce"},
+		&http.Cookie{Name: "nabu_apple_redirect", Value: "http://localhost:8080/settings"})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "http://localhost:8080/settings" {
+		t.Fatalf("Location = %q", loc)
+	}
+}
+
+func TestAuthAppleWebCallbackVerifierRejects(t *testing.T) {
+	handler, verifier := setupAppleWebHandler(t)
+	verifier.err = errAppleTestReject
+	rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"bad-token"}},
+		&http.Cookie{Name: "nabu_apple_state", Value: "mystate"},
+		&http.Cookie{Name: "nabu_apple_nonce", Value: "mynonce"})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "nabu_session" {
+			t.Fatal("failed verification must not set a session cookie")
+		}
+	}
+}
+
+var errAppleTestReject = errors.New("token rejected")
 
 // extractTokenFromBody is the same helper used in auth service tests.
 func extractTokenFromBody(t *testing.T, body, prefix string) string {

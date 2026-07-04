@@ -329,6 +329,88 @@ func (h *AuthHandler) AppleNative(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.authResponse(user, session))
 }
 
+// AppleWebLogin handles GET /api/auth/apple/web/login: it stashes a fresh
+// state + nonce in cookies and redirects to appleid.apple.com. Mirrors
+// GoogleLogin, except the callback is a cross-site form POST (Apple requires
+// response_mode=form_post when scopes are requested), so the cookies must be
+// SameSite=None to be sent with it — see setAppleWebCookie.
+func (h *AuthHandler) AppleWebLogin(w http.ResponseWriter, r *http.Request) {
+	state, err := auth.GenerateState()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate state")
+		return
+	}
+	nonce, err := auth.GenerateNonce()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate nonce")
+		return
+	}
+
+	url, err := h.authService.AppleWebAuthCodeURL(state, nonce)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "sign in with apple is not configured")
+		return
+	}
+
+	h.setAppleWebCookie(w, "nabu_apple_state", state, 600)
+	h.setAppleWebCookie(w, "nabu_apple_nonce", nonce, 600)
+
+	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+		h.setAppleWebCookie(w, "nabu_apple_redirect", redirect, 600)
+	}
+
+	http.Redirect(w, r, url, http.StatusFound)
+}
+
+// AppleWebCallback handles POST /api/auth/apple/web/callback — Apple's
+// form_post response. It is CSRF-exempt (the POST comes from
+// appleid.apple.com and cannot carry our header token); the state cookie is
+// the double-submit protection here. The posted identity token is verified
+// exactly like the native flow, nonce included.
+func (h *AuthHandler) AppleWebCallback(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid form body")
+		return
+	}
+
+	// Apple posts error=user_cancelled_authorize when the user backs out;
+	// no session is created, so just return to the app.
+	if r.PostFormValue("error") != "" {
+		http.Redirect(w, r, h.appBaseURL, http.StatusSeeOther)
+		return
+	}
+
+	state := r.PostFormValue("state")
+	expectedState := h.getOIDCCookie(r, "nabu_apple_state")
+	if state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(expectedState)) != 1 {
+		writeError(w, http.StatusBadRequest, "invalid state parameter")
+		return
+	}
+
+	identityToken := r.PostFormValue("id_token")
+	if identityToken == "" {
+		writeError(w, http.StatusBadRequest, "missing identity token")
+		return
+	}
+
+	expectedNonce := h.getOIDCCookie(r, "nabu_apple_nonce")
+
+	user, session, err := h.authService.LoginWithApple(r.Context(), identityToken, expectedNonce)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "apple authentication failed")
+		return
+	}
+	_ = user
+
+	h.SetSessionCookie(w, session.ID)
+
+	redirectURL := h.appBaseURL
+	if stored := h.getOIDCCookie(r, "nabu_apple_redirect"); stored != "" {
+		redirectURL = stored
+	}
+	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
+}
+
 func (h *AuthHandler) authResponse(user auth.User, session auth.Session) map[string]any {
 	return map[string]any{
 		"user": user,
@@ -367,6 +449,25 @@ func (h *AuthHandler) setOIDCCookie(w http.ResponseWriter, name, value string, m
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   h.secure,
+		MaxAge:   maxAge,
+	})
+}
+
+// setAppleWebCookie sets the state/nonce/redirect cookies for the Apple web
+// flow. Unlike the Google flow (whose callback is a same-site top-level GET,
+// so SameSite=Lax works), Apple delivers the callback as a cross-site POST
+// from appleid.apple.com; Lax cookies are not sent with cross-site POSTs, so
+// these must be SameSite=None — and None requires Secure regardless of the
+// deployment flag. In practice the web flow only runs over HTTPS anyway:
+// Apple requires a registered HTTPS return URL.
+func (h *AuthHandler) setAppleWebCookie(w http.ResponseWriter, name, value string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/api/auth/apple/web",
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
 		MaxAge:   maxAge,
 	})
 }

@@ -53,6 +53,23 @@ func TestCSRFExemptsSnoozeButNotOtherRoutes(t *testing.T) {
 	if recSneaky.Code != http.StatusForbidden {
 		t.Fatalf("snooze-prefixed path without CSRF: status = %d, want %d", recSneaky.Code, http.StatusForbidden)
 	}
+
+	// Apple's form_post callback is a cross-site POST that can't carry our
+	// header token; it is exempt (protected by the OAuth state cookie).
+	apple := httptest.NewRequest(http.MethodPost, "/api/auth/apple/web/callback", nil)
+	recApple := httptest.NewRecorder()
+	handler.ServeHTTP(recApple, apple)
+	if recApple.Code != http.StatusNoContent {
+		t.Fatalf("apple callback without CSRF: status = %d, want %d", recApple.Code, http.StatusNoContent)
+	}
+
+	// But the sibling login route is not exempt.
+	appleLogin := httptest.NewRequest(http.MethodPost, "/api/auth/apple/web/login", nil)
+	recAppleLogin := httptest.NewRecorder()
+	handler.ServeHTTP(recAppleLogin, appleLogin)
+	if recAppleLogin.Code != http.StatusForbidden {
+		t.Fatalf("apple login without CSRF: status = %d, want %d", recAppleLogin.Code, http.StatusForbidden)
+	}
 }
 
 func TestRateLimiterBlocksRequestsAboveLimit(t *testing.T) {

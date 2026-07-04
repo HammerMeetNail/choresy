@@ -121,6 +121,12 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 | `SMTP_FROM` | (empty) | From address for emails |
 | `GOOGLE_CLIENT_ID` | (empty) | Google OAuth2 client ID |
 | `GOOGLE_CLIENT_SECRET` | (empty) | Google OAuth2 client secret |
+| `APPLE_CLIENT_IDS` | (empty) | Comma-separated audiences accepted on Sign in with Apple identity tokens (the iOS bundle ID; empty disables the native endpoint) |
+| `APPLE_WEB_CLIENT_ID` | (empty) | Services ID for web Sign in with Apple (must have `APP_BASE_URL`'s domain + `/api/auth/apple/web/callback` registered in the Apple portal; empty hides the web button). Automatically accepted as a token audience |
+| `APNS_AUTH_KEY_P8` | (empty) | APNs .p8 auth key contents (PEM, PEM with `\n` escapes, or base64 of the PEM). All four `APNS_*` must be set to enable native push |
+| `APNS_KEY_ID` | (empty) | APNs auth key ID |
+| `APNS_TEAM_ID` | (empty) | Apple developer team ID (also enables the universal-links AASA with `APNS_BUNDLE_ID`) |
+| `APNS_BUNDLE_ID` | (empty) | iOS app bundle ID (APNs topic) |
 | `TRUSTED_PROXY_CIDRS` | (empty) | CIDR list for trusted reverse-proxy IPs. Enables real client-IP attribution (X-Forwarded-For) for rate limiting and audit logs, and gates the global rate-limit backstop. Logs a startup warning if empty when `APP_ENV=production`. |
 | `RATE_LIMIT_AUTH_MAX` | `5` | Max `/api/auth` requests per minute per IP |
 | `RATE_LIMIT_GLOBAL_MAX` | `120` | Permissive backstop on all `/api/*`, per IP per path. Only active when `TRUSTED_PROXY_CIDRS` is set. |
@@ -131,7 +137,7 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 ## API Endpoints
 
 ### Auth
-`POST /api/auth/register` `POST /api/auth/login` `POST /api/auth/logout` `GET /api/me` `POST /api/auth/email/verification/resend` `GET /api/auth/email/verify` `POST /api/auth/magic-link/request` `GET /api/auth/magic-link/consume` `POST /api/auth/password/forgot` `POST /api/auth/password/reset` `POST /api/auth/password` `GET /api/auth/google/login` `GET /api/auth/google/callback`
+`POST /api/auth/register` `POST /api/auth/login` `POST /api/auth/logout` `GET /api/me` `POST /api/auth/email/verification/resend` `GET /api/auth/email/verify` `POST /api/auth/magic-link/request` `GET /api/auth/magic-link/consume` `POST /api/auth/password/forgot` `POST /api/auth/password/reset` `POST /api/auth/password` `GET /api/auth/google/login` `GET /api/auth/google/callback` `POST /api/auth/apple/native` `GET /api/auth/apple/web/login` `POST /api/auth/apple/web/callback`
 
 ### Household
 `GET /api/household` `POST /api/household` `PATCH /api/household` `POST /api/household/invites` `GET /api/household/invites` `DELETE /api/household/invites/{id}` `POST /api/household/join` `PATCH /api/household/members/{id}` `DELETE /api/household/members/{id}` `POST /api/household/leave` `POST /api/household/transfer`

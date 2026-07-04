@@ -38,6 +38,7 @@ type Service struct {
 	baseURL         string
 	oidcProvider    OIDCProvider
 	appleVerifier   AppleTokenVerifier
+	appleWebAuth    *AppleWebAuth
 	now             func() time.Time
 }
 
@@ -67,6 +68,10 @@ func (s *Service) SetOIDCProvider(provider OIDCProvider) {
 
 func (s *Service) SetAppleVerifier(verifier AppleTokenVerifier) {
 	s.appleVerifier = verifier
+}
+
+func (s *Service) SetAppleWebAuth(webAuth *AppleWebAuth) {
+	s.appleWebAuth = webAuth
 }
 
 func (s *Service) SetAuditLogger(logger audit.Logger) {
@@ -457,6 +462,16 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "google_oidc", "user_id": fmt.Sprintf("%d", user.ID)})
 		return user, session, nil
 	}
+}
+
+// AppleWebAuthCodeURL returns the appleid.apple.com authorization URL for
+// the web Sign in with Apple flow, or ErrAppleUnavailable when the web flow
+// is not configured.
+func (s *Service) AppleWebAuthCodeURL(state, nonce string) (string, error) {
+	if s.appleWebAuth == nil || s.appleVerifier == nil || !s.appleVerifier.Enabled() {
+		return "", ErrAppleUnavailable
+	}
+	return s.appleWebAuth.AuthCodeURL(state, nonce), nil
 }
 
 // LoginWithApple verifies a native Sign in with Apple identity token and

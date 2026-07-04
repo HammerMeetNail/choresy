@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func newAppleTestKit(t *testing.T, clientIDs ...string) *appleTestKit {
 	kit := &appleTestKit{key: key, kid: "test-kid"}
 
 	kit.jwksSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
+		n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
 		e := base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1}) // 65537
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"keys": []map[string]string{
@@ -241,6 +242,59 @@ func TestLoginWithApple_UnverifiedEmailRejected(t *testing.T) {
 	_, _, err := svc.LoginWithApple(context.Background(), kit.mint(t, map[string]any{"email_verified": "false"}), "expected-nonce")
 	if err != ErrAppleNoEmail {
 		t.Fatalf("err = %v, want ErrAppleNoEmail", err)
+	}
+}
+
+// ─── Web-flow authorization URL ──────────────────────────────────────────────
+
+func TestAppleWebAuthCodeURL(t *testing.T) {
+	kit := newAppleTestKit(t, "com.nabu.app", "com.nabu.web")
+	svc := NewService(NewMemoryStore())
+	svc.SetAppleVerifier(kit.verifier)
+	svc.SetAppleWebAuth(&AppleWebAuth{
+		ClientID:    "com.nabu.web",
+		RedirectURL: "https://nabu.example/api/auth/apple/web/callback",
+	})
+
+	got, err := svc.AppleWebAuthCodeURL("the-state", "the-nonce")
+	if err != nil {
+		t.Fatalf("AppleWebAuthCodeURL: %v", err)
+	}
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	if u.Scheme != "https" || u.Host != "appleid.apple.com" || u.Path != "/auth/authorize" {
+		t.Fatalf("url = %s, want https://appleid.apple.com/auth/authorize", got)
+	}
+	q := u.Query()
+	want := map[string]string{
+		"client_id":     "com.nabu.web",
+		"redirect_uri":  "https://nabu.example/api/auth/apple/web/callback",
+		"response_type": "code id_token",
+		"response_mode": "form_post",
+		"scope":         "email",
+		"state":         "the-state",
+		"nonce":         "the-nonce",
+	}
+	for key, val := range want {
+		if q.Get(key) != val {
+			t.Fatalf("%s = %q, want %q", key, q.Get(key), val)
+		}
+	}
+}
+
+func TestAppleWebAuthCodeURL_NotConfigured(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	if _, err := svc.AppleWebAuthCodeURL("s", "n"); err != ErrAppleUnavailable {
+		t.Fatalf("err = %v, want ErrAppleUnavailable", err)
+	}
+
+	// A web-auth config without an enabled verifier is still unavailable:
+	// the callback could never verify what Apple posts back.
+	svc.SetAppleWebAuth(&AppleWebAuth{ClientID: "com.nabu.web", RedirectURL: "https://nabu.example/cb"})
+	if _, err := svc.AppleWebAuthCodeURL("s", "n"); err != ErrAppleUnavailable {
+		t.Fatalf("err = %v, want ErrAppleUnavailable", err)
 	}
 }
 

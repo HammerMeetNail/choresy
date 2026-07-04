@@ -73,7 +73,7 @@ UI test: the button renders on both auth screens.
 - [ ] Physical-device sandbox test · production test on TestFlight build — **owner**
 - [x] AASA + universal links (verify, magic link, invite)
 - [x] Verification fallback via `/api/me` foreground refresh + Settings resend
-- [x] SignInWithAppleButton on login + register (iOS); PWA button or N/A exception — **iOS done; PWA button / N/A exception still open (owner decision, due before P7)**
+- [x] SignInWithAppleButton on login + register (iOS); PWA button or N/A exception — **both shipped: PWA web-SIWA landed 2026-07-04 (see p7-release.md notes), no exception needed**
 - [x] Matrix rows updated (APNs → Built; email verification, Log now, Snooze → Built; SIWA → Built (iOS)) — promotion to Done follows CI + device verification
 
 ### Notes

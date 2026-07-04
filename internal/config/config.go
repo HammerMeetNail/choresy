@@ -23,7 +23,13 @@ type Config struct {
 	// AppleClientIDs are the audiences accepted on Sign in with Apple
 	// identity tokens: the iOS bundle ID and, if the web flow is added
 	// later, the Services ID. Comma-separated; empty disables the endpoint.
-	AppleClientIDs     string
+	AppleClientIDs string
+	// AppleWebClientID is the Services ID used by the web Sign in with
+	// Apple flow (it must have AppBaseURL's domain and the
+	// /api/auth/apple/web/callback return URL registered in the Apple
+	// developer portal). Empty disables the web flow; it is always
+	// accepted as an identity-token audience when set.
+	AppleWebClientID   string
 	TrustedProxyCIDRs  string
 	RateLimitAuthMax   int
 	RateLimitGlobalMax int
@@ -53,6 +59,7 @@ func Load() (Config, error) {
 		GoogleClientID:     getenv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getenv("GOOGLE_CLIENT_SECRET", ""),
 		AppleClientIDs:     getenv("APPLE_CLIENT_IDS", ""),
+		AppleWebClientID:   getenv("APPLE_WEB_CLIENT_ID", ""),
 		TrustedProxyCIDRs:  getenv("TRUSTED_PROXY_CIDRS", ""),
 		RateLimitAuthMax:   getenvInt("RATE_LIMIT_AUTH_MAX", 5),
 		RateLimitGlobalMax: getenvInt("RATE_LIMIT_GLOBAL_MAX", 120),

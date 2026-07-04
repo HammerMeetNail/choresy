@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -24,9 +25,37 @@ type AppleTokenVerifier interface {
 }
 
 const (
-	appleIssuer  = "https://appleid.apple.com"
-	appleJWKsURL = "https://appleid.apple.com/auth/keys"
+	appleIssuer       = "https://appleid.apple.com"
+	appleJWKsURL      = "https://appleid.apple.com/auth/keys"
+	appleAuthorizeURL = "https://appleid.apple.com/auth/authorize"
 )
+
+// AppleWebAuth builds authorization URLs for the web Sign in with Apple
+// flow. The flow requests `response_type=code id_token` with
+// `response_mode=form_post`, so Apple POSTs the identity token straight to
+// the callback and it can be verified exactly like the native flow — no
+// authorization-code exchange (and therefore no client secret) is needed.
+type AppleWebAuth struct {
+	ClientID    string // the Services ID registered for the web flow
+	RedirectURL string
+	AuthURL     string // defaults to appleAuthorizeURL
+}
+
+func (a *AppleWebAuth) AuthCodeURL(state, nonce string) string {
+	authURL := a.AuthURL
+	if authURL == "" {
+		authURL = appleAuthorizeURL
+	}
+	q := url.Values{}
+	q.Set("client_id", a.ClientID)
+	q.Set("redirect_uri", a.RedirectURL)
+	q.Set("response_type", "code id_token")
+	q.Set("response_mode", "form_post")
+	q.Set("scope", "email")
+	q.Set("state", state)
+	q.Set("nonce", nonce)
+	return authURL + "?" + q.Encode()
+}
 
 // AppleVerifier validates RS256 identity tokens against Apple's JWKS.
 // ClientIDs are the accepted audiences: the iOS app's bundle ID and,

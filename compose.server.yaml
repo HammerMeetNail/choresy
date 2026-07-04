@@ -23,6 +23,15 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
+      # Apple: all empty until the owner provisions the developer account;
+      # every feature they gate (APNs push, AASA/universal links, native +
+      # web Sign in with Apple) degrades to disabled while unset.
+      - APNS_AUTH_KEY_P8=${APNS_AUTH_KEY_P8:-}
+      - APNS_KEY_ID=${APNS_KEY_ID:-}
+      - APNS_TEAM_ID=${APNS_TEAM_ID:-}
+      - APNS_BUNDLE_ID=${APNS_BUNDLE_ID:-}
+      - APPLE_CLIENT_IDS=${APPLE_CLIENT_IDS:-}
+      - APPLE_WEB_CLIENT_ID=${APPLE_WEB_CLIENT_ID:-}
     restart: unless-stopped
     networks:
       - nabu_default
