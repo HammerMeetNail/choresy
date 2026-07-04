@@ -39,9 +39,13 @@ final class DataLoader: ObservableObject {
         guard pathMonitor == nil else { return }
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self] path in
-            guard path.status == .satisfied else { return }
+            let satisfied = path.status == .satisfied
             Task { @MainActor in
-                await self?.flushOfflineQueue()
+                guard let self else { return }
+                self.state.isOffline = !satisfied
+                if satisfied {
+                    await self.flushOfflineQueue()
+                }
             }
         }
         monitor.start(queue: DispatchQueue(label: "nabu.offline-queue.path-monitor"))

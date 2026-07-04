@@ -122,12 +122,15 @@ struct HistoryListView: View {
     var body: some View {
         List {
             if let message = emptyMessage {
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 24)
-                    .listRowSeparator(.hidden)
+                ContentUnavailableView {
+                    Label(
+                        isSearching ? "No results" : "No activity yet",
+                        systemImage: isSearching ? "magnifyingglass" : "waveform"
+                    )
+                } description: {
+                    Text(message)
+                }
+                .listRowSeparator(.hidden)
             }
 
             let groups = groupedLogs()

@@ -21,11 +21,22 @@ struct ScheduleView: View {
         NavigationStack {
             Group {
                 if state.chores.isEmpty {
-                    emptyView(icon: "🏠", title: "No chores set up yet",
-                              message: "Use the Home tab to add chores.")
+                    ContentUnavailableView {
+                        Label("No chores set up yet", systemImage: "house")
+                    } description: {
+                        Text("Use the Home tab to add chores.")
+                    } actions: {
+                        Button("Go to Home") {
+                            state.currentTab = .home
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else if upcomingRows.isEmpty {
-                    emptyView(icon: "📅", title: "Nothing upcoming",
-                              message: "No active schedules for the next 14 days.")
+                    ContentUnavailableView {
+                        Label("Nothing upcoming", systemImage: "calendar.badge.clock")
+                    } description: {
+                        Text("No active schedules for the next 14 days.")
+                    }
                 } else {
                     List {
                         ForEach(groupedUpcoming(), id: \.key) { group in
@@ -200,21 +211,6 @@ struct ScheduleView: View {
                 .frame(width: 3),
             alignment: .leading
         )
-    }
-
-    private func emptyView(icon: String, title: String, message: String) -> some View {
-        VStack(spacing: 16) {
-            Text(icon)
-                .font(.system(size: 48))
-            Text(title)
-                .font(.title3)
-                .fontWeight(.semibold)
-            Text(message)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-        }
-        .frame(maxHeight: .infinity)
     }
 
     private func tapLog(_ item: UpcomingItem) async {

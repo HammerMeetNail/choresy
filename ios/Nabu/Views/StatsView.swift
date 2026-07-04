@@ -21,7 +21,25 @@ struct StatsView: View {
         NavigationStack {
             Group {
                 if model.isLoading {
-                    ProgressView().frame(maxHeight: .infinity)
+                    SkeletonCards()
+                } else if model.overview == nil {
+                    // The primary fetch failed outright (every load is
+                    // best-effort, so nil overview after a load means the
+                    // network went nowhere) — retry inline, never a dead tab.
+                    InlineErrorView(message: "Stats couldn't be loaded. Check your connection and try again.") {
+                        await model.loadAll()
+                    }
+                } else if state.latestLogs.isEmpty {
+                    ContentUnavailableView {
+                        Label("No stats yet", systemImage: "chart.bar")
+                    } description: {
+                        Text("Log your first chore and the charts will light up.")
+                    } actions: {
+                        Button("Log Your First Chore") {
+                            state.currentTab = .home
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {

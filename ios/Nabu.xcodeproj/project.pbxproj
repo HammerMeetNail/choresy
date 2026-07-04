@@ -95,6 +95,7 @@
 		B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F8 /* PushRegistrationTests.swift */; };
 		B300000000000000000003B9 /* DeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F9 /* DeepLinkTests.swift */; };
 		B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */; };
+		B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000004F1 /* StateQualitySnapshotTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -189,6 +190,7 @@
 		A300000000000000000003F9 /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPrePromptSnapshotTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FB /* Nabu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nabu.entitlements; sourceTree = "<group>"; };
+		A400000000000000000004F1 /* StateQualitySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateQualitySnapshotTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -314,6 +316,7 @@
 				A300000000000000000003F8 /* PushRegistrationTests.swift */,
 				A300000000000000000003F9 /* DeepLinkTests.swift */,
 				A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */,
+				A400000000000000000004F1 /* StateQualitySnapshotTests.swift */,
 			);
 			path = NabuTests;
 			sourceTree = "<group>";
@@ -574,6 +577,7 @@
 				B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */,
 				B300000000000000000003B9 /* DeepLinkTests.swift in Sources */,
 				B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */,
+				B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

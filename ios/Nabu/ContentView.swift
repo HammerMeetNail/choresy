@@ -11,7 +11,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if !hasCheckedSession {
-                ProgressView("Loading...")
+                SkeletonScreen()
             } else if state.user == nil {
                 LoginView(auth: auth, apiBaseURL: environment.baseURL)
                     .onAppear { auth.configure(api: environment.apiClient) }
@@ -24,7 +24,7 @@ struct ContentView: View {
                         }
                     }
             } else if !hasLoadedData {
-                ProgressView("Loading your data...")
+                SkeletonScreen()
                     .task { await loadAppData() }
             } else {
                 MainTabView(dataLoader: dataLoader)
@@ -180,8 +180,15 @@ struct MainTabView: View {
     var body: some View {
         tabs
             .overlay(alignment: .top) {
-                TimerChipView()
-                    .padding(.top, 4)
+                VStack(spacing: 6) {
+                    TimerChipView()
+                    if state.isOffline {
+                        OfflineBanner()
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .padding(.top, 4)
+                .animation(Motion.slide ?? Motion.fade, value: state.isOffline)
             }
     }
 

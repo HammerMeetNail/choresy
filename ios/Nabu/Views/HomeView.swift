@@ -71,6 +71,10 @@ struct HomeView: View {
                     }
                 )
             }
+            // Haptics (C3): success when a log lands (the undo toast appears),
+            // light impact entering/leaving jiggle mode.
+            .sensoryFeedback(.success, trigger: undoLogId) { _, new in new != nil }
+            .sensoryFeedback(.impact(weight: .light), trigger: state.jiggleMode)
             // Notification "Log now" deep link: open the log sheet pre-filled
             // for the reminder's chore (parity with /?quicklog=chore:<id>).
             .onAppear { consumePendingQuickLog() }
@@ -114,9 +118,16 @@ struct HomeView: View {
         let chores = sortedChores()
         if chores.isEmpty {
             return AnyView(
-                Text("No chores yet. Go to Manage to add some.")
-                    .foregroundColor(.secondary)
-                    .padding()
+                ContentUnavailableView {
+                    Label("No chores yet", systemImage: "square.grid.2x2")
+                } description: {
+                    Text("Add the chores your household tracks and they'll appear here as one-tap tiles.")
+                } actions: {
+                    Button("Add Chores") {
+                        state.homeView = .manage
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             )
         }
         return AnyView(

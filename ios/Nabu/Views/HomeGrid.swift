@@ -39,6 +39,7 @@ struct HomeChoreCell: View {
     let onHide: () -> Void
 
     @State private var isPressing = false
+    @State private var wobbleAngle: Double = 0
 
     var body: some View {
         Button {
@@ -81,11 +82,26 @@ struct HomeChoreCell: View {
                     .stroke(DesignColors.border.opacity(0.3), lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
-            .scaleEffect(isPressing ? 0.92 : 1.0)
+            // Tap bounce: a quick spring so a log *feels* logged (C3). With
+            // Reduce Motion the scale is skipped and only opacity dips.
+            .scaleEffect(isPressing && !Motion.reduceMotion ? 0.92 : 1.0)
             .opacity(isPressing ? 0.75 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: isPressing)
+            .animation(Motion.snappy ?? Motion.fade, value: isPressing)
+            .rotationEffect(.degrees(wobbleAngle))
         }
         .buttonStyle(.plain)
+        // Jiggle-mode wobble (C3); Reduce Motion keeps tiles still — the
+        // context menu and toolbar checkmark already signal edit mode.
+        .onChange(of: isJiggling) { _, jiggling in
+            if jiggling && !Motion.reduceMotion {
+                wobbleAngle = -1.4
+                withAnimation(.easeInOut(duration: 0.14).repeatForever(autoreverses: true)) {
+                    wobbleAngle = 1.4
+                }
+            } else {
+                withAnimation(Motion.fade) { wobbleAngle = 0 }
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(chore.name), \(latestLog != nil ? "done \(formatTimeAgo(latestLog!.completedAt))" : "never done")")
         // Long-press context menu replaces the old long-press-to-log gesture:

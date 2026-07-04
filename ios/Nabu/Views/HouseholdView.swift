@@ -14,6 +14,7 @@ struct HouseholdView: View {
     @State private var exportFile: ExportFile?
     @State private var isExporting = false
     @State private var showingDeleteAccount = false
+    @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
 
     var body: some View {
@@ -127,7 +128,17 @@ struct HouseholdView: View {
                         }
                     }
                     Button("Leave Household", role: .destructive) {
-                        Task { await leaveHousehold() }
+                        showingLeaveConfirm = true
+                    }
+                    // Same confirmation the PWA shows before leaving.
+                    .confirmationDialog(
+                        "Are you sure you want to leave this household? All your data will remain with the household.",
+                        isPresented: $showingLeaveConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Leave Household", role: .destructive) {
+                            Task { await leaveHousehold() }
+                        }
                     }
                 }
 
@@ -232,6 +243,9 @@ struct HouseholdView: View {
             .refreshable {
                 await refreshHousehold()
             }
+            // Warning haptics on destructive confirms (C3).
+            .sensoryFeedback(.warning, trigger: showingDeleteAccount) { _, new in new }
+            .sensoryFeedback(.warning, trigger: showingLeaveConfirm) { _, new in new }
         }
         .onAppear {
             auth.configure(api: environment.apiClient)

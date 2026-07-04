@@ -9,16 +9,11 @@ struct NotificationsView: View {
         NavigationStack {
             Group {
                 if notifications.isEmpty {
-                    VStack(spacing: 16) {
-                        Text("🔔")
-                            .font(.system(size: 48))
-                        Text("No notifications")
-                            .font(.title3)
-                            .fontWeight(.semibold)
+                    ContentUnavailableView {
+                        Label("No notifications", systemImage: "bell")
+                    } description: {
                         Text("You're all caught up!")
-                            .foregroundColor(.secondary)
                     }
-                    .frame(maxHeight: .infinity)
                 } else {
                     List {
                         ForEach(notifications) { notif in

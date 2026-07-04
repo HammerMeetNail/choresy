@@ -41,6 +41,9 @@ final class AppState: ObservableObject {
     /// Invite code from a `/join?code=…` universal link opened while logged
     /// out; OnboardingView prefills its Join tab from it.
     @Published var pendingInviteCode: String?
+    /// Connectivity from DataLoader's NWPathMonitor; drives the global
+    /// offline banner (C4). Not reset on logout — it's device state.
+    @Published var isOffline = false
     /// Stats customization (P4): stored section order/hidden sets and the
     /// user-defined widgets, synced via `/api/preferences`.
     @Published var statsSectionOrder: [String] = []

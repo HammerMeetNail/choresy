@@ -242,3 +242,117 @@ struct PillTabBar<T: Hashable>: View {
         .clipShape(Capsule())
     }
 }
+
+// MARK: - Motion
+
+/// Standard springs for the app's motion language (P6/C3). Every accessor
+/// collapses to nil (no animation) when the user has Reduce Motion on or a
+/// UI test passed -disableAnimations, so callers can write
+/// `withAnimation(Motion.snappy) { … }` and get the fade-or-nothing fallback
+/// for free.
+enum Motion {
+    static var reduceMotion: Bool {
+        UIAccessibility.isReduceMotionEnabled || TestHooks.disableAnimations
+    }
+
+    /// Snappy spring for small interactive elements (tile bounce, chips).
+    static var snappy: Animation? {
+        reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.55)
+    }
+
+    /// Softer spring for surfaces sliding in (toasts, banners).
+    static var slide: Animation? {
+        reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.8)
+    }
+
+    /// Fade used as the Reduce Motion stand-in for movement.
+    static var fade: Animation {
+        .easeOut(duration: 0.18)
+    }
+}
+
+// MARK: - State quality (C4)
+
+/// Full-screen loading skeleton drawn on the real layout — a header bar and a
+/// grid of tile-shaped placeholders — instead of a centered spinner.
+struct SkeletonScreen: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(DesignColors.surfaceSecondary)
+                .frame(height: 28)
+                .padding(.horizontal, 60)
+                .padding(.top, 24)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+                ForEach(0..<9, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(DesignColors.surfaceSecondary)
+                        .frame(height: 90)
+                }
+            }
+            .padding()
+
+            Spacer()
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Loading")
+    }
+}
+
+/// Loading skeleton for a card-based tab (Stats): stacked card placeholders.
+struct SkeletonCards: View {
+    var count: Int = 4
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                ForEach(0..<count, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(DesignColors.surfaceSecondary)
+                        .frame(height: i == 0 ? 90 : 180)
+                }
+            }
+            .padding()
+        }
+        .redacted(reason: .placeholder)
+        .scrollDisabled(true)
+        .accessibilityLabel("Loading")
+    }
+}
+
+/// Inline error with the decoded server message and a retry action — never a
+/// dead screen (C4).
+struct InlineErrorView: View {
+    let message: String
+    let retry: () async -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Couldn't load", systemImage: "wifi.exclamationmark")
+        } description: {
+            Text(message)
+        } actions: {
+            Button("Try Again") {
+                Task { await retry() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+/// Global connectivity banner. Log writes keep working offline via the
+/// idempotent queue; the banner says so instead of pretending it's an error.
+struct OfflineBanner: View {
+    var body: some View {
+        Label("Offline — logs you add will sync when you're back online", systemImage: "wifi.slash")
+            .font(.footnote.weight(.medium))
+            .foregroundColor(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.82))
+            .clipShape(Capsule())
+            .padding(.horizontal, 16)
+            .accessibilityIdentifier("offline-banner")
+    }
+}

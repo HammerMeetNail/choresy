@@ -6,6 +6,7 @@ struct UndoToast: View {
     let onDismiss: () -> Void
 
     @State private var isVisible = false
+    @State private var undoTapped = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -16,8 +17,10 @@ struct UndoToast: View {
             Spacer()
 
             Button("Undo") {
+                undoTapped = true
                 onUndo()
             }
+            .sensoryFeedback(.impact(weight: .medium), trigger: undoTapped)
             .font(.subheadline)
             .fontWeight(.semibold)
             .foregroundColor(.white)
@@ -33,10 +36,12 @@ struct UndoToast: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 20)
         .opacity(isVisible ? 1 : 0)
+        // Spring slide from the bottom edge (C3); Reduce Motion fades in place.
+        .offset(y: isVisible || Motion.reduceMotion ? 0 : 24)
         .onAppear {
-            withAnimation(.easeOut(duration: 0.2)) { isVisible = true }
+            withAnimation(Motion.slide ?? Motion.fade) { isVisible = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                withAnimation(.easeIn(duration: 0.2)) { isVisible = false }
+                withAnimation(Motion.fade) { isVisible = false }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     onDismiss()
                 }
