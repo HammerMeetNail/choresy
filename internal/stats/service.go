@@ -788,15 +788,25 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		return nil, err
 	}
 
-	var memberStart, memberEnd time.Time
-	if len(buckets) > 0 {
-		memberStart = buckets[0].start
-		memberEnd = buckets[len(buckets)-1].end
+	var countStart, countEnd time.Time
+	switch period {
+	case "weekly":
+		countStart = wkStart(today, loc)
+		countEnd = countStart.AddDate(0, 0, 7)
+	case "monthly":
+		countStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+		countEnd = countStart.AddDate(0, 1, 0)
+	case "all":
+		countStart = time.Date(2020, 1, 1, 0, 0, 0, 0, loc)
+		countEnd = today.AddDate(0, 0, 1)
+	default:
+		countStart = today
+		countEnd = today.AddDate(0, 0, 1)
 	}
 
 	byMember := map[int64]int{}
 	for _, l := range logs {
-		if l.ChoreID == choreID && logInRange(l, memberStart, memberEnd, loc) {
+		if l.ChoreID == choreID && logInRange(l, countStart, countEnd, loc) {
 			byMember[l.UserID]++
 		}
 	}
