@@ -766,23 +766,37 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	case "monthly":
 		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc).AddDate(0, -5, 0)
 		buckets = buildMonthBuckets(start, today, loc)
+	case "all":
+		start = time.Date(2020, 1, 1, 0, 0, 0, 0, loc)
+		buckets = buildMonthBuckets(start, today, loc)
 	default:
 		start = today.AddDate(0, 0, -13)
 		buckets = buildDayBuckets(start, today, loc)
 	}
 
-	yearStart := today.AddDate(-1, 0, 0)
-	yearEnd := today.AddDate(0, 0, 1)
+	var logFetchStart, logFetchEnd time.Time
+	if period == "all" {
+		logFetchStart = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+		logFetchEnd = today.AddDate(0, 0, 1)
+	} else {
+		logFetchStart = today.AddDate(-1, 0, 0)
+		logFetchEnd = today.AddDate(0, 0, 1)
+	}
 
-	// The year range always encompasses the period range, so fetch once.
-	logs, err := s.fetchLogsInRange(ctx, householdID, yearStart, yearEnd, loc)
+	logs, err := s.fetchLogsInRange(ctx, householdID, logFetchStart, logFetchEnd, loc)
 	if err != nil {
 		return nil, err
 	}
 
+	var memberStart, memberEnd time.Time
+	if len(buckets) > 0 {
+		memberStart = buckets[0].start
+		memberEnd = buckets[len(buckets)-1].end
+	}
+
 	byMember := map[int64]int{}
 	for _, l := range logs {
-		if l.ChoreID == choreID && logInRange(l, yearStart, yearEnd, loc) {
+		if l.ChoreID == choreID && logInRange(l, memberStart, memberEnd, loc) {
 			byMember[l.UserID]++
 		}
 	}
