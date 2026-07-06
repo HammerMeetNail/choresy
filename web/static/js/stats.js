@@ -207,12 +207,12 @@ function formatRangeLabel(start, end) {
 function currentWeekLabel() {
   const now = new Date();
   const day = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((day + 6) % 7));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() - day);
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
   const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  return `${fmt(monday)} – ${fmt(sunday)}`;
+  return `${fmt(sunday)} – ${fmt(saturday)}`;
 }
 
 // Shared Day/Week/Month/All period toggle used by the Leaderboard and Top
@@ -538,17 +538,17 @@ function renderHeatmapGrid(heatmap) {
 
   const maxCount = Math.max(0, ...Object.values(cellMap));
 
-  // Build a GitHub-style grid: columns = weeks, rows = days (Mon-Sun).
-  // Monday-start matches the server's week definition (internal/stats
+  // Build a GitHub-style grid: columns = weeks, rows = days (Sun-Sat).
+  // Sunday-start matches the server's week definition (internal/stats
   // wkStart) and the "This Week" range label, so heatmap columns line up
   // with leaderboard/recap weeks.
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  // Days since the most recent Monday: JS getDay() is Sun=0..Sat=6.
-  const mondayIndex = (today.getDay() + 6) % 7;
+  // Days since the most recent Sunday: JS getDay() is Sun=0..Sat=6.
+  const sundayIndex = today.getDay();
   const endDate = new Date(today);
   const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - (mondayIndex + 19 * 7));
+  startDate.setDate(startDate.getDate() - (sundayIndex + 19 * 7));
 
   const weeks = [];
   let current = new Date(startDate);
@@ -563,7 +563,7 @@ function renderHeatmapGrid(heatmap) {
     weeks.push(week);
   }
 
-  const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   // Wrapper is position:relative so the tap-to-reveal tooltip (touch devices
   // can't hover a title attribute) can be positioned over the tapped cell.
   let html = '<div class="heatmap-wrap">';

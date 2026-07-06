@@ -412,11 +412,7 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *ti
 }
 
 func wkStart(t time.Time, loc *time.Location) time.Time {
-	wd := t.Weekday()
-	if wd == time.Sunday {
-		wd = 7
-	}
-	start := t.AddDate(0, 0, -int(wd)+1)
+	start := t.AddDate(0, 0, -int(t.Weekday()))
 	return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
 }
 
@@ -760,8 +756,8 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 
 	switch period {
 	case "weekly":
-		monday := wkStart(today, loc)
-		start = monday.AddDate(0, 0, -11*7)
+		sun := wkStart(today, loc)
+		start = sun.AddDate(0, 0, -11*7)
 		buckets = buildWeekBuckets(start, today, loc)
 	case "monthly":
 		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc).AddDate(0, -5, 0)

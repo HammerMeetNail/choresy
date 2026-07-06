@@ -73,7 +73,7 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 		rangeEnd = time.Time{}
 		board, err = h.service.GetAllTimeLeaderboard(r.Context(), *user.HouseholdID, loc)
 	default:
-		weekday := int(now.Weekday()) - int(time.Monday)
+		weekday := int(now.Weekday()) - int(time.Sunday)
 		if weekday < 0 {
 			weekday += 7
 		}
@@ -178,7 +178,7 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 			start = midnight
 			end = midnight.AddDate(0, 0, 1)
 		case "week":
-			weekday := int(now.Weekday()) - int(time.Monday)
+			weekday := int(now.Weekday()) - int(time.Sunday)
 			if weekday < 0 {
 				weekday += 7
 			}
@@ -207,7 +207,7 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-		weekday := int(now.Weekday()) - int(time.Monday)
+		weekday := int(now.Weekday()) - int(time.Sunday)
 		if weekday < 0 {
 			weekday += 7
 		}
@@ -334,7 +334,7 @@ func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
 			s = midnight
 			e = midnight.AddDate(0, 0, 1)
 		case "week":
-			weekday := int(now.Weekday()) - int(time.Monday)
+			weekday := int(now.Weekday()) - int(time.Sunday)
 			if weekday < 0 {
 				weekday += 7
 			}
