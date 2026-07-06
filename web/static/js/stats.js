@@ -1181,10 +1181,10 @@ function renderSimpleMetricChart(periods, opts) {
 }
 
 function renderBabyPeriodToggle(activePeriod, type) {
-  const periodLabel = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+  const periodLabel = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", all: "All" };
   const labelName = type === "feed" ? "Feed Baby" : "Change Baby";
   return `<div class="period-toggle" role="group" aria-label="Time period for ${labelName}">
-    ${["daily", "weekly", "monthly"].map(p => {
+    ${["daily", "weekly", "monthly", "all"].map(p => {
       const active = p === activePeriod ? " period-toggle--active" : "";
       const label = periodLabel[p];
       return `<button class="period-toggle-btn${active}" data-action="stats-baby-period" data-period="${p}" data-type="${type}" aria-pressed="${p === activePeriod}">${label}</button>`;
