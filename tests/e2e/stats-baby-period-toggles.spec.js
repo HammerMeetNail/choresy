@@ -119,11 +119,11 @@ test.describe("Stats baby period toggles", () => {
     await expect(changeCol).toBeVisible();
     await expect(gapsCol).toBeVisible();
 
-    // Each baby column has its own Daily/Weekly/Monthly toggle, defaulting to Daily.
+    // Each baby column has its own Daily/Weekly/Monthly/All toggle, defaulting to Daily.
     for (const col of [feedCol, changeCol]) {
       const toggle = col.locator(".baby-col-header .period-toggle");
       await expect(toggle).toBeVisible();
-      await expect(toggle.locator(".period-toggle-btn")).toHaveCount(3);
+      await expect(toggle.locator(".period-toggle-btn")).toHaveCount(4);
       await expect(
         toggle.locator(".period-toggle-btn", { hasText: "Daily" }),
       ).toHaveClass(/\bperiod-toggle--active\b/);
