@@ -132,7 +132,7 @@ func failingDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 
@@ -322,7 +322,7 @@ func TestReminderSnoozeStoreErrorHidesInternals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	// Ownership check must succeed: chore 1 belongs to household 1.
 	mock.ExpectQuery(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE\(predefined_key,''\), created_by, created_at, indicator_labels, has_volume_ml, COALESCE\(indicator_defaults,'\[\]'\), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE\(metric_type,'none'\), COALESCE\(metric_unit,''\), COALESCE\(subjects,'\[\]'\) FROM chores WHERE id = \$1`).
