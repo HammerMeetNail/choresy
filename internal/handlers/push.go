@@ -64,6 +64,20 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("push: subscribe user %d endpoint_host=%s", user.ID, endpointHost(req.Subscription.Endpoint))
 
+	// The endpoint is a bearer-style capability URL the server will POST to
+	// on every reminder. Without validation it is a blind SSRF primitive
+	// against internal addresses; only allowlisted https push-service hosts
+	// may be subscribed.
+	if !push.EndpointAllowed(req.Subscription.Endpoint) {
+		log.Printf("push: subscribe rejected for user %d endpoint_host=%s", user.ID, endpointHost(req.Subscription.Endpoint))
+		writeError(w, http.StatusBadRequest, "endpoint must be a valid https push service URL")
+		return
+	}
+	if req.Subscription.Keys.P256DH == "" || req.Subscription.Keys.Auth == "" {
+		writeError(w, http.StatusBadRequest, "subscription keys are required")
+		return
+	}
+
 	sub := push.Subscription{
 		Endpoint: req.Subscription.Endpoint,
 		P256DH:   req.Subscription.Keys.P256DH,
