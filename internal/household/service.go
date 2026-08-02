@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 )
@@ -16,6 +17,28 @@ type Service struct {
 
 type AuthStore interface {
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
+}
+
+// Per-field caps (audit finding #10). The server is the authority even though
+// the clients constrain these fields in the UI.
+const (
+	maxNameRunes    = 60
+	maxInitialsRune = 8
+)
+
+// validateNameInitials enforces household name/initials caps on create and
+// update. It rejects with a clear error rather than truncating.
+func validateNameInitials(name, initials string) error {
+	if utf8.RuneCountInString(name) == 0 {
+		return fmt.Errorf("%w: household name must not be empty", ErrInvalidInput)
+	}
+	if utf8.RuneCountInString(name) > maxNameRunes {
+		return fmt.Errorf("%w: household name must be %d characters or fewer", ErrInvalidInput, maxNameRunes)
+	}
+	if initials != "" && utf8.RuneCountInString(initials) > maxInitialsRune {
+		return fmt.Errorf("%w: initials must be %d characters or fewer", ErrInvalidInput, maxInitialsRune)
+	}
+	return nil
 }
 
 func NewService(store Store, authStore AuthStore) *Service {
@@ -47,8 +70,8 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 func formatID(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ownerID int64) (Household, error) {
-	if name == "" {
-		return Household{}, fmt.Errorf("household name must not be empty")
+	if err := validateNameInitials(name, initials); err != nil {
+		return Household{}, err
 	}
 	if initials == "" {
 		initials = GenerateInitials(name)
@@ -86,8 +109,8 @@ func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []
 }
 
 func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name, initials string) error {
-	if name == "" {
-		return fmt.Errorf("name must not be empty")
+	if err := validateNameInitials(name, initials); err != nil {
+		return err
 	}
 	if initials == "" {
 		initials = GenerateInitials(name)
@@ -305,10 +328,10 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 		return err
 	}
 	s.logAudit(ctx, "household.member_role_changed", map[string]string{
-		"user_id":         formatID(actorUserID),
-		"target_user_id":  formatID(targetUserID),
-		"household_id":    formatID(hhID),
-		"new_role":        newRole,
+		"user_id":        formatID(actorUserID),
+		"target_user_id": formatID(targetUserID),
+		"household_id":   formatID(hhID),
+		"new_role":       newRole,
 	})
 	return nil
 }

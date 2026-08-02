@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,8 +70,13 @@ func (h *HouseholdHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	hh, err := h.service.CreateHousehold(r.Context(), req.Name, req.Initials, user.ID)
 	if err != nil {
-		// Static message: store errors (e.g. constraint/connection failures)
-		// must not leak pgx internals through the 409.
+		// Validation failures are the caller's fault: 400 with the clear
+		// message. Everything else gets a static 409 so store errors (e.g.
+		// constraint/connection failures) never leak pgx internals.
+		if errors.Is(err, household.ErrInvalidInput) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusConflict, "could not create household")
 		return
 	}
@@ -95,6 +101,10 @@ func (h *HouseholdHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.UpdateHousehold(r.Context(), user.ID, req.Name, req.Initials); err != nil {
+		if errors.Is(err, household.ErrInvalidInput) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}

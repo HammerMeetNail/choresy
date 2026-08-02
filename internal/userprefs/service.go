@@ -2,8 +2,14 @@ package userprefs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 )
+
+// ErrInvalidInput marks request data that failed per-field validation
+// (audit finding #10). Handlers map it to 400 with the wrapped message.
+var ErrInvalidInput = errors.New("invalid input")
 
 // Service contains business logic for user preferences.
 type Service struct {
@@ -52,7 +58,13 @@ func (s *Service) UpdateHiddenHomeChores(ctx context.Context, userID int64, hidd
 
 // UpdateTimezone persists the user's IANA timezone name (e.g.
 // "America/New_York") for stats aggregation.  An empty string means UTC.
+// Unknown zone names are rejected (audit finding #10).
 func (s *Service) UpdateTimezone(ctx context.Context, userID int64, tz string) error {
+	if tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			return fmt.Errorf("%w: unknown timezone %q", ErrInvalidInput, tz)
+		}
+	}
 	prefs, err := s.store.Get(ctx, userID)
 	if err != nil {
 		return err

@@ -4,16 +4,25 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/reminder"
 )
 
 type ChoreReminderPrefsHandler struct {
-	store reminder.Store
+	store      reminder.Store
+	choreStore chore.Store // optional; nil disables the ownership check
 }
 
 func NewChoreReminderPrefsHandler(store reminder.Store) *ChoreReminderPrefsHandler {
 	return &ChoreReminderPrefsHandler{store: store}
+}
+
+// WithChoreStore attaches the chore store used to verify that a chore being
+// configured belongs to the caller's household.
+func (h *ChoreReminderPrefsHandler) WithChoreStore(cs chore.Store) *ChoreReminderPrefsHandler {
+	h.choreStore = cs
+	return h
 }
 
 func (h *ChoreReminderPrefsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -50,6 +59,16 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid choreId")
 		return
+	}
+
+	// Do not trust the choreId from the client: verify the chore belongs to
+	// the caller's household before touching prefs for it (defense in depth).
+	if h.choreStore != nil {
+		c, err := h.choreStore.GetChore(r.Context(), choreID)
+		if err != nil || c.HouseholdID != *user.HouseholdID {
+			writeError(w, http.StatusForbidden, "chore does not belong to your household")
+			return
+		}
 	}
 
 	var req struct {

@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/reminder"
 )
 
@@ -117,5 +120,68 @@ func TestChoreReminderPrefs_UpdateInvalidChoreId(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+// TestChoreReminderPrefs_UpdateCrossHouseholdChore proves the handler rejects
+// prefs updates for a chore that belongs to another household (finding #10
+// hygiene: do not trust the choreId from the client).
+func TestChoreReminderPrefs_UpdateCrossHouseholdChore(t *testing.T) {
+	authStore := auth.NewMemoryStore()
+	authService := auth.NewService(authStore)
+	authService.SetMailer(nil, "")
+	authService.SetAuditLogger(nil)
+
+	householdStore := household.NewMemoryStore()
+	householdService := household.NewService(householdStore, authService)
+	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+
+	userA, sessionA := quickRegister(authService, "alice@example.com")
+	hhA, err := householdService.CreateHousehold(ctx, "Home A", "HA", userA.ID)
+	if err != nil {
+		t.Fatalf("CreateHousehold A: %v", err)
+	}
+
+	userB, _ := quickRegister(authService, "bob@example.com")
+	hhB, err := householdService.CreateHousehold(ctx, "Home B", "HB", userB.ID)
+	if err != nil {
+		t.Fatalf("CreateHousehold B: %v", err)
+	}
+
+	choreStore := chore.NewMemoryStore()
+	choreService := chore.NewService(choreStore)
+	foreignChore, err := choreService.CreateChore(ctx, hhB.ID, userB.ID, "Their Chore", "🧹", "#FF0000", "", nil, nil, nil, "", "", nil)
+	if err != nil {
+		t.Fatalf("CreateChore in B: %v", err)
+	}
+
+	handler := NewChoreReminderPrefsHandler(reminder.NewMemoryStore()).WithChoreStore(choreStore)
+
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/chore-reminder-prefs/"+strconv.FormatInt(foreignChore.ID, 10),
+		strings.NewReader(`{"enabled": true}`)), authService, sessionA.ID)
+	req.SetPathValue("choreId", strconv.FormatInt(foreignChore.ID, 10))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.Update(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 (body=%s)", rec.Code, rec.Body.String())
+	}
+
+	// The user's own chore in household A is accepted (prefs flow intact).
+	ownChore, err := choreService.CreateChore(ctx, hhA.ID, userA.ID, "My Chore", "🧽", "#00FF00", "", nil, nil, nil, "", "", nil)
+	if err != nil {
+		t.Fatalf("CreateChore in A: %v", err)
+	}
+	req2 := withUser(httptest.NewRequest(http.MethodPatch, "/api/chore-reminder-prefs/"+strconv.FormatInt(ownChore.ID, 10),
+		strings.NewReader(`{"enabled": true}`)), authService, sessionA.ID)
+	req2.SetPathValue("choreId", strconv.FormatInt(ownChore.ID, 10))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	handler.Update(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("own-household status = %d, want 200 (body=%s)", rec2.Code, rec2.Body.String())
 	}
 }

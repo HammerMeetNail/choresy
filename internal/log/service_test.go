@@ -2,6 +2,7 @@ package log_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -516,5 +517,96 @@ func TestLogService_GetHistoryLogs_NoMore(t *testing.T) {
 	}
 	if hasMore {
 		t.Error("expected hasMore=false when no older logs exist")
+	}
+}
+
+// ─── Finding #10: per-field input caps ───────────────────────────────────────
+
+func TestLogService_ValidateLogInputCaps(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	title := func(s string) *string { return &s }
+	subject := func(s string) *string { return &s }
+	hour := func(i int) *int { return &i }
+	rating := func(i int) *int { return &i }
+	duration := func(i int) *int { return &i }
+
+	longNote := strings.Repeat("a", 2001)
+	longTitle := strings.Repeat("a", 121)
+	longSubject := strings.Repeat("a", 31)
+	tooManyIndicators := make([]string, 9)
+	for i := range tooManyIndicators {
+		tooManyIndicators[i] = "x"
+	}
+	longIndicator := strings.Repeat("a", 31)
+
+	cases := []struct {
+		name    string
+		title   *string
+		note    string
+		indics  []string
+		vols    map[string]int
+		hour    *int
+		rating  *int
+		dur     *int
+		subject *string
+	}{
+		{"note over 2000 runes", nil, longNote, nil, nil, nil, nil, nil, nil},
+		{"title over 120 runes", title(longTitle), "", nil, nil, nil, nil, nil, nil},
+		{"subject over 30 runes", nil, "", nil, nil, nil, nil, nil, subject(longSubject)},
+		{"subject with control char", nil, "", nil, nil, nil, nil, nil, subject("a\nb")},
+		{"more than 8 indicators", nil, "", tooManyIndicators, nil, nil, nil, nil, nil},
+		{"indicator over 30 runes", nil, "", []string{longIndicator}, nil, nil, nil, nil, nil},
+		{"empty indicator", nil, "", []string{""}, nil, nil, nil, nil, nil},
+		{"more than 8 volume keys", nil, "", nil, map[string]int{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8, "i": 9}, nil, nil, nil, nil},
+		{"volume key over 30 runes", nil, "", nil, map[string]int{longIndicator: 1}, nil, nil, nil, nil},
+		{"volume negative", nil, "", nil, map[string]int{"🍼": -1}, nil, nil, nil, nil},
+		{"volume over 100000", nil, "", nil, map[string]int{"🍼": 100001}, nil, nil, nil, nil},
+		{"hour negative", nil, "", nil, nil, hour(-1), nil, nil, nil},
+		{"hour over 23", nil, "", nil, nil, hour(24), nil, nil, nil},
+		{"rating over 50", nil, "", nil, nil, nil, rating(51), nil, nil},
+		{"rating negative", nil, "", nil, nil, nil, rating(-1), nil, nil},
+		{"duration over 86400", nil, "", nil, nil, nil, nil, duration(86401), nil},
+		{"duration negative", nil, "", nil, nil, nil, nil, duration(-1), nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := svc.LogChore(ctx, 1, 10, 100, c.title, c.note, c.indics, c.vols, nil, c.hour, nil, nil, c.rating, c.dur, c.subject); err == nil {
+				t.Fatalf("LogChore accepted over-limit input %q", c.name)
+			}
+		})
+	}
+
+	// At-limit values are accepted.
+	atLimitNote := strings.Repeat("a", 2000)
+	atLimitTitle := strings.Repeat("a", 120)
+	atLimitSubject := strings.Repeat("a", 30)
+	atLimitIndicators := make([]string, 8)
+	for i := range atLimitIndicators {
+		atLimitIndicators[i] = strings.Repeat("a", 30)
+	}
+	atLimitVols := map[string]int{"🍼 formula": 100000}
+	if _, err := svc.LogChore(ctx, 1, 10, 100, title(atLimitTitle), atLimitNote, atLimitIndicators, atLimitVols, nil, hour(23), nil, nil, rating(50), duration(86400), subject(atLimitSubject)); err != nil {
+		t.Fatalf("LogChore rejected at-limit input: %v", err)
+	}
+}
+
+func TestLogService_UpdateLogRejectsOverLimit(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "original", nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("LogChore: %v", err)
+	}
+
+	if err := svc.UpdateLog(ctx, l.ID, 1, nil, strings.Repeat("a", 2001), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err == nil {
+		t.Fatal("UpdateLog accepted over-limit note")
+	}
+	// The original log must be untouched.
+	logs, _ := svc.GetDayLogs(ctx, 1, time.Now().UTC())
+	if len(logs) != 1 || logs[0].Note != "original" {
+		t.Fatalf("log mutated after rejected update: %+v", logs)
 	}
 }

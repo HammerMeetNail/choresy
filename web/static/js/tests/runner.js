@@ -646,6 +646,15 @@ describe("Subject tagging (Phase 5.5)", () => {
     // The Bob chip should be pressed/on.
     assert.match(html, /data-subject="Bob"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Bob"/);
   });
+
+  it("log sheet caps title and note inputs to the server limits", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", hasRating: true },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    assert.match(html, /id="log-title"[^>]*maxlength="120"/);
+    assert.match(html, /id="log-note"[^>]*maxlength="2000"/);
+  });
 });
 
 describe("Duration timer (Phase 5.2)", () => {
