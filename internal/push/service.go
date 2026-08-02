@@ -63,6 +63,14 @@ func (s *Service) SendPushToUserWithData(ctx context.Context, userID int64, titl
 	}
 
 	for _, sub := range subs {
+		// Send-time guard: rows written before endpoint validation existed
+		// (or tampered rows) must never be POSTed to. Checks are the same as
+		// subscribe-time; log host only, never the capability URL.
+		if !EndpointAllowed(sub.Endpoint) {
+			log.Printf("push: skip disallowed endpoint for user %d host=%s", userID, endpointHost(sub.Endpoint))
+			continue
+		}
+
 		encrypted, err := EncryptPayload(payload, sub.P256DH, sub.Auth)
 		if err != nil {
 			log.Printf("push: encrypt for user %d: %v", userID, err)
@@ -92,7 +100,7 @@ func (s *Service) SendPushToUserWithData(ctx context.Context, userID int64, titl
 		}
 		resp.Body.Close() //nolint:errcheck
 
-		epLog := sub.Endpoint[:min(40, len(sub.Endpoint))]
+		epLog := endpointHost(sub.Endpoint)
 		log.Printf("push: sent to user %d endpoint %s status=%d", userID, epLog, resp.StatusCode)
 
 		// Clean up stale subscriptions

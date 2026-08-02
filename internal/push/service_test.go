@@ -2,8 +2,10 @@ package push
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
-	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +14,28 @@ const (
 	validP256DH = "BFiD30jh-xT1-ztVT4-JzRZUkVaC3jSJpXSpsu8uy1q86f28QIg8W2iznxdqLqdlg7nYlVru_A1FjmmTmrV31Eo"
 	validAuth   = "mfbNpuEjYa06PwSg5azFcw"
 )
+
+// stubRoundTripper stands in for real push-host network access: endpoints are
+// now restricted to allowlisted hosts (fcm.googleapis.com etc.), so tests use
+// a fake transport that records requests instead of dialing.
+type stubRoundTripper struct {
+	status  int
+	err     error
+	requests []*http.Request
+}
+
+func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.requests = append(s.requests, req)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &http.Response{
+		StatusCode: s.status,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    req,
+	}, nil
+}
 
 func TestNewService(t *testing.T) {
 	store := NewMemoryStore()
@@ -53,7 +77,7 @@ func TestSendPushToUser_NoSubscriptions(t *testing.T) {
 }
 
 // TestSendPushToUser_SuccessfulSend exercises the full send path (lines 44–82)
-// using a valid P-256 subscription key and a test HTTP server that returns 201.
+// using a valid P-256 subscription key and a stub transport returning 201.
 func TestSendPushToUser_SuccessfulSend(t *testing.T) {
 	priv, pub, err := GenerateVAPIDKeys()
 	if err != nil {
@@ -64,22 +88,27 @@ func TestSendPushToUser_SuccessfulSend(t *testing.T) {
 		t.Fatalf("NewVAPIDSigner: %v", err)
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusCreated) // 201 — standard Web Push response
-	}))
-	defer ts.Close()
+	rt := &stubRoundTripper{status: http.StatusCreated}
+	svc := NewService(NewMemoryStore(), signer)
+	svc.client = &http.Client{Transport: rt}
 
 	store := NewMemoryStore()
 	ctx := context.Background()
 	_ = store.SaveSubscription(ctx, 2, Subscription{
-		Endpoint: ts.URL,
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
 		P256DH:   validP256DH,
 		Auth:     validAuth,
 	})
+	svc.store = store
 
-	svc := NewService(store, signer)
 	if err := svc.SendPushToUser(ctx, 2, "title", "body"); err != nil {
 		t.Fatalf("SendPushToUser: %v", err)
+	}
+	if len(rt.requests) != 1 {
+		t.Errorf("expected 1 request, got %d", len(rt.requests))
+	}
+	if len(rt.requests) == 1 && rt.requests[0].URL.String() != "https://fcm.googleapis.com/fcm/send/abc" {
+		t.Errorf("request URL = %s", rt.requests[0].URL)
 	}
 }
 
@@ -99,7 +128,7 @@ func TestSendPushToUser_InvalidEndpoint(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 	_ = store.SaveSubscription(ctx, 4, Subscription{
-		Endpoint: "://invalid-url", // will fail NewRequestWithContext
+		Endpoint: "://invalid-url", // will fail endpoint validation
 		P256DH:   validP256DH,
 		Auth:     validAuth,
 	})
@@ -111,7 +140,7 @@ func TestSendPushToUser_InvalidEndpoint(t *testing.T) {
 }
 
 // TestSendPushToUser_NetworkError covers the client.Do error path (lines 70–72):
-// the test server is closed before the request is made.
+// the transport fails after the endpoint passed validation.
 func TestSendPushToUser_NetworkError(t *testing.T) {
 	priv, pub, err := GenerateVAPIDKeys()
 	if err != nil {
@@ -122,23 +151,24 @@ func TestSendPushToUser_NetworkError(t *testing.T) {
 		t.Fatalf("NewVAPIDSigner: %v", err)
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-	}))
-	// Close the server before the push is sent so client.Do fails.
-	ts.Close()
+	rt := &stubRoundTripper{err: errors.New("connection refused")}
+	svc := NewService(NewMemoryStore(), signer)
+	svc.client = &http.Client{Transport: rt}
 
 	store := NewMemoryStore()
 	ctx := context.Background()
 	_ = store.SaveSubscription(ctx, 5, Subscription{
-		Endpoint: ts.URL,
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
 		P256DH:   validP256DH,
 		Auth:     validAuth,
 	})
+	svc.store = store
 
-	svc := NewService(store, signer)
 	if err := svc.SendPushToUser(ctx, 5, "title", "body"); err != nil {
-		t.Fatalf("SendPushToUser with closed server: %v", err)
+		t.Fatalf("SendPushToUser with failing transport: %v", err)
+	}
+	if len(rt.requests) != 1 {
+		t.Errorf("expected 1 attempted request, got %d", len(rt.requests))
 	}
 }
 func TestSendPushToUser_StaleEndpointCleanup(t *testing.T) {
@@ -151,20 +181,19 @@ func TestSendPushToUser_StaleEndpointCleanup(t *testing.T) {
 		t.Fatalf("NewVAPIDSigner: %v", err)
 	}
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusGone) // 410 — stale subscription
-	}))
-	defer ts.Close()
+	rt := &stubRoundTripper{status: http.StatusGone} // 410 — stale subscription
+	svc := NewService(NewMemoryStore(), signer)
+	svc.client = &http.Client{Transport: rt}
 
 	store := NewMemoryStore()
 	ctx := context.Background()
 	_ = store.SaveSubscription(ctx, 1, Subscription{
-		Endpoint: ts.URL,
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
 		P256DH:   validP256DH,
 		Auth:     validAuth,
 	})
+	svc.store = store
 
-	svc := NewService(store, signer)
 	if err := svc.SendPushToUser(ctx, 1, "title", "body"); err != nil {
 		t.Fatalf("SendPushToUser: %v", err)
 	}
@@ -173,5 +202,48 @@ func TestSendPushToUser_StaleEndpointCleanup(t *testing.T) {
 	subs, _ := store.GetSubscriptions(ctx, 1)
 	if len(subs) != 0 {
 		t.Errorf("expected 0 subscriptions after 410, got %d", len(subs))
+	}
+}
+
+// TestSendPushToUser_SkipsDisallowedEndpoints is the send-time SSRF guard:
+// stored endpoints that fail EndpointAllowed (pre-fix rows or tampered data)
+// must never be POSTed to.
+func TestSendPushToUser_SkipsDisallowedEndpoints(t *testing.T) {
+	priv, pub, err := GenerateVAPIDKeys()
+	if err != nil {
+		t.Fatalf("GenerateVAPIDKeys: %v", err)
+	}
+	signer, err := NewVAPIDSigner(priv, pub, "mailto:test@example.com")
+	if err != nil {
+		t.Fatalf("NewVAPIDSigner: %v", err)
+	}
+
+	rt := &stubRoundTripper{status: http.StatusCreated}
+	svc := NewService(NewMemoryStore(), signer)
+	svc.client = &http.Client{Transport: rt}
+
+	store := NewMemoryStore()
+	ctx := context.Background()
+	disallowed := []string{
+		"http://169.254.169.254/latest/meta-data/", // cloud metadata
+		"http://10.0.0.5/x",                        // private IP
+		"https://127.0.0.1/admin",                  // loopback
+		"https://metadata.internal/latest/meta-data/", // internal hostname
+		"http://localhost/x",
+		"notaurl",
+	}
+	for _, ep := range disallowed {
+		_ = store.SaveSubscription(ctx, 100, Subscription{
+			Endpoint: ep,
+			P256DH:   validP256DH,
+			Auth:     validAuth,
+		})
+	}
+
+	if err := svc.SendPushToUser(ctx, 100, "title", "body"); err != nil {
+		t.Fatalf("SendPushToUser: %v", err)
+	}
+	if len(rt.requests) != 0 {
+		t.Errorf("expected 0 outbound requests for disallowed endpoints, got %d", len(rt.requests))
 	}
 }
