@@ -181,6 +181,83 @@ func TestRateLimiter_MiddlewareEmptyPrefix(t *testing.T) {
 
 // ─── SetTrustedProxies / clientIP ────────────────────────────────────────────
 
+func TestRateLimiter_NoTrustedCIDRs_IgnoresXForwardedFor(t *testing.T) {
+	rl := NewRateLimiter(5, time.Minute)
+	defer rl.Stop()
+
+	// No trusted proxies configured → RemoteAddr is the key, XFF never read.
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req.RemoteAddr = "8.8.8.8:80"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	if got := rl.clientIP(req); got != "8.8.8.8" {
+		t.Errorf("clientIP = %q, want %q", got, "8.8.8.8")
+	}
+}
+
+func TestRateLimiter_TrustedProxy_SpoofedXFF_RealWins(t *testing.T) {
+	rl := NewRateLimiter(1, time.Minute)
+	defer rl.Stop()
+	rl.SetTrustedProxies("10.0.0.0/8")
+
+	// Attacker sends X-Forwarded-For: spoofed; the edge appends the real IP.
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req.RemoteAddr = "10.0.0.1:80"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, 192.168.1.1")
+	if got := rl.clientIP(req); got != "192.168.1.1" {
+		t.Errorf("clientIP = %q, want %q (rightmost untrusted entry)", got, "192.168.1.1")
+	}
+}
+
+func TestRateLimiter_TrustedProxy_SingleXFFEntry(t *testing.T) {
+	rl := NewRateLimiter(5, time.Minute)
+	defer rl.Stop()
+	rl.SetTrustedProxies("10.0.0.0/8")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req.RemoteAddr = "10.0.0.1:80"
+	req.Header.Set("X-Forwarded-For", "192.168.1.1")
+	if got := rl.clientIP(req); got != "192.168.1.1" {
+		t.Errorf("clientIP = %q, want %q", got, "192.168.1.1")
+	}
+}
+
+func TestRateLimiter_TrustedProxy_TwoHops_LeftmostUntrusted(t *testing.T) {
+	rl := NewRateLimiter(5, time.Minute)
+	defer rl.Stop()
+	rl.SetTrustedProxies("10.0.0.0/8")
+
+	// Two trusted hops: 10.0.0.2 (inner) appended by 10.0.0.1 (our proxy).
+	// The rightmost non-trusted entry is the client at 172.16.0.5.
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req.RemoteAddr = "10.0.0.1:80"
+	req.Header.Set("X-Forwarded-For", "172.16.0.5, 10.0.0.2")
+	if got := rl.clientIP(req); got != "172.16.0.5" {
+		t.Errorf("clientIP = %q, want %q", got, "172.16.0.5")
+	}
+}
+
+func TestRateLimiter_TrustedProxy_EmptyAndMalformedXFFEntries(t *testing.T) {
+	rl := NewRateLimiter(5, time.Minute)
+	defer rl.Stop()
+	rl.SetTrustedProxies("10.0.0.0/8")
+
+	// Empty and whitespace entries are skipped; all-trusted chain falls back
+	// to RemoteAddr.
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req.RemoteAddr = "10.0.0.1:80"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, , 5.6.7.8 ,   ")
+	if got := rl.clientIP(req); got != "5.6.7.8" {
+		t.Errorf("clientIP = %q, want %q (empty entries skipped)", got, "5.6.7.8")
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req2.RemoteAddr = "10.0.0.1:80"
+	req2.Header.Set("X-Forwarded-For", "10.0.0.2, 10.0.0.3")
+	if got := rl.clientIP(req2); got != "10.0.0.1" {
+		t.Errorf("clientIP = %q, want %q (all-trusted chain → RemoteAddr)", got, "10.0.0.1")
+	}
+}
+
 func TestRateLimiter_TrustedProxy_UsesXForwardedFor(t *testing.T) {
 	rl := NewRateLimiter(1, time.Minute)
 	defer rl.Stop()

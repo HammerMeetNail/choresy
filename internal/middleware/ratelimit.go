@@ -128,10 +128,25 @@ func (l *RateLimiter) allowWithInfo(ip, path string) (int, time.Time) {
 
 func (l *RateLimiter) clientIP(r *http.Request) string {
 	remoteIP := rawIP(r)
-	if l.isTrustedProxy(remoteIP) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			ips := strings.Split(xff, ",")
-			return strings.TrimSpace(ips[0])
+	if !l.isTrustedProxy(remoteIP) {
+		return remoteIP // direct client; never trust XFF
+	}
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return remoteIP
+	}
+	ips := strings.Split(xff, ",")
+	// Walk right-to-left: entries closest to our trusted proxy were appended
+	// by infrastructure we can vouch for. The rightmost non-trusted entry is
+	// the real client as seen by the edge; anything left of it is client-
+	// controlled and must be ignored.
+	for i := len(ips) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(ips[i])
+		if candidate == "" {
+			continue
+		}
+		if !l.isTrustedProxy(candidate) {
+			return candidate
 		}
 	}
 	return remoteIP

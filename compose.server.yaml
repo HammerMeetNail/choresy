@@ -32,6 +32,13 @@ services:
       - APNS_BUNDLE_ID=${APNS_BUNDLE_ID:-}
       - APPLE_CLIENT_IDS=${APPLE_CLIENT_IDS:-}
       - APPLE_WEB_CLIENT_ID=${APPLE_WEB_CLIENT_ID:-}
+      # cloudflared runs on this host and connects from loopback, so the only
+      # trusted proxy is 127.0.0.1/::1. Without this, every request's client IP
+      # collapses to the tunnel address: /api/auth rate limiting becomes a
+      # single sitewide bucket (one attacker = login DoS for everyone) and the
+      # per-client global /api/* backstop is never constructed. If cloudflared
+      # ever moves to another host, widen this to that peer's address.
+      - TRUSTED_PROXY_CIDRS=127.0.0.1/32,::1/128
     restart: unless-stopped
     networks:
       - nabu_default
