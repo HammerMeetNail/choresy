@@ -103,7 +103,7 @@ func (h *ChoreHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	chores, err := h.service.ListChores(r.Context(), *user.HouseholdID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load chores", err)
 		return
 	}
 
@@ -280,7 +280,7 @@ func (h *ChoreHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.ReorderChores(r.Context(), *user.HouseholdID, req.ChoreIDs); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to reorder chores", err)
 		return
 	}
 
@@ -322,7 +322,7 @@ func (h *ChoreHandler) SeedDefaults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.SeedDefaultChores(r.Context(), *user.HouseholdID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to seed default chores", err)
 		return
 	}
 

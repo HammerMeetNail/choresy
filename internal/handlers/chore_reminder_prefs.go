@@ -25,7 +25,7 @@ func (h *ChoreReminderPrefsHandler) List(w http.ResponseWriter, r *http.Request)
 
 	prefs, err := h.store.GetChoreReminderPrefs(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load reminder preferences", err)
 		return
 	}
 
@@ -57,13 +57,13 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 		LeadMinutes *int  `json:"leadMinutes"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	current, err := h.store.GetChoreReminderPref(r.Context(), user.ID, choreID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to update reminder preferences", err)
 		return
 	}
 
@@ -77,7 +77,7 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 	current.ChoreID = choreID
 
 	if err := h.store.UpdateChoreReminderPref(r.Context(), current); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to update reminder preferences", err)
 		return
 	}
 

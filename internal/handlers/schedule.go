@@ -71,7 +71,7 @@ func (h *ScheduleHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	schedules, err := h.store.ListByHousehold(r.Context(), *user.HouseholdID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load schedule", err)
 		return
 	}
 	if schedules == nil {
@@ -99,7 +99,7 @@ func (h *ScheduleHandler) ForDate(w http.ResponseWriter, r *http.Request) {
 
 	all, err := h.store.ListByHousehold(r.Context(), *user.HouseholdID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load schedule", err)
 		return
 	}
 
@@ -146,7 +146,7 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.store.Create(r.Context(), req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to create schedule", err)
 		return
 	}
 	h.logAudit(r.Context(), "schedule.created", map[string]string{
@@ -261,7 +261,7 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.store.Update(r.Context(), req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to update schedule", err)
 		return
 	}
 	h.logAudit(r.Context(), "schedule.updated", map[string]string{
@@ -297,7 +297,7 @@ func (h *ScheduleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.Delete(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to delete schedule", err)
 		return
 	}
 	h.logAudit(r.Context(), "schedule.deleted", map[string]string{

@@ -21,7 +21,7 @@ func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
 	notifs, unread, err := h.service.List(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load notifications", err)
 		return
 	}
 	if notifs == nil {
@@ -43,7 +43,7 @@ func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.MarkRead(r.Context(), id, user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to mark notification read", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -53,7 +53,7 @@ func (h *NotificationHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 func (h *NotificationHandler) MarkAllRead(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
 	if err := h.service.MarkAllRead(r.Context(), user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to mark notifications read", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -69,7 +69,7 @@ func (h *NotificationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.service.Delete(r.Context(), id, user.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to delete notification", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})

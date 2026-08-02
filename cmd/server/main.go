@@ -25,11 +25,26 @@ func main() {
 // shutdownTimeout bounds how long we wait for in-flight requests to drain.
 const shutdownTimeout = 15 * time.Second
 
+// newHTTPServer builds the production http.Server. Timeouts guard against
+// slowloris and idle connections; there is deliberately no WriteTimeout —
+// the CSV export streams responses, and a blanket write deadline would kill
+// long-running exports.
+func newHTTPServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+}
+
 // serve runs an HTTP server that shuts down gracefully on SIGINT/SIGTERM,
 // draining in-flight requests before returning. When it returns, run's
 // deferred closer tears down the scheduler and rate-limiter goroutines.
 func serve(addr string, h http.Handler) error {
-	srv := &http.Server{Addr: addr, Handler: h}
+	srv := newHTTPServer(addr, h)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

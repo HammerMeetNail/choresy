@@ -182,7 +182,9 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, req.DurationSeconds, req.Subject, idemKey)
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		// Static message: store errors (e.g. idempotency-key unique races,
+		// connection failures) must not leak pgx internals through the 409.
+		writeError(w, http.StatusConflict, "could not create log")
 		return
 	}
 
@@ -213,7 +215,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 		if !backdated {
 			if err := h.scheduleStore.DeleteFollowUpSchedulesByChore(r.Context(), req.ChoreID); err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				writeServerError(w, "failed to create log", err)
 				return
 			}
 			if req.FollowUpMinutes > 0 && req.FollowUpTime != "" {
@@ -235,7 +237,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 					IsFollowUp:    true,
 				})
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeServerError(w, "failed to create log", err)
 					return
 				}
 			}
@@ -342,7 +344,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to update log", err)
 		return
 	}
 
@@ -389,7 +391,7 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := h.service.GetDayLogs(r.Context(), *user.HouseholdID, date)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load today's logs", err)
 		return
 	}
 	if logs == nil {
@@ -423,7 +425,7 @@ func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := h.service.GetWeekLogs(r.Context(), *user.HouseholdID, start)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load week logs", err)
 		return
 	}
 
@@ -451,7 +453,7 @@ func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := h.service.GetMonthLogs(r.Context(), *user.HouseholdID, year, time.Month(month))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load month logs", err)
 		return
 	}
 
@@ -474,7 +476,7 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 		}
 		logs, err := h.service.SearchHistoryLogs(r.Context(), *user.HouseholdID, q, 100)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeServerError(w, "failed to search history", err)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -504,7 +506,7 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 
 	logs, hasMore, err := h.service.GetHistoryLogs(r.Context(), *user.HouseholdID, start, end)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load history", err)
 		return
 	}
 
@@ -519,6 +521,21 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 func today() time.Time {
 	now := time.Now().UTC()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// csvSafe defeats spreadsheet formula injection (CSV injection): any cell
+// whose first character a spreadsheet would treat as a formula gets a leading
+// apostrophe, which Excel/Sheets render literally. Apply to every string cell
+// that carries user-controlled content before csv.Writer.Write.
+func csvSafe(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }
 
 // Export streams the household's logs as CSV for a date range (and optional
@@ -582,7 +599,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 
 	logs, err := h.service.GetLogsInRange(r.Context(), hid, start, end)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to export logs", err)
 		return
 	}
 
@@ -647,18 +664,18 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			indVol = strings.Join(parts, "; ")
 		}
 		_ = cw.Write([]string{
-			ts.Format("2006-01-02"),
-			ts.Format("15:04"),
-			choreNames[l.ChoreID],
-			memberNames[l.UserID],
-			title,
-			l.Note,
-			vol,
-			strings.Join(l.Indicators, "; "),
-			indVol,
-			rating,
-			durationSec,
-			subject,
+			csvSafe(ts.Format("2006-01-02")),
+			csvSafe(ts.Format("15:04")),
+			csvSafe(choreNames[l.ChoreID]),
+			csvSafe(memberNames[l.UserID]),
+			csvSafe(title),
+			csvSafe(l.Note),
+			csvSafe(vol),
+			csvSafe(strings.Join(l.Indicators, "; ")),
+			csvSafe(indVol),
+			csvSafe(rating),
+			csvSafe(durationSec),
+			csvSafe(subject),
 		})
 	}
 	cw.Flush()
@@ -672,7 +689,7 @@ func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.service.LatestPerChore(r.Context(), *user.HouseholdID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load latest logs", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"latestLogs": result})

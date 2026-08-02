@@ -7,9 +7,33 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/config"
 )
+
+func TestNewHTTPServerTimeouts(t *testing.T) {
+	srv := newHTTPServer(":8080", http.NewServeMux())
+
+	if srv.ReadHeaderTimeout != 10*time.Second {
+		t.Errorf("ReadHeaderTimeout = %s, want 10s", srv.ReadHeaderTimeout)
+	}
+	if srv.ReadTimeout != 30*time.Second {
+		t.Errorf("ReadTimeout = %s, want 30s", srv.ReadTimeout)
+	}
+	if srv.IdleTimeout != 120*time.Second {
+		t.Errorf("IdleTimeout = %s, want 120s", srv.IdleTimeout)
+	}
+	if srv.MaxHeaderBytes != 1<<20 {
+		t.Errorf("MaxHeaderBytes = %d, want 1<<20", srv.MaxHeaderBytes)
+	}
+	if srv.WriteTimeout != 0 {
+		t.Errorf("WriteTimeout = %s, want 0 (streaming CSV export)", srv.WriteTimeout)
+	}
+	if srv.Addr != ":8080" {
+		t.Errorf("Addr = %q, want :8080", srv.Addr)
+	}
+}
 
 func TestRunServesOnPort(t *testing.T) {
 	loadConfig := func() (config.Config, error) {
