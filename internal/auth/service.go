@@ -129,6 +129,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Sess
 	normalizedEmail := normalizeEmail(email)
 	user, passwordHash, err := s.store.GetUserByEmail(ctx, normalizedEmail)
 	if err != nil {
+		// Timing parity: an unknown email must cost the same as a real bcrypt
+		// compare, otherwise login latency reveals whether an email is
+		// registered. Nothing can authenticate against the dummy hash.
+		_ = verifyPassword(dummyPasswordHash, password)
 		s.logAudit(ctx, "auth.login_failed", map[string]string{"method": "password"})
 		return User{}, Session{}, ErrInvalidCredentials
 	}

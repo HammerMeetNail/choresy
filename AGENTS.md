@@ -330,6 +330,12 @@ Every operation that reads or mutates data must verify the actor is authorized f
 - **Never reveal whether an email address is registered.**  Registration, password-reset, and magic-link endpoints return the same HTTP status and the same phrasing regardless.
 - **Avoid leaking internal details.**  `writeError` messages should be user-facing and not expose stack traces, SQL errors, or library internals.
 
+### Accepted oracle: register auto-login (audit finding 6a)
+
+The register endpoint auto-logs in new users, which makes the registration response an **accepted account-existence oracle**: a fresh email gets `201` + user JSON + `Set-Cookie`, a duplicate email gets `200` + the generic "check your inbox" body. This is a deliberate product decision (auto-login UX wins over closing the oracle) — do not "fix" it by accident. If it ever gets reworked, the flow must become register → verify → login, and the PWA (`web/static/js/auth.js`) and iOS (`AuthStore.register`) must change together with the server. The login *timing* oracle (unknown email returning instantly vs. a bcrypt cost-13 compare) IS closed: `internal/auth/service.go` `Login` compares a dummy hash on the miss path.
+
+- **Avoid leaking internal details.**  `writeError` messages should be user-facing and not expose stack traces, SQL errors, or library internals.
+
 ## Push notification troubleshooting
 
 Web Push (RFC 8291 aes128gcm + VAPID ES256) lives in `internal/push/` (`encrypt.go`, `vapid.go`, `service.go`). The key gotcha: **Apple returns 201 even when the encryption keys are wrong**, so there is no error signal at the gateway — the only way to know a push arrived is `self.lastPush` / `self.__diag` in the service worker.

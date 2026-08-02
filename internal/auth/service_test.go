@@ -8,6 +8,7 @@ import (
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/mail"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestRegister(t *testing.T) {
@@ -112,6 +113,41 @@ func TestLoginInvalidCredentials(t *testing.T) {
 	_, _, err = svc.Login(context.Background(), "nonexistent@example.com", "password123")
 	if err != ErrInvalidCredentials {
 		t.Fatalf("error = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+// TestLoginUnknownEmailTimingParity guards against the account-enumeration
+// timing oracle (audit finding 6b): an unknown email must cost a real bcrypt
+// compare, not return instantly. Before the fix, the miss path skipped
+// verifyPassword entirely (~instant); now it compares against dummyPasswordHash.
+// Tolerant lower bound only — slow CI must never flake.
+func TestLoginUnknownEmailTimingParity(t *testing.T) {
+	// The pasted dummy hash must be a genuine cost-13 hash, otherwise the
+	// miss-path compare would be instant or error out.
+	cost, err := bcrypt.Cost([]byte(dummyPasswordHash))
+	if err != nil {
+		t.Fatalf("dummyPasswordHash is not a valid bcrypt hash: %v", err)
+	}
+	if cost != bcryptCost {
+		t.Fatalf("dummyPasswordHash cost = %d, want %d", cost, bcryptCost)
+	}
+
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	// Warm-up so the measured login reflects steady-state bcrypt cost.
+	_ = verifyPassword(dummyPasswordHash, "warmup-not-a-real-password")
+
+	start := time.Now()
+	_, _, err = svc.Login(context.Background(), "nobody@example.com", "password123")
+	elapsed := time.Since(start)
+	if err != ErrInvalidCredentials {
+		t.Fatalf("error = %v, want ErrInvalidCredentials", err)
+	}
+	// Cost-13 compare is ~250-400 ms on typical hardware; anything well below
+	// ~100 ms means the miss path skipped the bcrypt work entirely.
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("Login(unknown email) took %v; expected a bcrypt compare (>= 100ms)", elapsed)
 	}
 }
 

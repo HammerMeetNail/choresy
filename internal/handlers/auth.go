@@ -36,6 +36,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		case auth.ErrDuplicateEmail:
 			// Return 200 with a generic message to prevent account enumeration.
 			// The client should tell the user to check their email.
+			// Accepted oracle (product decision, audit finding 6a): a fresh
+			// email returns 201 + user JSON + Set-Cookie, which is observable
+			// network traffic distinct from this 200. We keep auto-login on
+			// registration for UX; the tradeoff is documented in AGENTS.md.
 			writeJSON(w, http.StatusOK, map[string]string{"status": "if this email is new, check your inbox"})
 		case auth.ErrInvalidEmail:
 			writeError(w, http.StatusBadRequest, "invalid email")
