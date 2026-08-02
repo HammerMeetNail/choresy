@@ -272,6 +272,30 @@ func TestHouseholdJoinNoAuth(t *testing.T) {
 	}
 }
 
+// TestHouseholdJoinUnknownCodeUnambiguousMessage locks in the enumeration-safe
+// response: an unknown code must produce the same 400 body as any other failed
+// join, so callers cannot distinguish unknown from exhausted/expired invites.
+func TestHouseholdJoinUnknownCodeUnambiguousMessage(t *testing.T) {
+	handler, sessionID, authService := setupHouseholdTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/household/join", strings.NewReader(
+		`{"inviteCode":"NOPE123456"}`,
+	)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.Join(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "invite not found") {
+		t.Fatalf("body = %s, want a generic 'invite not found' message", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "expired") || strings.Contains(rec.Body.String(), "max") {
+		t.Fatalf("body = %s, leaks invite state", rec.Body.String())
+	}
+}
+
 func TestHouseholdTransferNoAuth(t *testing.T) {
 	handler, _, _ := setupHouseholdTest(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/household/transfer", strings.NewReader(`{"newOwnerId":2}`))

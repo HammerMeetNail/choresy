@@ -81,9 +81,13 @@ type Store interface {
 	DeleteInvite(ctx context.Context, id int64) error
 }
 
+// GenerateInviteCode returns a random 10-character code from a 32-symbol
+// unambiguous alphabet (~50 bits, ~1.1e15 combinations). Used for both the
+// permanent per-household code and one-time invite codes. 10 characters
+// makes offline brute-force infeasible while staying human-typeable.
 func GenerateInviteCode() string {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	buf := make([]byte, 6)
+	buf := make([]byte, 10)
 	for i := range buf {
 		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
 		buf[i] = chars[n.Int64()]

@@ -274,6 +274,30 @@ func TestJoinHousehold_InvalidCode(t *testing.T) {
 	}
 }
 
+// TestJoinHousehold_ExhaustedInvite verifies that a consumed one-time invite
+// can never add a membership: the join fails and no member is added.
+func TestJoinHousehold_ExhaustedInvite(t *testing.T) {
+	svc, store, _ := newSvc()
+	ctx := context.Background()
+
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
+	_, _ = store.CreateInvite(ctx, hh.ID, 1, "EXHAUSTED1", 1)
+	// Consume the single allowed use.
+	if err := store.UseInvite(ctx, "EXHAUSTED1"); err != nil {
+		t.Fatalf("UseInvite: %v", err)
+	}
+
+	_, err := svc.JoinHousehold(ctx, 2, "EXHAUSTED1")
+	if err != household.ErrInviteNotFound {
+		t.Fatalf("JoinHousehold with exhausted invite: err = %v, want ErrInviteNotFound", err)
+	}
+	// No membership should have been added for user 2.
+	_, members, _ := svc.GetHousehold(ctx, 1)
+	if len(members) != 1 {
+		t.Errorf("expected 1 member after rejected join, got %d", len(members))
+	}
+}
+
 func TestJoinHousehold_ViaPermanentCode(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()

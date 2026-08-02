@@ -224,6 +224,14 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		globalRateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
 	}
 
+	// Tighter per-IP limiter on household joins: invite codes are self-serve
+	// (free account + CSRF pair), so without a dedicated cap an attacker can
+	// hammer /api/household/join against many codes. 10/min per IP keeps
+	// legitimate multi-code joins (several family members, one network)
+	// working while stopping brute-force sweeps.
+	joinLimiter := middleware.NewRateLimiter(cfg.RateLimitJoinMax, time.Minute)
+	joinLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
+
 	// Both rate limiting and audit-log IP attribution depend on
 	// TRUSTED_PROXY_CIDRS being set: behind a reverse proxy/tunnel, an empty
 	// value means every request appears to originate from the proxy's IP,
@@ -520,6 +528,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	handler = middleware.Session(authService, "nabu_session")(handler)
 	handler = middleware.CSRF("nabu_csrf", cfg.ServerSecure)(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
+	handler = joinLimiter.Middleware("/api/household/join")(handler)
 	// Engage the global per-IP backstop only when client IPs are reliably
 	// attributable (trusted proxy configured); otherwise it would key every
 	// request to the proxy's single IP and could 429 the whole user base.
@@ -527,7 +536,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		handler = globalRateLimiter.Middleware("/api/")(handler)
 	}
 
-	limiters := []*middleware.RateLimiter{rateLimiter}
+	limiters := []*middleware.RateLimiter{rateLimiter, joinLimiter}
 	if globalRateLimiter != nil {
 		limiters = append(limiters, globalRateLimiter)
 	}

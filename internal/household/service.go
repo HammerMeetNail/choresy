@@ -174,12 +174,14 @@ func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) erro
 
 func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode string) (Household, error) {
 	invite, err := s.store.GetInviteByCode(ctx, inviteCode)
-	if err != nil && err != ErrInviteNotFound {
+	if err != nil && err != ErrInviteNotFound && err != ErrInviteExpired {
 		return Household{}, err
 	}
 
-	// If the code wasn't found in the invites table, try the permanent household invite code.
-	if err == ErrInviteNotFound {
+	// If the code wasn't found (or the one-time invite is exhausted/expired —
+	// indistinguishable from unknown so the message never leaks code state),
+	// try the permanent household invite code.
+	if err == ErrInviteNotFound || err == ErrInviteExpired {
 		hh, hhErr := s.store.GetHouseholdByInviteCode(ctx, inviteCode)
 		if hhErr != nil {
 			return Household{}, ErrInviteNotFound
@@ -224,10 +226,15 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		return Household{}, fmt.Errorf("household is full")
 	}
 
-	if err := s.store.AddMember(ctx, invite.HouseholdID, userID, RoleMember); err != nil {
-		return Household{}, err
-	}
+	// Consume the one-time invite BEFORE adding the member so an exhausted or
+	// expired code can never partially add a membership (the Postgres UPDATE
+	// enforces max_uses/expires_at atomically). A failure after a successful
+	// UseInvite (e.g. a raced duplicate member) burns one use — accepted; a
+	// full transactional rework of the store is out of scope.
 	if err := s.store.UseInvite(ctx, inviteCode); err != nil {
+		return Household{}, ErrInviteNotFound
+	}
+	if err := s.store.AddMember(ctx, invite.HouseholdID, userID, RoleMember); err != nil {
 		return Household{}, err
 	}
 
@@ -305,10 +312,10 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 		return err
 	}
 	s.logAudit(ctx, "household.member_role_changed", map[string]string{
-		"user_id":         formatID(actorUserID),
-		"target_user_id":  formatID(targetUserID),
-		"household_id":    formatID(hhID),
-		"new_role":        newRole,
+		"user_id":        formatID(actorUserID),
+		"target_user_id": formatID(targetUserID),
+		"household_id":   formatID(hhID),
+		"new_role":       newRole,
 	})
 	return nil
 }
