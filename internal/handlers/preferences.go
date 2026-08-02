@@ -36,7 +36,7 @@ func (h *PreferencesHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	prefs, err := h.service.GetPreferences(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load preferences", err)
 		return
 	}
 
@@ -69,21 +69,21 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if req.ChoreOrder != nil {
 		if err := h.service.UpdateChoreOrder(r.Context(), user.ID, *req.ChoreOrder); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeServerError(w, "failed to update preferences", err)
 			return
 		}
 	}
 
 	if req.HiddenHomeChoreIDs != nil {
 		if err := h.service.UpdateHiddenHomeChores(r.Context(), user.ID, *req.HiddenHomeChoreIDs); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeServerError(w, "failed to update preferences", err)
 			return
 		}
 	}
 
 	if req.Timezone != nil {
 		if err := h.service.UpdateTimezone(r.Context(), user.ID, *req.Timezone); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeServerError(w, "failed to update preferences", err)
 			return
 		}
 	}
@@ -118,7 +118,7 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 			if user.HouseholdID != nil {
 				chores, err := h.choreStore.ListChores(r.Context(), *user.HouseholdID)
 				if err != nil {
-					writeError(w, http.StatusInternalServerError, err.Error())
+					writeServerError(w, "failed to update preferences", err)
 					return
 				}
 				for _, c := range chores {
@@ -142,7 +142,7 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	prefs, err := h.service.GetPreferences(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load preferences", err)
 		return
 	}
 

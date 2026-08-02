@@ -71,7 +71,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.store.SaveSubscription(r.Context(), user.ID, sub); err != nil {
 		log.Printf("push: subscribe save error for user %d: %v", user.ID, err)
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to subscribe to push notifications", err)
 		return
 	}
 	log.Printf("push: subscribed user %d", user.ID)
@@ -92,7 +92,7 @@ func (h *PushHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.store.DeleteSubscription(r.Context(), user.ID, req.Endpoint); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to unsubscribe from push notifications", err)
 		return
 	}
 	h.logAudit(r.Context(), "push.unsubscribed", nil)

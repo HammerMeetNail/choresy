@@ -24,7 +24,7 @@ func (h *NotificationPreferencesHandler) Get(w http.ResponseWriter, r *http.Requ
 
 	prefs, err := h.service.GetNotificationPreferences(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load notification preferences", err)
 		return
 	}
 
@@ -48,13 +48,13 @@ func (h *NotificationPreferencesHandler) Update(w http.ResponseWriter, r *http.R
 		DefaultReminderLeadMinutes *int      `json:"defaultReminderLeadMinutes"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	current, err := h.service.GetNotificationPreferences(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load notification preferences", err)
 		return
 	}
 
@@ -72,13 +72,13 @@ func (h *NotificationPreferencesHandler) Update(w http.ResponseWriter, r *http.R
 	}
 
 	if err := h.service.UpdateNotificationPreferences(r.Context(), current); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to update notification preferences", err)
 		return
 	}
 
 	prefs, err := h.service.GetNotificationPreferences(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load notification preferences", err)
 		return
 	}
 

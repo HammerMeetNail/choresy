@@ -69,7 +69,9 @@ func (h *HouseholdHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	hh, err := h.service.CreateHousehold(r.Context(), req.Name, req.Initials, user.ID)
 	if err != nil {
-		writeError(w, http.StatusConflict, err.Error())
+		// Static message: store errors (e.g. constraint/connection failures)
+		// must not leak pgx internals through the 409.
+		writeError(w, http.StatusConflict, "could not create household")
 		return
 	}
 
@@ -171,7 +173,10 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 
 	hh, err := h.service.JoinHousehold(r.Context(), user.ID, req.InviteCode)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		// Static message: every join failure (unknown/exhausted/expired code,
+		// household full, or a store error) reads identically, so the response
+		// never leaks invite state or pgx internals.
+		writeError(w, http.StatusBadRequest, "invite not found")
 		return
 	}
 

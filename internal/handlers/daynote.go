@@ -40,7 +40,7 @@ func (h *DayNoteHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	notes, err := h.service.ListRange(r.Context(), *user.HouseholdID, start, end)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load day notes", err)
 		return
 	}
 	if notes == nil {

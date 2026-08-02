@@ -84,7 +84,7 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load leaderboard", err)
 		return
 	}
 
@@ -110,7 +110,7 @@ func (h *StatsHandler) Streaks(w http.ResponseWriter, r *http.Request) {
 
 	streaks, err := h.service.GetUserStreaks(r.Context(), *user.HouseholdID, user.ID, h.userLocation(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load streaks", err)
 		return
 	}
 
@@ -147,7 +147,7 @@ func (h *StatsHandler) Heatmap(w http.ResponseWriter, r *http.Request) {
 
 	cells, err := h.service.GetHeatmap(r.Context(), *user.HouseholdID, start, end, loc)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load heatmap", err)
 		return
 	}
 
@@ -217,7 +217,7 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 
 	breakdown, err := h.service.GetCategoryBreakdown(r.Context(), *user.HouseholdID, start, end, loc)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load breakdown", err)
 		return
 	}
 
@@ -237,7 +237,7 @@ func (h *StatsHandler) Recap(w http.ResponseWriter, r *http.Request) {
 
 	recap, err := h.service.GetWeeklyRecap(r.Context(), *user.HouseholdID, h.userLocation(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load recap", err)
 		return
 	}
 
@@ -253,7 +253,7 @@ func (h *StatsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 
 	overview, err := h.service.GetWeeklyOverview(r.Context(), *user.HouseholdID, user.ID, h.userLocation(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load overview", err)
 		return
 	}
 
@@ -301,7 +301,7 @@ func (h *StatsHandler) BusyHours(w http.ResponseWriter, r *http.Request) {
 
 	hours, err := h.service.GetBusyHours(r.Context(), *user.HouseholdID, start, end, loc, choreID, userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load busy hours", err)
 		return
 	}
 
@@ -364,7 +364,7 @@ func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
 
 	choreStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, loc, customStart, customEnd)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load chore stats", err)
 		return
 	}
 
@@ -404,7 +404,7 @@ func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
 
 	allStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, h.userLocation(r), nil, nil)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load chore stats", err)
 		return
 	}
 
@@ -442,7 +442,7 @@ func (h *StatsHandler) TopChores(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, userID, 5, period, h.userLocation(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load top chores", err)
 		return
 	}
 
@@ -477,7 +477,7 @@ func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {
 
 	ts, err := h.service.GetChoreTimeSeries(r.Context(), *user.HouseholdID, choreID, period, h.userLocation(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load chore time series", err)
 		return
 	}
 
@@ -551,7 +551,7 @@ func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
 
 	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, choreID, start, end, loc)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to load feeding gaps", err)
 		return
 	}
 	if gaps == nil {

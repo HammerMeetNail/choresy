@@ -79,7 +79,7 @@ func (h *ReminderSnoozeHandler) Snooze(w http.ResponseWriter, r *http.Request) {
 
 	// Idempotent: drop any existing follow-up for this chore, then create one.
 	if err := h.scheduleStore.DeleteFollowUpSchedulesByChore(r.Context(), req.ChoreID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to snooze reminder", err)
 		return
 	}
 	if _, err := h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
@@ -92,7 +92,7 @@ func (h *ReminderSnoozeHandler) Snooze(w http.ResponseWriter, r *http.Request) {
 		IsActive:      true,
 		IsFollowUp:    true,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeServerError(w, "failed to snooze reminder", err)
 		return
 	}
 
