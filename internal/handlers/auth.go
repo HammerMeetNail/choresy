@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/subtle"
 	"net/http"
+	"strings"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
@@ -234,6 +235,20 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.authResponse(updatedUser, session))
 }
 
+// allowedPostAuthRedirect reports whether a post-login redirect target is
+// safe: same-origin absolute paths (but not protocol-relative "//...") or
+// the native app's custom scheme callback. Anything else returns "" so the
+// caller falls back to the app base URL.
+func allowedPostAuthRedirect(target string) string {
+	if target == "nabu://callback" {
+		return target
+	}
+	if strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") {
+		return target
+	}
+	return ""
+}
+
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := auth.GenerateState()
 	if err != nil {
@@ -255,7 +270,7 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	h.setOIDCCookie(w, "nabu_oidc_state", state, 600)
 	h.setOIDCCookie(w, "nabu_oidc_nonce", nonce, 600)
 
-	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+	if redirect := allowedPostAuthRedirect(r.URL.Query().Get("redirect")); redirect != "" {
 		h.setOIDCCookie(w, "nabu_oidc_redirect", redirect, 600)
 	}
 
@@ -288,7 +303,9 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 
 	redirectURL := h.appBaseURL
 	if stored := h.getOIDCCookie(r, "nabu_oidc_redirect"); stored != "" {
-		redirectURL = stored
+		if target := allowedPostAuthRedirect(stored); target != "" {
+			redirectURL = target
+		}
 	}
 	_ = user
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -355,7 +372,7 @@ func (h *AuthHandler) AppleWebLogin(w http.ResponseWriter, r *http.Request) {
 	h.setAppleWebCookie(w, "nabu_apple_state", state, 600)
 	h.setAppleWebCookie(w, "nabu_apple_nonce", nonce, 600)
 
-	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+	if redirect := allowedPostAuthRedirect(r.URL.Query().Get("redirect")); redirect != "" {
 		h.setAppleWebCookie(w, "nabu_apple_redirect", redirect, 600)
 	}
 
@@ -406,7 +423,9 @@ func (h *AuthHandler) AppleWebCallback(w http.ResponseWriter, r *http.Request) {
 
 	redirectURL := h.appBaseURL
 	if stored := h.getOIDCCookie(r, "nabu_apple_redirect"); stored != "" {
-		redirectURL = stored
+		if target := allowedPostAuthRedirect(stored); target != "" {
+			redirectURL = target
+		}
 	}
 	http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 }

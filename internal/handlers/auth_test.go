@@ -590,6 +590,73 @@ func TestAuthGoogleLoginNoOIDC(t *testing.T) {
 	}
 }
 
+func setupGoogleHandler(t *testing.T) *AuthHandler {
+	t.Helper()
+	handler, svc := setupAuthHandler(t)
+	svc.SetOIDCProvider(&auth.GoogleOIDCProvider{
+		ClientID:     "client",
+		ClientSecret: "secret",
+		RedirectURL:  "http://localhost:8080/api/auth/google/callback",
+		AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
+	})
+	return handler
+}
+
+func TestAllowedPostAuthRedirect(t *testing.T) {
+	cases := []struct {
+		target string
+		want   string
+	}{
+		{"nabu://callback", "nabu://callback"},
+		{"/settings", "/settings"},
+		{"/", "/"},
+		{"//evil.example", ""},
+		{"https://evil.example", ""},
+		{"http://localhost:8080/settings", ""},
+		{"javascript:alert(1)", ""},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := allowedPostAuthRedirect(tc.target); got != tc.want {
+			t.Errorf("allowedPostAuthRedirect(%q) = %q, want %q", tc.target, got, tc.want)
+		}
+	}
+}
+
+func TestAuthGoogleLoginRedirectCookie(t *testing.T) {
+	cases := []struct {
+		name       string
+		redirect   string
+		wantCookie bool
+	}{
+		{"unsafe https", "https://evil.example", false},
+		{"scheme-relative", "//evil.example", false},
+		{"javascript", "javascript:alert(1)", false},
+		{"empty", "", false},
+		{"same-origin path", "/settings", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := setupGoogleHandler(t)
+			req := httptest.NewRequest(http.MethodGet, "/api/auth/google/login?redirect="+url.QueryEscape(tc.redirect), nil)
+			rec := httptest.NewRecorder()
+			handler.GoogleLogin(rec, req)
+			if rec.Code != http.StatusFound {
+				t.Fatalf("status = %d, want 302", rec.Code)
+			}
+			found := false
+			for _, c := range rec.Result().Cookies() {
+				if c.Name == "nabu_oidc_redirect" {
+					found = true
+				}
+			}
+			if found != tc.wantCookie {
+				t.Errorf("nabu_oidc_redirect cookie set = %v, want %v", found, tc.wantCookie)
+			}
+		})
+	}
+}
+
 func TestAuthGoogleCallbackInvalidState(t *testing.T) {
 	// No state cookie set, so expectedState="" and state!="" or both "".
 	handler, _ := setupAuthHandler(t)
@@ -793,11 +860,49 @@ func TestAuthAppleWebCallbackRedirectCookieHonored(t *testing.T) {
 	rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},
 		&http.Cookie{Name: "nabu_apple_state", Value: "mystate"},
 		&http.Cookie{Name: "nabu_apple_nonce", Value: "mynonce"},
-		&http.Cookie{Name: "nabu_apple_redirect", Value: "http://localhost:8080/settings"})
+		&http.Cookie{Name: "nabu_apple_redirect", Value: "/settings"})
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "http://localhost:8080/settings" {
+	if loc := rec.Header().Get("Location"); loc != "/settings" {
+		t.Fatalf("Location = %q", loc)
+	}
+}
+
+func TestAuthAppleWebCallbackRedirectCookieUnsafeFallsBack(t *testing.T) {
+	handler, _ := setupAppleWebHandler(t)
+	for name, cookieVal := range map[string]string{
+		"full URL":    "http://localhost:8080/settings",
+		"evil URL":    "https://evil.example",
+		"scheme-rel":  "//evil.example/settings",
+		"javascript":  "javascript:alert(1)",
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},
+				&http.Cookie{Name: "nabu_apple_state", Value: "mystate"},
+				&http.Cookie{Name: "nabu_apple_nonce", Value: "mynonce"},
+				&http.Cookie{Name: "nabu_apple_redirect", Value: cookieVal})
+			if rec.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want 303", rec.Code)
+			}
+			if loc := rec.Header().Get("Location"); loc != "http://localhost:8080" {
+				t.Fatalf("Location = %q, want appBaseURL fallback", loc)
+			}
+		})
+	}
+}
+
+func TestAuthAppleWebCallbackRedirectCookieCustomScheme(t *testing.T) {
+	// The iOS app passes redirect=nabu://callback; it must still flow through.
+	handler, _ := setupAppleWebHandler(t)
+	rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},
+		&http.Cookie{Name: "nabu_apple_state", Value: "mystate"},
+		&http.Cookie{Name: "nabu_apple_nonce", Value: "mynonce"},
+		&http.Cookie{Name: "nabu_apple_redirect", Value: "nabu://callback"})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "nabu://callback" {
 		t.Fatalf("Location = %q", loc)
 	}
 }
