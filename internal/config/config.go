@@ -33,6 +33,7 @@ type Config struct {
 	TrustedProxyCIDRs  string
 	RateLimitAuthMax   int
 	RateLimitGlobalMax int
+	RateLimitJoinMax   int
 	VAPIDPublicKey     string
 	VAPIDPrivateKey    string
 	VAPIDSubject       string
@@ -63,6 +64,7 @@ func Load() (Config, error) {
 		TrustedProxyCIDRs:  getenv("TRUSTED_PROXY_CIDRS", ""),
 		RateLimitAuthMax:   getenvInt("RATE_LIMIT_AUTH_MAX", 5),
 		RateLimitGlobalMax: getenvInt("RATE_LIMIT_GLOBAL_MAX", 120),
+		RateLimitJoinMax:   getenvInt("RATE_LIMIT_JOIN_MAX", 10),
 		VAPIDPublicKey:     getenv("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey:    getenv("VAPID_PRIVATE_KEY", ""),
 		VAPIDSubject:       getenv("VAPID_SUBJECT", ""),

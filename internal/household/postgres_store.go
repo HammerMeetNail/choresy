@@ -311,9 +311,24 @@ func (s *PostgresStore) GetInvites(ctx context.Context, householdID int64) ([]In
 	return invs, rows.Err()
 }
 
+// UseInvite atomically consumes one use of a one-time invite, honoring
+// max_uses and expires_at in the same statement so concurrent joins can never
+// overshoot the cap. Returns ErrInviteNotFound when the code is unknown,
+// exhausted, or expired — the same sentinel the service surfaces for all
+// three, so callers cannot distinguish them.
 func (s *PostgresStore) UseInvite(ctx context.Context, code string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE invites SET used_count = used_count + 1 WHERE code = $1`, code)
-	return err
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE invites SET used_count = used_count + 1
+		WHERE code = $1
+		  AND (max_uses <= 0 OR used_count < max_uses)
+		  AND (expires_at IS NULL OR expires_at > NOW())`, code)
+	if err != nil {
+		return err
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return ErrInviteNotFound
+	}
+	return nil
 }
 
 func (s *PostgresStore) DeleteInvite(ctx context.Context, id int64) error {

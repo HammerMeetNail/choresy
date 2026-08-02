@@ -149,6 +149,81 @@ func TestPostgresHouseholdStore_RemoveMember(t *testing.T) {
 	}
 }
 
+func TestPostgresHouseholdStore_UseInvite_ConsumesUnderCap(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
+		WHERE code = $1
+		  AND (max_uses <= 0 OR used_count < max_uses)
+		  AND (expires_at IS NULL OR expires_at > NOW())`)).
+		WithArgs("CODE123456").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err = store.UseInvite(context.Background(), "CODE123456")
+	if err != nil {
+		t.Fatalf("UseInvite: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestPostgresHouseholdStore_UseInvite_RejectsAtCap(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+
+	// 0 rows affected → code unknown, exhausted, or expired; same sentinel
+	// either way so callers cannot distinguish.
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
+		WHERE code = $1
+		  AND (max_uses <= 0 OR used_count < max_uses)
+		  AND (expires_at IS NULL OR expires_at > NOW())`)).
+		WithArgs("CODE123456").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.UseInvite(context.Background(), "CODE123456")
+	if err != ErrInviteNotFound {
+		t.Fatalf("err = %v, want ErrInviteNotFound", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestPostgresHouseholdStore_UseInvite_RejectsExpired(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+
+	// Expired rows also match 0 rows affected → ErrInviteNotFound.
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
+		WHERE code = $1
+		  AND (max_uses <= 0 OR used_count < max_uses)
+		  AND (expires_at IS NULL OR expires_at > NOW())`)).
+		WithArgs("CODE123456").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err = store.UseInvite(context.Background(), "CODE123456")
+	if err != ErrInviteNotFound {
+		t.Fatalf("err = %v, want ErrInviteNotFound", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func TestPostgresHouseholdStore_UpdateMemberRole(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -170,5 +245,123 @@ func TestPostgresHouseholdStore_UpdateMemberRole(t *testing.T) {
 	err = store.UpdateMemberRole(context.Background(), 1, 2, "admin")
 	if err != nil {
 		t.Fatalf("UpdateMemberRole: %v", err)
+	}
+}
+
+// TestJoinHousehold_ExhaustedInvite_Postgres verifies the service consumes the
+// one-time invite BEFORE adding the member, and that an exhausted invite
+// (0 rows affected by the atomic UPDATE) rejects the join without ever calling
+// AddMember — sqlmock fails the test if any unexpected call happens.
+func TestJoinHousehold_ExhaustedInvite_Postgres(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	svc := NewService(store, nil)
+
+	const code = "EXHAUSTED1"
+
+	// Lookup succeeds but the code is already at max_uses.
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at
+		FROM invites WHERE code = $1`)).
+		WithArgs(code).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "code", "created_by", "max_uses", "used_count", "expires_at", "created_at"}).
+			AddRow(1, 1, code, 1, 1, 1, testTime, testTime))
+
+	// Not already a member.
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT role FROM user_households WHERE user_id = $1 AND household_id = $2`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}))
+
+	// Capacity check: one existing member.
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role
+		FROM user_households uh
+		JOIN users u ON u.id = uh.user_id
+		WHERE uh.household_id = $1`)).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
+			AddRow(9, "owner@example.com", "Owner", "#FF0000", true, "owner"))
+
+	// The atomic consume: exhausted → 0 rows → ErrInviteNotFound.
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
+		WHERE code = $1
+		  AND (max_uses <= 0 OR used_count < max_uses)
+		  AND (expires_at IS NULL OR expires_at > NOW())`)).
+		WithArgs(code).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	_, err = svc.JoinHousehold(context.Background(), 2, code)
+	if err != ErrInviteNotFound {
+		t.Fatalf("JoinHousehold: err = %v, want ErrInviteNotFound", err)
+	}
+	// No AddMember expectations were registered; any stray call fails here.
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations (AddMember must never run): %v", err)
+	}
+}
+
+// TestJoinHousehold_ViaOneTimeInvite_Postgres proves the happy path ordering:
+// UseInvite runs (and consumes) before AddMember on the Postgres store.
+func TestJoinHousehold_ViaOneTimeInvite_Postgres(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	svc := NewService(store, nil)
+
+	const code = "CODE123456"
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at
+		FROM invites WHERE code = $1`)).
+		WithArgs(code).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "code", "created_by", "max_uses", "used_count", "expires_at", "created_at"}).
+			AddRow(1, 1, code, 1, 0, 0, testTime, testTime))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT role FROM user_households WHERE user_id = $1 AND household_id = $2`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"role"}))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role
+		FROM user_households uh
+		JOIN users u ON u.id = uh.user_id
+		WHERE uh.household_id = $1`)).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
+			AddRow(9, "owner@example.com", "Owner", "#FF0000", true, "owner"))
+
+	// Consume the invite (1 row) BEFORE the member insert.
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
+		WHERE code = $1
+		  AND (max_uses <= 0 OR used_count < max_uses)
+		  AND (expires_at IS NULL OR expires_at > NOW())`)).
+		WithArgs(code).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_households (user_id, household_id, role) VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, household_id) DO NOTHING`)).
+		WithArgs(int64(2), int64(1), "member").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET active_household_id = $1, household_id = $1, role = $2 WHERE id = $3`)).
+		WithArgs(int64(1), "member", int64(2)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, name, COALESCE(initials, ''), invite_code, created_at FROM households WHERE id = $1`)).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "initials", "invite_code", "created_at"}).
+			AddRow(1, "Test", "", "PERMANENT1", testTime))
+
+	hh, err := svc.JoinHousehold(context.Background(), 2, code)
+	if err != nil {
+		t.Fatalf("JoinHousehold: %v", err)
+	}
+	if hh.ID != 1 {
+		t.Fatalf("joined household id = %d, want 1", hh.ID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }
