@@ -10,6 +10,9 @@ var (
 	ErrInviteExpired  = errors.New("invite has expired")
 	ErrLastOwner      = errors.New("cannot remove the last owner")
 	ErrNotAuthorized  = errors.New("not authorized")
+	// ErrInvalidInput marks request data that failed per-field validation
+	// (audit finding #10). Handlers map it to 400 with the wrapped message.
+	ErrInvalidInput = errors.New("invalid input")
 )
 
 const MaxMembersPerHousehold = 20

@@ -3,13 +3,34 @@ package log
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 )
 
 var ErrNotFound = errors.New("log entry not found")
+
+// ErrInvalidInput marks request data that failed per-field validation
+// (audit finding #10). Handlers map it to 400 with the wrapped message.
+var ErrInvalidInput = errors.New("invalid input")
+
+// Per-field input caps (audit finding #10). The server is the authority even
+// though the clients constrain these fields in the UI.
+const (
+	maxNoteRunes       = 2000
+	maxTitleRunes      = 120
+	maxSubjectRunes    = 30
+	maxIndicators      = 8
+	maxIndicatorRunes  = 30
+	maxVolumeML        = 100000
+	maxSlotHour        = 23
+	maxRating          = 50 // tenths of a star
+	maxDurationSeconds = 86400
+)
 
 type Service struct {
 	store       Store
@@ -39,7 +60,58 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
+// validateLogInput enforces per-field caps on every create and update path
+// (audit finding #10). It rejects with a clear error rather than truncating.
+func validateLogInput(title *string, note string, indicators []string, indicatorVolumes map[string]int, slotHour *int, rating *int, durationSeconds *int, subject *string) error {
+	if utf8.RuneCountInString(note) > maxNoteRunes {
+		return fmt.Errorf("%w: note must be %d characters or fewer", ErrInvalidInput, maxNoteRunes)
+	}
+	if title != nil && utf8.RuneCountInString(*title) > maxTitleRunes {
+		return fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleRunes)
+	}
+	if subject != nil {
+		if utf8.RuneCountInString(*subject) > maxSubjectRunes {
+			return fmt.Errorf("%w: subject must be %d characters or fewer", ErrInvalidInput, maxSubjectRunes)
+		}
+		if strings.ContainsAny(*subject, "\x00\n\r\t") {
+			return fmt.Errorf("%w: subject contains invalid characters", ErrInvalidInput)
+		}
+	}
+	if len(indicators) > maxIndicators {
+		return fmt.Errorf("%w: too many indicators", ErrInvalidInput)
+	}
+	for _, label := range indicators {
+		if utf8.RuneCountInString(label) == 0 || utf8.RuneCountInString(label) > maxIndicatorRunes {
+			return fmt.Errorf("%w: indicators must each be 1-%d characters", ErrInvalidInput, maxIndicatorRunes)
+		}
+	}
+	if len(indicatorVolumes) > maxIndicators {
+		return fmt.Errorf("%w: too many indicator volumes", ErrInvalidInput)
+	}
+	for label, vol := range indicatorVolumes {
+		if utf8.RuneCountInString(label) == 0 || utf8.RuneCountInString(label) > maxIndicatorRunes {
+			return fmt.Errorf("%w: indicator volume labels must each be 1-%d characters", ErrInvalidInput, maxIndicatorRunes)
+		}
+		if vol < 0 || vol > maxVolumeML {
+			return fmt.Errorf("%w: indicator volumes must be between 0 and %d", ErrInvalidInput, maxVolumeML)
+		}
+	}
+	if slotHour != nil && (*slotHour < 0 || *slotHour > maxSlotHour) {
+		return fmt.Errorf("%w: hour must be between 0 and %d", ErrInvalidInput, maxSlotHour)
+	}
+	if rating != nil && (*rating < 0 || *rating > maxRating) {
+		return fmt.Errorf("%w: rating must be between 0 and %d", ErrInvalidInput, maxRating)
+	}
+	if durationSeconds != nil && (*durationSeconds < 0 || *durationSeconds > maxDurationSeconds) {
+		return fmt.Errorf("%w: duration must be between 0 and %d seconds", ErrInvalidInput, maxDurationSeconds)
+	}
+	return nil
+}
+
 func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, durationSeconds *int, subject *string) (ChoreLog, error) {
+	if err := validateLogInput(title, note, indicators, indicatorVolumes, slotHour, rating, durationSeconds, subject); err != nil {
+		return ChoreLog{}, err
+	}
 	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating, durationSeconds, subject)
 	created, err := s.store.CreateLog(ctx, entry)
 	if err != nil {
@@ -101,6 +173,9 @@ func (s *Service) buildLog(householdID, userID, choreID int64, title *string, no
 // created is false when an existing log with the same key was returned. When
 // key is empty it behaves exactly like LogChore (always creates).
 func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, durationSeconds *int, subject *string, idempotencyKey string) (ChoreLog, bool, error) {
+	if err := validateLogInput(title, note, indicators, indicatorVolumes, slotHour, rating, durationSeconds, subject); err != nil {
+		return ChoreLog{}, false, err
+	}
 	if idempotencyKey != "" {
 		if existing, err := s.store.FindLogByIdempotencyKey(ctx, householdID, idempotencyKey); err != nil {
 			return ChoreLog{}, false, err
@@ -130,6 +205,9 @@ func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, c
 }
 
 func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int, durationSeconds *int, subject *string) error {
+	if err := validateLogInput(title, note, indicators, indicatorVolumes, slotHour, rating, durationSeconds, subject); err != nil {
+		return err
+	}
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err

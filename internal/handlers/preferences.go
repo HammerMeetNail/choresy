@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -83,6 +84,10 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if req.Timezone != nil {
 		if err := h.service.UpdateTimezone(r.Context(), user.ID, *req.Timezone); err != nil {
+			if errors.Is(err, userprefs.ErrInvalidInput) {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			writeServerError(w, "failed to update preferences", err)
 			return
 		}

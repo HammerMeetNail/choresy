@@ -182,8 +182,14 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, req.DurationSeconds, req.Subject, idemKey)
 	if err != nil {
-		// Static message: store errors (e.g. idempotency-key unique races,
-		// connection failures) must not leak pgx internals through the 409.
+		// Validation failures are the caller's fault: 400 with the clear
+		// message. Everything else gets a static 409 so store errors (e.g.
+		// idempotency-key unique races, connection failures) never leak
+		// pgx internals.
+		if errors.Is(err, log.ErrInvalidInput) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusConflict, "could not create log")
 		return
 	}
@@ -342,6 +348,10 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds, req.Subject); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
+			return
+		}
+		if errors.Is(err, log.ErrInvalidInput) {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		writeServerError(w, "failed to update log", err)

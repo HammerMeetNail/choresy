@@ -199,7 +199,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	}
 	go reminderSched.Start(ctx)
 
-	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
+	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore).WithChoreStore(choreStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore)
 	dayNoteService := daynote.NewService(dayNoteStore)

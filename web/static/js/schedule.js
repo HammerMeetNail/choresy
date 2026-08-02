@@ -527,7 +527,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     const titleSection = chore.hasRating ? `
     <div class="sheet-note-row">
       <label for="log-title" class="field-label">Title</label>
-      <input id="log-title" class="text-input" placeholder="Enter a title…" value="${titleVal}" maxlength="200">
+      <input id="log-title" class="text-input" placeholder="Enter a title…" value="${titleVal}" maxlength="120">
     </div>` : "";
 
     const ratingSection = chore.hasRating ? (() => {
@@ -546,7 +546,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     const noteSection = `
     <div class="sheet-note-row">
       <label for="log-note" class="field-label">Note (optional)</label>
-      <textarea id="log-note" class="text-input" rows="2" placeholder="Add a note…">${noteVal}</textarea>
+      <textarea id="log-note" class="text-input" rows="2" maxlength="2000" placeholder="Add a note…">${noteVal}</textarea>
     </div>`;
 
   const showWhen = opts.showWhen === true;
@@ -658,7 +658,7 @@ export function renderQuickLogSheet(chores, date) {
       <p class="sheet-hint">Tap to log instantly · Hold to add notes</p>
       <div class="sheet-note-row">
         <label for="quick-log-note" class="field-label">Note (optional)</label>
-        <textarea id="quick-log-note" class="text-input" rows="2" placeholder="Add a note…"></textarea>
+        <textarea id="quick-log-note" class="text-input" rows="2" maxlength="2000" placeholder="Add a note…"></textarea>
       </div>
       <div class="sheet-chore-list">${items}</div>
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">

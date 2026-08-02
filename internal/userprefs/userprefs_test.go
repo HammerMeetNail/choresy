@@ -470,3 +470,31 @@ func TestService_UpdateStatsSectionHiddenNilBecomesEmpty(t *testing.T) {
 		t.Fatal("StatsSectionHidden must not be nil after UpdateStatsSectionHidden(nil)")
 	}
 }
+
+// ─── Finding #10: timezone validation ────────────────────────────────────────
+
+func TestService_UpdateTimezoneRejectsUnknown(t *testing.T) {
+	store := userprefs.NewMemoryStore()
+	svc := userprefs.NewService(store)
+	ctx := context.Background()
+
+	if err := svc.UpdateTimezone(ctx, 1, "Mars/Olympus"); err == nil {
+		t.Fatal("UpdateTimezone accepted an unknown IANA zone")
+	}
+
+	// Rejecting must not persist anything.
+	prefs, err := svc.GetPreferences(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if prefs.Timezone != "" {
+		t.Errorf("Timezone = %q after rejected update, want empty", prefs.Timezone)
+	}
+
+	// Valid zones (including fixed offsets like UTC) still work.
+	for _, tz := range []string{"UTC", "America/New_York", "Asia/Tokyo", "Etc/GMT+5"} {
+		if err := svc.UpdateTimezone(ctx, 1, tz); err != nil {
+			t.Errorf("UpdateTimezone(%q): %v", tz, err)
+		}
+	}
+}

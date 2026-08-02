@@ -2,6 +2,7 @@ package household_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/HammerMeetNail/nabu/internal/household"
@@ -568,5 +569,67 @@ func TestDeleteInviteCrossHouseholdBlocked(t *testing.T) {
 	err := svc.DeleteInvite(ctx, 1, invB.ID)
 	if err != household.ErrNotAuthorized {
 		t.Fatalf("DeleteInvite cross-household: error = %v, want ErrNotAuthorized", err)
+	}
+}
+
+// ─── Finding #10: name/initials caps ─────────────────────────────────────────
+
+func TestCreateHousehold_NameTooLong(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+	_, err := svc.CreateHousehold(ctx, strings.Repeat("a", 61), "", 1)
+	if err == nil {
+		t.Fatal("CreateHousehold accepted a 61-rune name")
+	}
+}
+
+func TestCreateHousehold_InitialsTooLong(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+	_, err := svc.CreateHousehold(ctx, "My Home", strings.Repeat("a", 9), 1)
+	if err == nil {
+		t.Fatal("CreateHousehold accepted 9-rune initials")
+	}
+}
+
+func TestCreateHousehold_AtLimitAccepted(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+	hh, err := svc.CreateHousehold(ctx, strings.Repeat("a", 60), strings.Repeat("a", 8), 1)
+	if err != nil {
+		t.Fatalf("CreateHousehold rejected at-limit input: %v", err)
+	}
+	if hh.Name != strings.Repeat("a", 60) {
+		t.Errorf("Name = %q", hh.Name)
+	}
+}
+
+func TestUpdateHousehold_NameTooLong(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+	if _, err := svc.CreateHousehold(ctx, "My Home", "MH", 1); err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
+	if err := svc.UpdateHousehold(ctx, 1, strings.Repeat("a", 61), ""); err == nil {
+		t.Fatal("UpdateHousehold accepted a 61-rune name")
+	}
+	// The original name must be untouched.
+	hh, _, err := svc.GetHousehold(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetHousehold: %v", err)
+	}
+	if hh.Name != "My Home" {
+		t.Errorf("Name = %q after rejected update", hh.Name)
+	}
+}
+
+func TestUpdateHousehold_InitialsTooLong(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+	if _, err := svc.CreateHousehold(ctx, "My Home", "MH", 1); err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
+	if err := svc.UpdateHousehold(ctx, 1, "My Home", strings.Repeat("a", 9)); err == nil {
+		t.Fatal("UpdateHousehold accepted 9-rune initials")
 	}
 }
