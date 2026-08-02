@@ -40,7 +40,7 @@ test.describe('Invite link UI', () => {
     await setupWithHousehold(page);
 
     const inviteUrl = await page.locator('.invite-link-url').innerText();
-    expect(inviteUrl).toMatch(/^https?:\/\/.+\/join\?code=[A-Z0-9]{6}$/);
+    expect(inviteUrl).toMatch(/^https?:\/\/.+\/join\?code=[A-Z0-9]{10}$/);
   });
 
   test('"New tracked link" button creates invite and shows full URL in invite list', async ({ page }) => {
@@ -57,7 +57,7 @@ test.describe('Invite link UI', () => {
     // The invite list item should show the full URL (not just a bare code)
     const inviteItem = page.locator('li:has([data-action="delete-invite"])').first();
     const listItemText = await inviteItem.innerText();
-    expect(listItemText).toMatch(/https?:\/\/.+\/join\?code=[A-Z0-9]{6}/);
+    expect(listItemText).toMatch(/https?:\/\/.+\/join\?code=[A-Z0-9]{10}/);
   });
 
   test('"New tracked link" copies full URL to clipboard', async ({ page }) => {
@@ -68,6 +68,6 @@ test.describe('Invite link UI', () => {
     await page.waitForTimeout(500);
 
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    expect(clipboardText).toMatch(/^https?:\/\/.+\/join\?code=[A-Z0-9]{6}$/);
+    expect(clipboardText).toMatch(/^https?:\/\/.+\/join\?code=[A-Z0-9]{10}$/);
   });
 });
