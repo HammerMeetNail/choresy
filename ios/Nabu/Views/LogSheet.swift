@@ -346,10 +346,22 @@ struct LogSheet: View {
             selectedUserId = log.userId
             whenDate = log.completedAt
         } else {
-            selectedIndicators = chore.indicatorDefaults
+            // Echo the latest log's own indicator selection (type) so the
+            // sheet matches what the user last selected — PWA parity. Only
+            // fall back to the chore defaults when there is no prior log.
+            // Volumes are only rendered/submitted for selected indicators,
+            // so stray cached volumes for unselected types never appear.
             if let latestLog = state.latestLogs[chore.id] {
+                selectedIndicators = latestLog.indicators
                 volumeML = latestLog.volumeML
-                indicatorVolumes = latestLog.indicatorVolumes ?? [:]
+                // Only keep volumes for the types actually selected in the
+                // previous log; a cached volume for any other label must
+                // never surface when its chip is toggled on.
+                indicatorVolumes = (latestLog.indicatorVolumes ?? [:]).filter {
+                    selectedIndicators.contains($0.key)
+                }
+            } else {
+                selectedIndicators = chore.indicatorDefaults
             }
             let totalMins = chore.lastFollowUpMinutes
             followUpDays = totalMins / 1440

@@ -206,6 +206,77 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('.log-chip').nth(1)).not.toHaveClass(/log-chip--on/);
   });
 
+  test('reopening after reload echoes the previous feed type and volume', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+
+    // First log: breast only, 95 mL (formula toggled off)
+    await card.click();
+    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
+    await page.locator('.log-chip').nth(0).click(); // toggle formula off
+    await page.locator('.log-chip').nth(1).click(); // toggle breast on
+    await expect(page.locator(breastVol)).toBeVisible();
+    await page.selectOption(breastVol, '95');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Reload so the latest log drives the prefill
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+
+    // The sheet must match the previous selection in type AND volume:
+    // breast selected with 95, formula off and hidden.
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.log-chip').nth(0)).not.toHaveClass(/log-chip--on/);
+    await expect(page.locator('.log-chip').nth(1)).toHaveClass(/log-chip--on/);
+    await expect(page.locator(breastVol)).toBeVisible();
+    await expect(page.locator(breastVol)).toHaveValue('95');
+    await expect(page.locator(formulaVol)).toBeHidden();
+  });
+
+  test('stray cached volume for an unselected type is never preselected', async ({ page }) => {
+    const { feedBaby, csrf } = await setupWithChores(page);
+
+    // Simulate the polluted cache the recent-volume chip can produce: a log
+    // whose type selection is formula-only, but whose indicatorVolumes map
+    // carries a stale 150 mL entry for breast as well.
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const resp = await page.request.post('/api/logs', {
+      data: {
+        choreId: feedBaby.id,
+        note: '',
+        indicators: ['🍼 formula'],
+        indicatorVolumes: { '🍼 formula': 150, '🤱 breast': 150 },
+        date: today,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.status()).toBe(201);
+
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Formula is echoed with its volume; breast was not in the previous
+    // selection, so its stale volume must not surface.
+    await expect(page.locator(formulaVol)).toBeVisible();
+    await expect(page.locator(formulaVol)).toHaveValue('150');
+    await expect(page.locator(breastVol)).toBeHidden();
+    await expect(page.locator('.log-chip').nth(1)).not.toHaveClass(/log-chip--on/);
+
+    // Even toggling breast on must not reveal the stale 150.
+    await page.locator('.log-chip').nth(1).click();
+    await expect(page.locator(breastVol)).toBeVisible();
+    await expect(page.locator(breastVol)).toHaveValue('');
+  });
+
 
 
   test('editing an existing log uses its own volume, not the cache', async ({ page }) => {
@@ -361,10 +432,16 @@ test.describe('Feed Baby food type indicators', () => {
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
-    // Second log: only formula (default-on), breast is off and hidden
+    // Second log: the sheet echoes the previous log's type selection, so
+    // both chips are on with their cached volumes. Toggle breast off — its
+    // volume must then not leak into the saved log.
     await tapFeedBaby(page);
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await expect(page.locator(formulaVol)).toBeVisible();
+    await expect(page.locator(formulaVol)).toHaveValue('100');
+    await expect(page.locator(breastVol)).toBeVisible();
+    await expect(page.locator(breastVol)).toHaveValue('50');
+    await page.locator('.log-chip').nth(1).click(); // toggle breast off
     await expect(page.locator(breastVol)).toBeHidden();
     // Only set formula volume; do not touch breast at all
     await page.selectOption(formulaVol, '75');
