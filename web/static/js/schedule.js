@@ -407,13 +407,18 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml") {
  * @param {number}      currentUserId  Current auth user's ID
  * @param {number|null} cachedVolumeML Volume from previous log or null (DEPRECATED; use cachedIndicatorVolumes)
  * @param {object}      cachedIndicatorVolumes Map of indicator label -> volume mL (from latest log)
- * @param {object}      opts   { showWhen: bool, slotHour: number|null }
+ * @param {object}      opts   { showWhen: bool, slotHour: number|null, cachedIndicators: string[]|null }
  */
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const title = `${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const titleVal = log?.title ? escapeHTML(log.title) : "";
-  const activeIndicators = new Set(log?.indicators || (chore.indicatorDefaults || []));
+  // For a new log, the initial selection echoes the latest log's own
+  // indicators (type), falling back to the chore's defaults when there is no
+  // prior log — so the sheet matches what the user last selected, not just
+  // its volume. Editing an existing log always uses the log's own values.
+  const prevIndicators = (log ? null : (opts.cachedIndicators || null));
+  const activeIndicators = new Set(log?.indicators || prevIndicators || (chore.indicatorDefaults || []));
   const logIndicatorVolumes = log?.indicatorVolumes || {};
   const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
   const volumeUnit = opts.volumeUnit === "oz" ? "oz" : "ml";
@@ -423,10 +428,14 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     if (labels.length === 0) return "";
 
     if (chore.hasVolumeML) {
+      const prevIndicatorSet = new Set(prevIndicators || []);
       const rows = labels.map(label => {
         const on = activeIndicators.has(label);
+        // Only prefill a volume for a type the user actually selected in the
+        // previous log; a cached volume for any other label (e.g. from an
+        // older log or a recent-chip fill) must never be shown.
         const volume = log ? (logIndicatorVolumes[label] ?? null)
-          : ((cachedIndicatorVolumes?.[label]) ?? null);
+          : (prevIndicatorSet.has(label) ? ((cachedIndicatorVolumes?.[label]) ?? null) : null);
         return renderIndicatorVolumeRow(label, on, volume, volumeUnit);
       }).join("");
       return `<div class="sheet-indicator-row">

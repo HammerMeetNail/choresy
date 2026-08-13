@@ -731,6 +731,56 @@ describe("Log sheet: recent-value chips (Phase 5.3)", () => {
   });
 });
 
+describe("Log sheet: prefill from latest log (type + volume)", () => {
+  const feedChore = {
+    id: 1, icon: "🍼", name: "Feed Baby", color: "#000", hasVolumeML: true,
+    indicatorLabels: ["🍼 formula", "🤱 breast"],
+    indicatorDefaults: ["🍼 formula"],
+  };
+
+  it("echoes the previous log's type selection when cachedIndicators is provided", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(feedChore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml",
+      cachedIndicators: ["🤱 breast"],
+      cachedIndicatorVolumes: { "🤱 breast": 95 },
+    });
+    // Breast chip on with its volume; formula off.
+    assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🤱 breast"/);
+    assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
+    const breastSel = html.match(/data-indicator="🤱 breast"[\s\S]*?<\/select>/)?.[0] || "";
+    assert.ok(breastSel.includes('<option value="95" selected>95 mL</option>'), "breast volume preselected");
+  });
+
+  it("does not prefill a volume for a type absent from the previous selection", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(feedChore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml",
+      cachedIndicators: ["🍼 formula"],
+      // Polluted cache: a stale breast volume the user never selected.
+      cachedIndicatorVolumes: { "🍼 formula": 150, "🤱 breast": 150 },
+    });
+    const breastSel = html.match(/data-indicator="🤱 breast"[\s\S]*?<\/select>/)?.[0] || "";
+    assert.ok(!breastSel.includes('value="150" selected'), "breast stale volume must not be preselected");
+    assert.match(breastSel, /<option value="" selected>--<\/option>/);
+    // Breast chip must be off.
+    assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
+  });
+
+  it("falls back to chore defaults when there is no previous log", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(feedChore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml",
+      cachedIndicators: null,
+      cachedIndicatorVolumes: null,
+    });
+    assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🍼 formula"/);
+    assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
+    const formulaSel = html.match(/data-indicator="🍼 formula"[\s\S]*?<\/select>/)?.[0] || "";
+    assert.ok(formulaSel.includes('<option value="" selected>--</option>'), "no volume when nothing cached");
+  });
+});
+
 describe("Stats: user-defined widgets (Phase 4)", () => {
   const baseState = () => ({
     chores: [{ id: 12, name: "Feed", icon: "🍼", color: "#000", metricType: "amount", metricUnit: "mL" }],
