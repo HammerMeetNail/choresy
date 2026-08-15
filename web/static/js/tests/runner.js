@@ -779,6 +779,26 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     const formulaSel = html.match(/data-indicator="🍼 formula"[\s\S]*?<\/select>/)?.[0] || "";
     assert.ok(formulaSel.includes('<option value="" selected>--</option>'), "no volume when nothing cached");
   });
+
+  it("never echoes the previous selection for plain chip chores (e.g. Laundry)", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const laundryChore = {
+      id: 2, icon: "👕", name: "Laundry", color: "#000", hasVolumeML: false,
+      indicatorLabels: ["🧺 washed", "👖 folded"],
+      indicatorDefaults: ["🧺 washed"],
+    };
+    const html = renderLogSheet(laundryChore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml",
+      // A prior log selected the non-default chip; plain chip chores must
+      // NOT echo it — the sheet always starts from the chore's defaults.
+      cachedIndicators: ["👖 folded"],
+      cachedIndicatorVolumes: null,
+    });
+    assert.match(html, /data-label="🧺 washed"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🧺 washed"/);
+    assert.match(html, /data-label="👖 folded"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="👖 folded"/);
+    // And no per-indicator volume selects render for non-volume chores.
+    assert.ok(!html.includes("indicator-volume-select"), "no volume pickers for chip-only chore");
+  });
 });
 
 describe("Stats: user-defined widgets (Phase 4)", () => {

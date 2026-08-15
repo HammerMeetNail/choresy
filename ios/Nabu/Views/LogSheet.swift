@@ -348,10 +348,12 @@ struct LogSheet: View {
         } else {
             // Echo the latest log's own indicator selection (type) so the
             // sheet matches what the user last selected — PWA parity. Only
-            // fall back to the chore defaults when there is no prior log.
-            // Volumes are only rendered/submitted for selected indicators,
-            // so stray cached volumes for unselected types never appear.
-            if let latestLog = state.latestLogs[chore.id] {
+            // volume-metric indicator chores (Feed Baby pattern) get this;
+            // plain chip chores (e.g. Laundry) always start from their chore
+            // defaults. Volumes are only rendered/submitted for selected
+            // indicators, so stray cached volumes for unselected types never
+            // appear.
+            if chore.hasVolumeML && hasIndicators, let latestLog = state.latestLogs[chore.id] {
                 selectedIndicators = latestLog.indicators
                 volumeML = latestLog.volumeML
                 // Only keep volumes for the types actually selected in the
