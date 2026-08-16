@@ -51,6 +51,15 @@ final class ActivityStore {
         try data.write(to: url, options: .atomic)
         return url
     }
+
+    /// Downloads the administrator-only household data export and writes it to
+    /// a shareable temporary file.
+    func exportHouseholdCSV() async throws -> URL {
+        let data = try await api.getData("/api/household/data")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("nabu-household-data.csv")
+        try data.write(to: url, options: .atomic)
+        return url
+    }
 }
 
 // MARK: - Date helpers

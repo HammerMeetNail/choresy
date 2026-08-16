@@ -796,6 +796,15 @@ function renderSettingsView() {
     </div>
   </div>`;
 
+  const householdRole = state.members?.find(m => m.userId === user?.id)?.role || user?.role;
+  const canExportHousehold = !!hh && (householdRole === "owner" || householdRole === "admin");
+  const exportCard = canExportHousehold ? `<div class="card mt-3" data-testid="household-export-section">
+    <h3>Export Data</h3>
+    <p class="text-secondary">Download your household's chores, activity, schedules, notes, and participants as a CSV.</p>
+    <a class="btn btn-secondary btn-sm" href="/api/household/data" download="nabu-household-data.csv">Export all data as CSV</a>
+    <p class="text-secondary mt-2" style="font-size:12px">Invite codes and account credentials are never included.</p>
+  </div>` : "";
+
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
     <div class="card mt-3">
@@ -816,9 +825,9 @@ function renderSettingsView() {
     </div>` : "";
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
 }
 
 async function loadStatsData() {

@@ -207,6 +207,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	reminderSnoozeHandler := handlers.NewReminderSnoozeHandler(scheduleStore, choreStore, userPrefsStore)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
+	exportHandler := handlers.NewExportHandler(householdService, householdStore, choreStore, logService, scheduleStore, dayNoteService)
 
 	hasTrustedProxy := strings.TrimSpace(cfg.TrustedProxyCIDRs) != ""
 
@@ -287,6 +288,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+	mux.HandleFunc("/api/household/data", method(http.MethodGet, middleware.RequireAuth(exportHandler.Data)))
 	mux.HandleFunc("/api/household/invites", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
