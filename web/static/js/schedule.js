@@ -414,10 +414,13 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const titleVal = log?.title ? escapeHTML(log.title) : "";
   // For a new log, the initial selection echoes the latest log's own
-  // indicators (type), falling back to the chore's defaults when there is no
-  // prior log — so the sheet matches what the user last selected, not just
-  // its volume. Editing an existing log always uses the log's own values.
-  const prevIndicators = (log ? null : (opts.cachedIndicators || null));
+  // indicators (type) — but only for volume-metric indicator chores like
+  // Feed Baby, where the type drives a per-indicator volume. Plain chip
+  // chores (e.g. Laundry) always start from their chore defaults; echoing
+  // there is scope creep. Falls back to the chore's defaults when there is
+  // no prior log. Editing an existing log always uses the log's own values.
+  const volumeTypeChore = chore.hasVolumeML && (chore.indicatorLabels || []).length > 0;
+  const prevIndicators = (log ? null : (volumeTypeChore ? (opts.cachedIndicators || null) : null));
   const activeIndicators = new Set(log?.indicators || prevIndicators || (chore.indicatorDefaults || []));
   const logIndicatorVolumes = log?.indicatorVolumes || {};
   const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
