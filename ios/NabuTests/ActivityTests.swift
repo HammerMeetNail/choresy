@@ -1,4 +1,5 @@
 import XCTest
+import Foundation
 @testable import Nabu
 
 final class ActivityTests: XCTestCase {
@@ -131,6 +132,30 @@ final class ActivityTests: XCTestCase {
         let logs = [makeLog(id: 1, choreId: 1), makeLog(id: 2, choreId: 2)]
         let result = filterLogsByChores(logs, selected: [99])
         XCTAssertTrue(result.isEmpty)
+    }
+
+    // MARK: - Household CSV export
+
+    @MainActor
+    func testHouseholdExportDownloadsCSVFromAdminEndpoint() async throws {
+        var requestedPath: String?
+        var api = APIClient(baseURL: URL(string: "http://localhost:8080")!)
+        api.mockHandler = { request in
+            requestedPath = request.url?.path
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/csv; charset=utf-8"]
+            )!
+            return (Data("record_type,id\nhousehold,1\n".utf8), response)
+        }
+
+        let url = try await ActivityStore(api: api).exportHouseholdCSV()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        XCTAssertEqual(requestedPath, "/api/household/data")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "record_type,id\nhousehold,1\n")
     }
 }
 

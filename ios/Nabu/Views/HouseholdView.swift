@@ -17,6 +17,11 @@ struct HouseholdView: View {
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
 
+    private var canExportHousehold: Bool {
+        let role = state.members.first(where: { $0.userId == state.user?.id })?.role ?? state.user?.role
+        return role == "owner" || role == "admin"
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -211,6 +216,27 @@ struct HouseholdView: View {
                     Text("Volume unit")
                 } footer: {
                     Text("How feed amounts are shown and entered. Stored values don't change.")
+                }
+
+                if canExportHousehold {
+                    Section {
+                        Button {
+                            Task { await exportHouseholdCSV() }
+                        } label: {
+                            HStack {
+                                Label("Export all data as CSV", systemImage: "square.and.arrow.up")
+                                if isExporting {
+                                    Spacer()
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(isExporting)
+                    } header: {
+                        Text("Export")
+                    } footer: {
+                        Text("Includes household data, chores, activity, schedules, notes, and members. Invite codes and account credentials are never included.")
+                    }
                 }
 
                 // Data export (same all-history window as the PWA's link)
@@ -417,6 +443,15 @@ struct HouseholdView: View {
         isExporting = true
         let store = ActivityStore(api: environment.apiClient)
         if let url = try? await store.exportLogsCSV() {
+            exportFile = ExportFile(url: url)
+        }
+        isExporting = false
+    }
+
+    private func exportHouseholdCSV() async {
+        isExporting = true
+        let store = ActivityStore(api: environment.apiClient)
+        if let url = try? await store.exportHouseholdCSV() {
             exportFile = ExportFile(url: url)
         }
         isExporting = false

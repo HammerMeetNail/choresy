@@ -108,6 +108,20 @@ func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []
 	return hh, members, nil
 }
 
+// GetAdminHouseholdID returns the authenticated user's active household when
+// they have permission to export household data. The membership lookup is
+// intentional: the session's cached role is not an authorization boundary.
+func (s *Service) GetAdminHouseholdID(ctx context.Context, userID int64) (int64, error) {
+	hhID, role, err := s.store.GetMembership(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	if role != RoleOwner && role != RoleAdmin {
+		return 0, ErrNotAuthorized
+	}
+	return hhID, nil
+}
+
 func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name, initials string) error {
 	if err := validateNameInitials(name, initials); err != nil {
 		return err

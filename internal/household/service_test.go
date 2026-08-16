@@ -102,6 +102,30 @@ func TestGetHousehold_Basic(t *testing.T) {
 	}
 }
 
+func TestGetAdminHouseholdID_Roles(t *testing.T) {
+	svc, store, _ := newSvc()
+	ctx := context.Background()
+	hh, err := svc.CreateHousehold(ctx, "Export Home", "", 1)
+	if err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
+	if got, err := svc.GetAdminHouseholdID(ctx, 1); err != nil || got != hh.ID {
+		t.Fatalf("owner authorization = (%d, %v), want household %d", got, err, hh.ID)
+	}
+	if err := store.AddMember(ctx, hh.ID, 2, household.RoleAdmin); err != nil {
+		t.Fatalf("AddMember admin: %v", err)
+	}
+	if got, err := svc.GetAdminHouseholdID(ctx, 2); err != nil || got != hh.ID {
+		t.Fatalf("admin authorization = (%d, %v), want household %d", got, err, hh.ID)
+	}
+	if err := store.AddMember(ctx, hh.ID, 3, household.RoleMember); err != nil {
+		t.Fatalf("AddMember member: %v", err)
+	}
+	if _, err := svc.GetAdminHouseholdID(ctx, 3); err != household.ErrNotAuthorized {
+		t.Fatalf("member authorization error = %v, want ErrNotAuthorized", err)
+	}
+}
+
 func TestGetHousehold_NotMember(t *testing.T) {
 	svc, _, _ := newSvc()
 	_, _, err := svc.GetHousehold(context.Background(), 999)
