@@ -60,4 +60,30 @@ final class RecentVolumesTests: XCTestCase {
     func testEmptyState() {
         XCTAssertEqual(recentVolumes(forChore: 1, latest: nil, sources: []), [])
     }
+
+    func testApplyingRecentVolumeOnlyUpdatesSelectedIndicator() {
+        let selection = applyRecentVolumeSelection(
+            150,
+            hasIndicators: true,
+            selectedIndicators: ["🍼 formula"],
+            indicatorVolumes: [:],
+            volumeML: nil
+        )
+
+        XCTAssertEqual(selection.indicatorVolumes, ["🍼 formula": 150])
+        XCTAssertNil(selection.volumeML)
+    }
+
+    func testApplyingRecentVolumeFillsPlainVolumeForIndicatorFreeChore() {
+        let selection = applyRecentVolumeSelection(
+            150,
+            hasIndicators: false,
+            selectedIndicators: [],
+            indicatorVolumes: [:],
+            volumeML: nil
+        )
+
+        XCTAssertEqual(selection.volumeML, 150)
+        XCTAssertTrue(selection.indicatorVolumes.isEmpty)
+    }
 }

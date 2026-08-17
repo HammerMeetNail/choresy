@@ -280,20 +280,18 @@ struct LogSheet: View {
         }
     }
 
-    /// Fills the volume input(s) with a recent amount: the plain picker for
-    /// volume-only chores, and every per-indicator picker (turning the
-    /// indicator on so the value is actually submitted) — PWA
-    /// `set-recent-volume` behavior.
+    /// Fills the volume input(s) with a recent amount without changing the
+    /// selected indicator types — PWA `set-recent-volume` behavior.
     private func applyRecentVolume(_ ml: Int) {
-        if !hasIndicators {
-            volumeML = ml
-        }
-        for label in chore.indicatorLabels {
-            indicatorVolumes[label] = ml
-            if !selectedIndicators.contains(label) {
-                selectedIndicators.append(label)
-            }
-        }
+        let selection = applyRecentVolumeSelection(
+            ml,
+            hasIndicators: hasIndicators,
+            selectedIndicators: selectedIndicators,
+            indicatorVolumes: indicatorVolumes,
+            volumeML: volumeML
+        )
+        indicatorVolumes = selection.indicatorVolumes
+        volumeML = selection.volumeML
     }
 
     private func startTimer() {
