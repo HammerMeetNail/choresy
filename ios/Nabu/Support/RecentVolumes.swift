@@ -33,3 +33,23 @@ func recentVolumes(forChore choreId: Int, latest: ChoreLog?, sources: [ChoreLog]
     }
     return out
 }
+
+/// Applies a recent amount without changing the selected indicator types.
+func applyRecentVolumeSelection(
+    _ ml: Int,
+    hasIndicators: Bool,
+    selectedIndicators: [String],
+    indicatorVolumes: [String: Int],
+    volumeML: Int?
+) -> (indicatorVolumes: [String: Int], volumeML: Int?) {
+    var updatedIndicatorVolumes = indicatorVolumes
+    var updatedVolumeML = volumeML
+    if !hasIndicators {
+        updatedVolumeML = ml
+    } else {
+        for label in selectedIndicators {
+            updatedIndicatorVolumes[label] = ml
+        }
+    }
+    return (updatedIndicatorVolumes, updatedVolumeML)
+}

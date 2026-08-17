@@ -236,6 +236,38 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator(formulaVol)).toBeHidden();
   });
 
+  test('recent volume keeps the previous Feed Baby type selected', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+
+    // Log formula only, then reload so the latest log drives the new sheet.
+    await card.click();
+    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
+    await page.selectOption(formulaVol, '150');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.volume-recent-chip').filter({ hasText: '150' })).toBeVisible();
+
+    // Choosing the recent amount must not turn breast on or assign it 150 mL.
+    await page.locator('.volume-recent-chip').filter({ hasText: '150' }).click();
+    await expect(page.locator(formulaVol)).toHaveValue('150');
+    await expect(page.locator(breastVol)).toBeHidden();
+    await expect(page.locator('.log-chip').nth(1)).not.toHaveClass(/log-chip--on/);
+
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+    const { latestLogs } = await (await page.request.get('/api/logs/latest-per-chore')).json();
+    const log = latestLogs[feedBaby.id];
+    expect(log.indicators).toEqual(['🍼 formula']);
+    expect(log.indicatorVolumes).toEqual({ '🍼 formula': 150 });
+  });
+
   test('stray cached volume for an unselected type is never preselected', async ({ page }) => {
     const { feedBaby, csrf } = await setupWithChores(page);
 

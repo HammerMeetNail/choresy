@@ -2679,12 +2679,12 @@ export async function init() {
         // Fill the plain volume input if present.
         const plain = document.querySelector("#log-volume");
         if (plain) plain.value = String(ml);
-        // Fill each per-indicator volume select (revealing it and turning its
-        // indicator chip on so the value is actually submitted).
+        // Fill only per-indicator volume selects whose type is already on.
+        // Recent amounts must not change the user's type selection.
         document.querySelectorAll(".indicator-row").forEach(row => {
           const select = row.querySelector(".indicator-volume-select");
           const chip = row.querySelector("[data-action='toggle-indicator']");
-          if (!select) return;
+          if (!select || !chip || chip.getAttribute("aria-pressed") !== "true") return;
           const hasOption = [...select.options].some(o => o.value === String(ml));
           if (!hasOption) {
             const opt = document.createElement("option");
@@ -2694,10 +2694,6 @@ export async function init() {
           }
           select.value = String(ml);
           select.style.display = "";
-          if (chip && chip.getAttribute("aria-pressed") !== "true") {
-            chip.classList.add("log-chip--on");
-            chip.setAttribute("aria-pressed", "true");
-          }
         });
         actionEl.classList.add("volume-recent-chip--active");
         break;
