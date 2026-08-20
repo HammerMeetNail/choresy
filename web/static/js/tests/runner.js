@@ -614,6 +614,21 @@ describe("Offline pending log badge (Phase 2.1)", () => {
   });
 });
 
+describe("Historical household members", () => {
+  it("renders retained activity with a removed member's name", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    const state = {
+      chores: [{ id: 1, name: "Feed", icon: "🍼", color: "#000" }],
+      members: [],
+      historicalMembers: [{ userId: 17, displayName: "Former Member", avatarColor: "#123456" }],
+      historyLogs: [{ id: 1, choreId: 1, userId: 17, note: "", indicators: [], completedAt: "2026-07-02T10:00:00Z" }],
+    };
+    const html = renderHistoryView(state);
+    assert.ok(html.includes("Former Member"));
+    assert.ok(!html.includes("Someone"));
+  });
+});
+
 describe("Subject tagging (Phase 5.5)", () => {
   it("chore sheet renders a subjects field with existing tags", async () => {
     const { renderChoreSheet } = await import("../chores.js");
@@ -981,4 +996,3 @@ describe("Utils: volume units", () => {
     }
   });
 });
-

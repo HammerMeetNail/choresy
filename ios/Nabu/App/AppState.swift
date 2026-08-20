@@ -7,6 +7,7 @@ final class AppState: ObservableObject {
     @Published var userHouseholds: [HouseholdWithRole] = []
     @Published var activeHouseholdId: Int?
     @Published var members: [Member] = []
+    @Published var historicalMembers: [HistoricalMember] = []
     @Published var invites: [Invite] = []
     @Published var chores: [Chore] = []
     @Published var todayLogs: [ChoreLog] = []
@@ -51,12 +52,20 @@ final class AppState: ObservableObject {
     @Published var statsSectionHidden: [String] = []
     @Published var statsWidgets: [StatsWidget] = []
 
+    var authorMembers: [Member] {
+        members + historicalMembers.map {
+            Member(userId: $0.userId, email: "", displayName: $0.displayName,
+                   avatarColor: $0.avatarColor, emailVerified: false, role: "")
+        }
+    }
+
     func reset() {
         user = nil
         household = nil
         userHouseholds = []
         activeHouseholdId = nil
         members = []
+        historicalMembers = []
         invites = []
         chores = []
         todayLogs = []
@@ -92,6 +101,7 @@ final class AppState: ObservableObject {
         household = nil
         activeHouseholdId = nil
         members = []
+        historicalMembers = []
         invites = []
         chores = []
         todayLogs = []

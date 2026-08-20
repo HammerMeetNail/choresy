@@ -18,6 +18,7 @@ final class HouseholdDataLoader {
             )
             state.household = data.household
             state.members = data.members
+            state.historicalMembers = data.historicalMembers
             state.invites = data.invites
             state.userHouseholds = listData.households
             state.activeHouseholdId = data.household.id
@@ -31,6 +32,7 @@ final class HouseholdDataLoader {
         let resp: HouseholdResponse = try await api.post("/api/household", body: body)
         state.household = resp.household
         state.members = resp.members
+        state.historicalMembers = resp.historicalMembers
         state.invites = resp.invites
         state.activeHouseholdId = resp.household.id
     }
@@ -40,6 +42,7 @@ final class HouseholdDataLoader {
         let resp: HouseholdResponse = try await api.post("/api/household/join", body: body)
         state.household = resp.household
         state.members = resp.members
+        state.historicalMembers = resp.historicalMembers
         state.invites = resp.invites
         state.activeHouseholdId = resp.household.id
     }

@@ -209,4 +209,49 @@ test.describe('Settings - Remove Member', () => {
     await memberCtx.close();
     await ownerPage.context().close();
   });
+
+  test('removed member remains named in historical stats', async ({ browser }) => {
+    const ownerCtx = await browser.newContext();
+    const ownerPage = await ownerCtx.newPage();
+    const { csrf: ownerCsrf } = await setupOwnerWithHousehold(ownerPage);
+
+    const inviteRes = await ownerPage.request.post('/api/household/invites', {
+      headers: { 'X-CSRF-Token': ownerCsrf },
+    });
+    const { invite } = await inviteRes.json();
+    const { page: memberPage, context: memberCtx } = await joinAsSecondUser(browser, invite.code);
+    const memberCsrf = await getCSRF(memberPage);
+
+    const choresRes = await memberPage.request.get('/api/chores');
+    const { chores } = await choresRes.json();
+    const logRes = await memberPage.request.post('/api/logs', {
+      data: {
+        choreId: chores[0].id,
+        note: '',
+        indicators: [],
+        date: new Date().toISOString().slice(0, 10),
+        completedAt: new Date().toISOString(),
+      },
+      headers: { 'X-CSRF-Token': memberCsrf },
+    });
+    expect(logRes.ok()).toBe(true);
+
+    const householdRes = await ownerPage.request.get('/api/household');
+    const { members } = await householdRes.json();
+    const ownerId = members.find(m => m.role === 'owner').userId;
+    const memberId = members.find(m => m.userId !== ownerId).userId;
+    const removedName = members.find(m => m.userId === memberId).displayName;
+    const deleteRes = await ownerPage.request.delete(`/api/household/members/${memberId}`, {
+      headers: { 'X-CSRF-Token': ownerCsrf },
+    });
+    expect(deleteRes.ok()).toBe(true);
+
+    await ownerPage.goto('/stats');
+    const leaderboard = ownerPage.locator('.card', { has: ownerPage.locator('h3:text("Leaderboard")') });
+    await expect(leaderboard).toContainText(removedName, { timeout: 10000 });
+    await expect(leaderboard).not.toContainText(`User ${memberId}`);
+
+    await memberCtx.close();
+    await ownerCtx.close();
+  });
 });

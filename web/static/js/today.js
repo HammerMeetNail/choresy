@@ -242,7 +242,7 @@ export function renderHistoryView(state) {
       ${filterFab}
     </div>`;
   }
-  const members = state.members || [];
+  const members = [...(state.members || []), ...(state.historicalMembers || [])];
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
   const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
@@ -442,4 +442,3 @@ function fmtChunkRange(start, end) {
   const opts = { month: 'short', day: 'numeric' };
   return `${start.toLocaleDateString(undefined, opts)} - ${end.toLocaleDateString(undefined, opts)}`;
 }
-

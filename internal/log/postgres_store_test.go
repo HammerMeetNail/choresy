@@ -113,6 +113,29 @@ func TestPostgresLogStore_ListLogs(t *testing.T) {
 	}
 }
 
+func TestPostgresLogStore_ListLogUserIDs(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT DISTINCT user_id FROM chore_logs
+		WHERE household_id = $1 AND user_id IS NOT NULL
+		ORDER BY user_id`)).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(2).AddRow(3))
+
+	ids, err := store.ListLogUserIDs(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListLogUserIDs: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != 2 || ids[1] != 3 {
+		t.Fatalf("ids = %v, want [2 3]", ids)
+	}
+}
+
 func TestPostgresLogStore_LatestPerChore_TiebreakerInOrderBy(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

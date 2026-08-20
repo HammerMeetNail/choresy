@@ -72,7 +72,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Join by invite code | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/join` | Built | |
 | Invite management | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/invites`, `/api/household/invites/{id}` | Built | |
 | Member roles | `household.js`, `household-roles.spec.js` | `Views/HouseholdView.swift` | `/api/household/members/{userId}`, `/api/household/transfer` | Built | |
-| Remove member | `household.js`, `settings-remove-member.spec.js` | `Views/HouseholdView.swift` | `/api/household/members/{userId}` | Built | |
+| Remove member | `household.js`, `settings-remove-member.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/household/members/{userId}` | Built | Removed members remain excluded from active member controls while their retained-log display name and avatar are returned as historical author metadata for Activity and Stats |
 | Leave household | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household/leave` | Built | P6 fixed an iOS parity gap: the PWA's are-you-sure confirm before leaving now exists on iOS too (confirmation dialog + warning haptic) |
 | Multi-household switching | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/households`, `/api/households/{id}/activate` | Built | |
 | Join notifications | `notifications.js`, `household-join-notify.spec.js` | `Views/NotificationsView.swift`, `NotificationTests.swift` | `/api/notifications` | Built | |

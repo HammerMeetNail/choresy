@@ -116,6 +116,24 @@ func (s *MemoryStore) ListLogsRange(_ context.Context, householdID int64, start,
 	return result, nil
 }
 
+func (s *MemoryStore) ListLogUserIDs(_ context.Context, householdID int64) ([]int64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := map[int64]struct{}{}
+	for _, l := range s.logs {
+		if l.HouseholdID == householdID && l.UserID != 0 {
+			ids[l.UserID] = struct{}{}
+		}
+	}
+	result := make([]int64, 0, len(ids))
+	for id := range ids {
+		result = append(result, id)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result, nil
+}
+
 func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

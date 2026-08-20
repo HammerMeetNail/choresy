@@ -39,6 +39,11 @@ func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "no household found")
 		return
 	}
+	historicalMembers, err := h.service.GetHistoricalMembers(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load household")
+		return
+	}
 
 	invites, _ := h.service.GetInvites(r.Context(), user.ID)
 	if invites == nil {
@@ -46,9 +51,10 @@ func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"household": hh,
-		"members":   members,
-		"invites":   invites,
+		"household":         hh,
+		"members":           members,
+		"historicalMembers": historicalMembers,
+		"invites":           invites,
 	})
 }
 

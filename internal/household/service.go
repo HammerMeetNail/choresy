@@ -7,12 +7,18 @@ import (
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	chorelog "github.com/HammerMeetNail/nabu/internal/log"
 )
 
 type Service struct {
 	store       Store
 	authStore   AuthStore
 	auditLogger audit.Logger
+	logStore    chorelog.Store
+	userStore   interface {
+		GetUserByID(context.Context, int64) (auth.User, error)
+	}
 }
 
 type AuthStore interface {
@@ -56,6 +62,15 @@ func (s *Service) SetAuditLogger(logger audit.Logger) {
 	if logger != nil {
 		s.auditLogger = logger
 	}
+}
+
+// WithHistoricalMembers lets household responses identify the authors of
+// retained logs after their memberships have ended.
+func (s *Service) WithHistoricalMembers(logStore chorelog.Store, userStore interface {
+	GetUserByID(context.Context, int64) (auth.User, error)
+}) {
+	s.logStore = logStore
+	s.userStore = userStore
 }
 
 // logAudit records a household event, merging the actor from ctx when the
@@ -106,6 +121,44 @@ func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []
 		return hh, nil, err
 	}
 	return hh, members, nil
+}
+
+func (s *Service) GetHistoricalMembers(ctx context.Context, userID int64) ([]HistoricalMember, error) {
+	if s.logStore == nil || s.userStore == nil {
+		return []HistoricalMember{}, nil
+	}
+	hhID, _, err := s.store.GetMembership(ctx, userID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	members, err := s.store.GetMembers(ctx, hhID)
+	if err != nil {
+		return nil, err
+	}
+	active := make(map[int64]struct{}, len(members))
+	for _, member := range members {
+		active[member.UserID] = struct{}{}
+	}
+	userIDs, err := s.logStore.ListLogUserIDs(ctx, hhID)
+	if err != nil {
+		return nil, err
+	}
+	historical := make([]HistoricalMember, 0, len(userIDs))
+	for _, id := range userIDs {
+		if _, ok := active[id]; ok {
+			continue
+		}
+		user, err := s.userStore.GetUserByID(ctx, id)
+		if err != nil {
+			continue // The account was deleted; its profile must remain private.
+		}
+		historical = append(historical, HistoricalMember{
+			UserID:      user.ID,
+			DisplayName: user.DisplayName,
+			AvatarColor: user.AvatarColor,
+		})
+	}
+	return historical, nil
 }
 
 // GetAdminHouseholdID returns the authenticated user's active household when
