@@ -49,9 +49,20 @@ curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: BYPASS
 
-# Confirm correct version in the index page
-curl -s https://nabu-app.com/ | grep 'app.js'
+# Confirm correct version in the app shell — anonymous GET / now serves the
+# marketing page, so use a SPA route like /login for the shell
+curl -s https://nabu-app.com/login | grep 'app.js'
 # Expected: src="/static/js/app.js?v=0.1.X"
+
+# Confirm the anonymous root serves the server-rendered marketing page with a
+# canonical URL pointing at the root
+curl -s https://nabu-app.com/ | grep 'rel="canonical"'
+# Expected: <link rel="canonical" href="https://nabu-app.com/">
+
+# HTML cache headers must also be no-store / BYPASS (like the JS files)
+curl -sI https://nabu-app.com/ | grep -i cache
+# Expected: cache-control: no-store
+#           cf-cache-status: BYPASS
 ```
 
 ### Verify per-IP rate limiting (after the trusted-proxy deploy, once only)

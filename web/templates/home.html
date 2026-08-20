@@ -11,7 +11,8 @@
     <meta property="og:title" content="Nabu — Household activity tracking, made simple">
     <meta property="og:description" content="A free, ad-free PWA for tracking household chores, feeds, meds, and routines together.">
     <meta property="og:image" content="{{.BaseURL}}/static/images/og-image.png">
-    <meta property="og:url" content="{{.BaseURL}}/home">
+    <meta property="og:url" content="{{.BaseURL}}/">
+    <link rel="canonical" href="{{.BaseURL}}/">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Nabu — Household activity tracking, made simple">
     <meta name="twitter:description" content="A free, ad-free PWA for tracking household chores, feeds, meds, and routines together.">
@@ -26,8 +27,8 @@
   <body>
     <header class="hm-nav">
       <div class="hm-nav-inner">
-        <a href="/home" class="hm-logo">Nabu</a>
-        <a href="/" class="btn btn-primary hm-nav-cta">Open Nabu</a>
+        <a href="/" class="hm-logo">Nabu</a>
+        <a href="/login" class="btn btn-primary hm-nav-cta">Open Nabu</a>
       </div>
     </header>
 
@@ -40,7 +41,7 @@
             what's next, and how the whole household is doing — from any phone.
           </p>
           <div class="hm-hero-ctas">
-            <a href="/" class="btn btn-primary btn-lg">Open Nabu — it's free</a>
+            <a href="/login" class="btn btn-primary btn-lg">Open Nabu — it's free</a>
             <a href="#screenshots" class="btn btn-ghost btn-lg">See it in action</a>
           </div>
           <ul class="hm-badges">
@@ -107,17 +108,16 @@
       </section>
 
       <section class="hm-privacy">
-        <h2 class="hm-section-title">Free, and built to stay that way</h2>
+        <h2 class="hm-section-title">Free at its core</h2>
         <p class="hm-privacy-copy">
-          Nabu doesn't have ads, third-party analytics, or tracking SDKs, and your
-          household's data is never sold or used to train anything. It's free
-          because tracking who fed the cat shouldn't come with a subscription.
+          Nabu doesn't run ads or third-party analytics, and tracking who fed the
+          baby or the cat will always be free.
         </p>
       </section>
 
       <section class="hm-cta">
         <h2>Ready to get your household in sync?</h2>
-        <a href="/" class="btn btn-primary btn-lg">Create your household — it's free</a>
+        <a href="/login" class="btn btn-primary btn-lg">Create your household — it's free</a>
       </section>
     </main>
 

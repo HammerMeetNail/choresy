@@ -35,7 +35,7 @@ test("magic link creates new user who has never registered", async ({ browser })
 
   const email = `e2e-new-${Date.now()}@test.local`;
 
-  await page.goto(BASE);
+  await page.goto(`${BASE}/login`);
   await waitForAppReady(page);
 
   // Request magic link for unregistered email
@@ -75,7 +75,7 @@ test("existing user can request and use magic link", async ({ browser }) => {
 
   // Register via API — get CSRF token first from a page visit.
   const csrfPage = await context.newPage();
-  await csrfPage.goto(BASE);
+  await csrfPage.goto(`${BASE}/login`);
   await waitForAppReady(csrfPage);
   const csrfToken = (await context.cookies()).find(c => c.name === "nabu_csrf")?.value || "";
   await csrfPage.close();
@@ -90,7 +90,7 @@ test("existing user can request and use magic link", async ({ browser }) => {
   await context.clearCookies();
 
   // Request a magic link via the UI.
-  await page.goto(BASE);
+  await page.goto(`${BASE}/login`);
   await waitForAppReady(page);
 
   await page.click("[data-action='show-magic-link']");

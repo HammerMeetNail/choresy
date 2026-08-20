@@ -523,9 +523,24 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		renderHome(w, cfg)
 	}))
 
+	// Root route + SPA catch-all. Authenticated users always get the app
+	// shell so in-app navigations and deeplinks (including "/") keep working.
+	// Anonymous visitors get the marketing homepage at exactly "/" (served
+	// from home.html: SEO-visible, server-rendered, no JS required) so
+	// crawlers and share links land on real HTML instead of an empty shell.
+	// Unknown app routes still render the SPA for anonymous users — its
+	// client-side router shows the login view there.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
+			return
+		}
+		if _, ok := middleware.CurrentUser(r.Context()); ok {
+			renderIndex(w, cfg)
+			return
+		}
+		if r.URL.Path == "/" {
+			renderHome(w, cfg)
 			return
 		}
 		renderIndex(w, cfg)
@@ -594,6 +609,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 var indexTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/index.html"))
 
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	googleOAuthEnabled := cfg.GoogleClientID != "" && cfg.GoogleClientSecret != ""
 	data := struct {
 		AppName            string
@@ -624,6 +641,7 @@ func renderHome(w http.ResponseWriter, cfg config.Config) {
 		Year:    time.Now().Year(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	if err := homeTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
