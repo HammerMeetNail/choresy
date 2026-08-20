@@ -75,6 +75,28 @@ func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, 
 	return log, err
 }
 
+func (s *PostgresStore) ListLogUserIDs(ctx context.Context, householdID int64) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT user_id FROM chore_logs
+		WHERE household_id = $1 AND user_id IS NOT NULL
+		ORDER BY user_id
+	`, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (s *PostgresStore) FindLogByIdempotencyKey(ctx context.Context, householdID int64, key string) (*ChoreLog, error) {
 	if key == "" {
 		return nil, nil

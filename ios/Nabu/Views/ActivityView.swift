@@ -334,7 +334,7 @@ struct HistoryListView: View {
                     }
                     HStack(spacing: 4) {
                         Text(fmtTime(log.completedAt))
-                        if let userId = state.members.first(where: { $0.userId == log.userId }) {
+                        if let userId = state.authorMembers.first(where: { $0.userId == log.userId }) {
                             Text("· \(userId.displayName.isEmpty ? userId.email : userId.displayName)")
                         }
                         if let subject = log.subject, !subject.isEmpty {

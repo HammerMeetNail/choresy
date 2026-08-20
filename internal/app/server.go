@@ -122,6 +122,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	accountService := account.NewService(authStore, householdStore)
 	accountHandler := handlers.NewAccountHandler(accountService, authHandler)
 	householdService := household.NewService(householdStore, authService)
+	householdService.WithHistoricalMembers(logStore, authService)
 	householdService.SetAuditLogger(auditLog)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
 	choreService := chore.NewService(choreStore)

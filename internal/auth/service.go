@@ -84,6 +84,11 @@ func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int6
 	return s.store.SetUserHousehold(ctx, userID, householdID, role)
 }
 
+// GetUserByID exposes non-secret profile data to authorized internal services.
+func (s *Service) GetUserByID(ctx context.Context, userID int64) (User, error) {
+	return s.store.GetUserByID(ctx, userID)
+}
+
 func (s *Service) Register(ctx context.Context, email, password string) (User, Session, error) {
 	normalizedEmail, err := normalizeAndValidateEmail(email)
 	if err != nil {

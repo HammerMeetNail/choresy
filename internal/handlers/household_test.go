@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/household"
+	chorelog "github.com/HammerMeetNail/nabu/internal/log"
 	"github.com/HammerMeetNail/nabu/internal/mail"
 )
 
@@ -80,6 +82,46 @@ func TestHouseholdGet(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"Test Home"`) {
 		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestHouseholdGetIncludesHistoricalLogAuthors(t *testing.T) {
+	authService := auth.NewService(auth.NewMemoryStore())
+	owner, ownerSession := quickRegister(authService, "owner@example.com")
+	former, _ := quickRegister(authService, "former@example.com")
+	householdStore := household.NewMemoryStore()
+	logStore := chorelog.NewMemoryStore()
+	householdService := household.NewService(householdStore, authService)
+	householdService.WithHistoricalMembers(logStore, authService)
+	handler := NewHouseholdHandler(householdService)
+	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
+	hh, err := householdService.CreateHousehold(ctx, "My Home", "", owner.ID)
+	if err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
+	if err := householdStore.AddMember(ctx, hh.ID, former.ID, household.RoleMember); err != nil {
+		t.Fatalf("AddMember: %v", err)
+	}
+	if _, err := logStore.CreateLog(ctx, chorelog.ChoreLog{
+		HouseholdID: hh.ID,
+		UserID:      former.ID,
+		ChoreID:     1,
+		CompletedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateLog: %v", err)
+	}
+	if err := householdService.RemoveMember(ctx, owner.ID, former.ID); err != nil {
+		t.Fatalf("RemoveMember: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/household", nil), authService, ownerSession.ID)
+	rec := httptest.NewRecorder()
+	handler.Get(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"historicalMembers":[{"userId":`) || !strings.Contains(rec.Body.String(), `"displayName":"former"`) {
+		t.Fatalf("historical author missing from response: %s", rec.Body.String())
 	}
 }
 

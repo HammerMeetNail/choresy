@@ -406,7 +406,7 @@ struct HouseholdView: View {
     private func removeMember(_ member: Member) async {
         do {
             let _: StatusResponse = try await environment.apiClient.delete("/api/household/members/\(member.userId)")
-            state.members.removeAll { $0.userId == member.userId }
+            await refreshHousehold()
         } catch {}
     }
 
@@ -426,6 +426,7 @@ struct HouseholdView: View {
             let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
             state.household = data.household
             state.members = data.members
+            state.historicalMembers = data.historicalMembers
             state.invites = data.invites
         } catch {}
     }
@@ -435,6 +436,7 @@ struct HouseholdView: View {
             let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
             state.household = data.household
             state.members = data.members
+            state.historicalMembers = data.historicalMembers
             state.invites = data.invites
         } catch {}
     }
@@ -469,6 +471,7 @@ struct HouseholdView: View {
             let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
             state.household = data.household
             state.members = data.members
+            state.historicalMembers = data.historicalMembers
             state.invites = data.invites
             state.activeHouseholdId = data.household.id
             // Reload chores for the newly activated household.

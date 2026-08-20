@@ -96,7 +96,7 @@ struct StatsView: View {
             LastDoneSection(chores: state.chores, latestLogs: state.latestLogs)
         case "baby":
             if model.feedBabyTS != nil || model.changeBabyTS != nil {
-                BabyCareSection(model: model, members: state.members, volumeUnit: volumeUnit)
+                BabyCareSection(model: model, members: state.authorMembers, volumeUnit: volumeUnit)
             }
         case "activity":
             if !model.heatmap.isEmpty { heatmapSection }
@@ -117,11 +117,11 @@ struct StatsView: View {
         default:
             if let choreId = StatsSections.choreId(fromSectionKey: key),
                let chore = state.chores.first(where: { $0.id == choreId }) {
-                ChoreAnalyticsSection(model: model, chore: chore, members: state.members)
+                ChoreAnalyticsSection(model: model, chore: chore, members: state.authorMembers)
             } else if StatsSections.isWidgetSectionKey(key),
                       let widget = state.statsWidgets.first(where: { StatsSections.widgetSectionKey($0.id) == key }) {
                 WidgetCard(model: model, widget: widget, chores: state.chores,
-                           members: state.members, latestLogs: state.latestLogs)
+                           members: state.authorMembers, latestLogs: state.latestLogs)
             }
         }
     }
@@ -259,7 +259,7 @@ struct StatsView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
                 ForEach(model.currentLeaderboard, id: \.userId) { entry in
-                    let member = state.members.first { $0.userId == entry.userId }
+                    let member = state.authorMembers.first { $0.userId == entry.userId }
                     let name = member.map { $0.displayName.isEmpty ? $0.email : $0.displayName } ?? "User \(entry.userId)"
                     HStack(spacing: 8) {
                         MemberAvatar(name: name, colorHex: member?.avatarColor ?? "#19323C", size: 28)

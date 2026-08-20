@@ -46,13 +46,51 @@ make local
 
 The server must be listening on `http://localhost:8080`.
 
+**Choose a simulator:**
+
+List installed runtimes and devices, then use a specific simulator UDID. Do
+not rely on `name=iPhone 16`: that name may exist in several installed
+runtimes and makes the destination ambiguous.
+
+```bash
+xcrun simctl list devices available
+export NABU_SIMULATOR_ID="<simulator-udid>"
+```
+
+Use an iOS 26 runtime when running snapshot coverage. Snapshot tests are
+intentionally skipped on other OS major versions because rendering differs.
+
+**Run iOS tests:**
+
+Build the app before building the test bundle. A direct `xcodebuild test` can
+race the `NabuTests` target against the app module, causing `@testable import
+Nabu` failures. This matches the CI build sequence.
+
+```bash
+xcodebuild build \
+  -project ios/Nabu.xcodeproj \
+  -scheme Nabu \
+  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID"
+
+xcodebuild build-for-testing \
+  -project ios/Nabu.xcodeproj \
+  -scheme Nabu \
+  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID"
+
+xcodebuild test-without-building \
+  -project ios/Nabu.xcodeproj \
+  -scheme Nabu \
+  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" \
+  -only-testing:NabuTests
+```
+
 **Run the E2E test:**
 
 ```bash
-xcodebuild test \
+xcodebuild test-without-building \
   -project ios/Nabu.xcodeproj \
   -scheme Nabu \
-  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" \
   -only-testing:NabuUITests/NabuHomeEndToEndUITests
 ```
 

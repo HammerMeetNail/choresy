@@ -4207,6 +4207,7 @@ async function loadHouseholdData() {
     if (data.household) {
       state.household = data.household;
       state.members = data.members;
+      state.historicalMembers = data.historicalMembers || [];
       state.invites = data.invites;
     }
     if (Array.isArray(listData?.households)) {

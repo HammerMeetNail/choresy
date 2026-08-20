@@ -72,6 +72,13 @@ final class ModelDecodingTests: XCTestCase {
               "role": "member"
             }
           ],
+          "historicalMembers": [
+            {
+              "userId": 3,
+              "displayName": "Former Member",
+              "avatarColor": "#123456"
+            }
+          ],
           "invites": [
             {
               "id": 1,
@@ -95,6 +102,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(response.members[0].userId, 1)
         XCTAssertEqual(response.members[0].role, "owner")
         XCTAssertEqual(response.members[1].role, "member")
+        XCTAssertEqual(response.historicalMembers.map(\.displayName), ["Former Member"])
         XCTAssertEqual(response.invites.count, 1)
         XCTAssertEqual(response.invites[0].code, "XYZ789")
         XCTAssertEqual(response.invites[0].maxUses, 10)

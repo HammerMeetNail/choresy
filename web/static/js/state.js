@@ -7,6 +7,7 @@ export function createAppState() {
     todayLogs: [],
     chores: [],
     household: null,
+    historicalMembers: [],
     userHouseholds: [],
     activeHouseholdId: null,
     notifications: [],
@@ -48,6 +49,7 @@ export function resetAuthedState(state) {
   state.notifications = [];
   state.unreadNotifications = 0;
   state.members = [];
+  state.historicalMembers = [];
   state.invites = [];
   state.schedules = [];
   state.activityView = "history";

@@ -34,6 +34,14 @@ type Member struct {
 	Role          string `json:"role"`
 }
 
+// HistoricalMember identifies a former member who authored retained household
+// activity. It intentionally excludes account details and membership role.
+type HistoricalMember struct {
+	UserID      int64  `json:"userId"`
+	DisplayName string `json:"displayName"`
+	AvatarColor string `json:"avatarColor"`
+}
+
 const (
 	RoleOwner  = "owner"
 	RoleAdmin  = "admin"

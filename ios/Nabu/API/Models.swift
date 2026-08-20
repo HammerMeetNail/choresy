@@ -98,6 +98,14 @@ struct Member: Codable, Identifiable, Equatable {
     var id: Int { userId }
 }
 
+struct HistoricalMember: Codable, Identifiable, Equatable {
+    let userId: Int
+    let displayName: String
+    let avatarColor: String
+
+    var id: Int { userId }
+}
+
 // MARK: - Invite
 
 struct Invite: Codable, Identifiable, Equatable {
@@ -622,7 +630,20 @@ struct UserResponse: Codable {
 struct HouseholdResponse: Codable {
     let household: Household
     let members: [Member]
+    let historicalMembers: [HistoricalMember]
     let invites: [Invite]
+
+    enum CodingKeys: String, CodingKey {
+        case household, members, historicalMembers, invites
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        household = try container.decode(Household.self, forKey: .household)
+        members = try container.decodeIfPresent([Member].self, forKey: .members) ?? []
+        historicalMembers = try container.decodeIfPresent([HistoricalMember].self, forKey: .historicalMembers) ?? []
+        invites = try container.decodeIfPresent([Invite].self, forKey: .invites) ?? []
+    }
 }
 
 struct HouseholdOnlyResponse: Codable {

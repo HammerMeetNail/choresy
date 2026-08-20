@@ -665,7 +665,7 @@ function renderLeaderboardList(leaderboard, memberMap, period) {
 
 function renderLeaderboardSection(state) {
   const stats = state.stats || {};
-  const members = state.members || [];
+  const members = [...(state.members || []), ...(state.historicalMembers || [])];
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m; });
 
@@ -838,7 +838,7 @@ export function renderBabyCareSection(state) {
   const feedBabyPeriod = stats.feedBabyPeriod || "daily";
   const changeBabyPeriod = stats.changeBabyPeriod || "daily";
   const babyTimeSeries = stats.babyTimeSeries || {};
-  const members = state.members || [];
+  const members = [...(state.members || []), ...(state.historicalMembers || [])];
 
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m; });
@@ -996,7 +996,7 @@ export function renderWidgetSection(widget, state) {
   const title = escapeHTML(widget.title || "Widget");
   const data = (state.stats?.widgetData && state.stats.widgetData[widget.id]) || [];
   const chores = state.chores || [];
-  const members = state.members || [];
+  const members = [...(state.members || []), ...(state.historicalMembers || [])];
   const choreMap = {};
   chores.forEach(c => { choreMap[c.id] = c; });
 
@@ -1711,7 +1711,7 @@ export function renderStatsView(state) {
   const streaks = stats.overview?.streaks || {};
   const breakdown = stats.overview?.breakdown || [];
   const recap = stats.overview?.recap || {};
-  const members = state.members || [];
+  const members = [...(state.members || []), ...(state.historicalMembers || [])];
 
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m; });
