@@ -517,6 +517,12 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	// Privacy policy + support pages (App Store metadata requirement).
 	registerStaticPages(mux)
 
+	// Public marketing homepage — no login required. Served ahead of the
+	// SPA catch-all so it renders standalone HTML instead of the app shell.
+	mux.HandleFunc("/home", method(http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		renderHome(w, cfg)
+	}))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			http.NotFound(w, r)
@@ -603,6 +609,22 @@ func renderIndex(w http.ResponseWriter, cfg config.Config) {
 		AppleSignInEnabled: cfg.AppleWebClientID != "",
 	}
 	if err := indexTmpl.Execute(w, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+var homeTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/home.html"))
+
+func renderHome(w http.ResponseWriter, cfg config.Config) {
+	data := struct {
+		BaseURL string
+		Year    int
+	}{
+		BaseURL: strings.TrimRight(cfg.AppBaseURL, "/"),
+		Year:    time.Now().Year(),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := homeTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

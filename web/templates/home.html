@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#F4EFE7">
+    <title>Nabu — Household activity tracking, made simple</title>
+    <meta name="description" content="Nabu is a free, ad-free PWA for tracking household chores, feeds, meds, and routines together. Log a chore in one tap, see what's next, and track streaks as a household.">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Nabu — Household activity tracking, made simple">
+    <meta property="og:description" content="A free, ad-free PWA for tracking household chores, feeds, meds, and routines together.">
+    <meta property="og:image" content="{{.BaseURL}}/static/images/og-image.png">
+    <meta property="og:url" content="{{.BaseURL}}/home">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Nabu — Household activity tracking, made simple">
+    <meta name="twitter:description" content="A free, ad-free PWA for tracking household chores, feeds, meds, and routines together.">
+    <meta name="twitter:image" content="{{.BaseURL}}/static/images/og-image.png">
+
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="/static/icons/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="/static/css/home.css">
+  </head>
+  <body>
+    <header class="hm-nav">
+      <div class="hm-nav-inner">
+        <a href="/home" class="hm-logo">Nabu</a>
+        <a href="/" class="btn btn-primary hm-nav-cta">Open Nabu</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hm-hero">
+        <div class="hm-hero-inner">
+          <h1>Household activity tracking,<br class="hm-br"> made simple.</h1>
+          <p class="hm-hero-sub">
+            Log chores, feeds, meds, and routines together. See who did what,
+            what's next, and how the whole household is doing — from any phone.
+          </p>
+          <div class="hm-hero-ctas">
+            <a href="/" class="btn btn-primary btn-lg">Open Nabu — it's free</a>
+            <a href="#screenshots" class="btn btn-ghost btn-lg">See it in action</a>
+          </div>
+          <ul class="hm-badges">
+            <li><span class="hm-badge">Free</span></li>
+            <li><span class="hm-badge">Installable PWA</span></li>
+            <li><span class="hm-badge">No ads, no tracking</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="screenshots" class="hm-shots">
+        <h2 class="hm-section-title">See it in action</h2>
+        <p class="hm-section-sub">A real household's Nabu — logging cat care, baby feeds, and daily chores.</p>
+        <div class="hm-shots-grid">
+          <figure class="hm-shot">
+            <img src="/static/images/screenshot-home.webp" width="640" height="1391" loading="lazy" alt="Nabu home screen showing a grid of household chores with tap-to-log times like 'Feed Baby 44m ago' and 'Cat Meds 12h ago'">
+            <figcaption>Tap to log a chore in one second</figcaption>
+          </figure>
+          <figure class="hm-shot">
+            <img src="/static/images/screenshot-schedule.webp" width="640" height="1391" loading="lazy" alt="Nabu schedule screen showing an upcoming task: 'Feed Baby' at 9:55 PM today">
+            <figcaption>Know what's coming up next</figcaption>
+          </figure>
+          <figure class="hm-shot">
+            <img src="/static/images/screenshot-stats.webp" width="640" height="1391" loading="lazy" alt="Nabu stats screen with bar charts comparing household members and daily totals for feeding and diaper changes">
+            <figcaption>Track effort and trends together</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="hm-features">
+        <h2 class="hm-section-title">Everything a household needs</h2>
+        <div class="hm-feature-grid">
+          <div class="hm-feature-card">
+            <div class="hm-feature-icon" aria-hidden="true">✅</div>
+            <h3>Tap-to-log</h3>
+            <p>Log any chore, feed, or task in one tap from a shared home grid. No forms, no friction.</p>
+          </div>
+          <div class="hm-feature-card">
+            <div class="hm-feature-icon" aria-hidden="true">🗓️</div>
+            <h3>Schedules &amp; reminders</h3>
+            <p>Set up recurring chores, see what's due today, and drag-and-drop to reschedule.</p>
+          </div>
+          <div class="hm-feature-card">
+            <div class="hm-feature-icon" aria-hidden="true">📊</div>
+            <h3>Stats &amp; streaks</h3>
+            <p>Leaderboards, streaks, and charts show how the whole household is pulling its weight.</p>
+          </div>
+          <div class="hm-feature-card">
+            <div class="hm-feature-icon" aria-hidden="true">👪</div>
+            <h3>Shared with your household</h3>
+            <p>Everyone sees the same log — no more "did anyone feed the cat?" texts.</p>
+          </div>
+          <div class="hm-feature-card">
+            <div class="hm-feature-icon" aria-hidden="true">📲</div>
+            <h3>Installable PWA</h3>
+            <p>Add Nabu to your homescreen on iPhone or Android in seconds — no App Store needed.</p>
+          </div>
+          <div class="hm-feature-card">
+            <div class="hm-feature-icon" aria-hidden="true">🔔</div>
+            <h3>Push notifications</h3>
+            <p>Get reminded before a chore is due, so nothing falls through the cracks.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="hm-privacy">
+        <h2 class="hm-section-title">Free, and built to stay that way</h2>
+        <p class="hm-privacy-copy">
+          Nabu doesn't have ads, third-party analytics, or tracking SDKs, and your
+          household's data is never sold or used to train anything. It's free
+          because tracking who fed the cat shouldn't come with a subscription.
+        </p>
+      </section>
+
+      <section class="hm-cta">
+        <h2>Ready to get your household in sync?</h2>
+        <a href="/" class="btn btn-primary btn-lg">Create your household — it's free</a>
+      </section>
+    </main>
+
+    <footer class="hm-footer">
+      <span>&copy; {{.Year}} Nabu</span>
+      <nav>
+        <a href="/privacy">Privacy</a>
+        <a href="/support">Support</a>
+        <a href="https://github.com/HammerMeetNail/nabu">GitHub</a>
+      </nav>
+    </footer>
+  </body>
+</html>

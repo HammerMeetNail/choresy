@@ -77,6 +77,35 @@ func TestNewServerServesIndex(t *testing.T) {
 	}
 }
 
+func TestNewServerServesHomeMarketingPage(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "https://nabu-app.com")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	server := NewServer(cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/home", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Household activity tracking") {
+		t.Fatal("expected marketing copy in response body")
+	}
+	if !strings.Contains(body, "https://nabu-app.com/static/images/og-image.png") {
+		t.Fatal("expected og:image built from APP_BASE_URL")
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html prefix", got)
+	}
+}
+
 func TestNewServerReturns404ForUnknownAPI(t *testing.T) {
 	t.Setenv("PORT", "8080")
 	t.Setenv("APP_BASE_URL", "http://localhost:8080")
