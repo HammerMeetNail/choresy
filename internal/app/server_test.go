@@ -9,8 +9,10 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/config"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
 func TestNewServerHealthEndpoint(t *testing.T) {
@@ -51,7 +53,7 @@ func TestNewServerReadyEndpoint(t *testing.T) {
 	}
 }
 
-func TestNewServerServesIndex(t *testing.T) {
+func TestNewServerServesAppShellForSPARoutes(t *testing.T) {
 	t.Setenv("PORT", "8080")
 	t.Setenv("APP_BASE_URL", "http://localhost:8080")
 	cfg, err := config.Load()
@@ -61,7 +63,9 @@ func TestNewServerServesIndex(t *testing.T) {
 
 	server := NewServer(cfg)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	// Anonymous users hitting an app route (like /login) still get the SPA
+	// shell; the client-side router shows the login view there.
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, req)
 
@@ -72,8 +76,90 @@ func TestNewServerServesIndex(t *testing.T) {
 	if body == "" {
 		t.Fatal("expected HTML response body")
 	}
-	if !strings.Contains(body, "Nabu") {
-		t.Fatal("expected Nabu in response body")
+	if !strings.Contains(body, `id="app"`) {
+		t.Fatal("expected SPA app shell (#app) in response body")
+	}
+	if !strings.Contains(body, `static/js/app.js`) {
+		t.Fatal("expected app.js script in response body")
+	}
+	if strings.Contains(body, "hm-hero") {
+		t.Fatal("SPA route response should not contain marketing copy")
+	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html prefix", got)
+	}
+}
+
+func TestNewServerServesRootMarketingPageForAnonymous(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "http://localhost:8080")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	server := NewServer(cfg)
+
+	// Anonymous visitors to / get server-rendered marketing HTML (no JS
+	// required) instead of an empty app shell.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Household activity tracking") {
+		t.Fatal("expected marketing copy in response body")
+	}
+	if !strings.Contains(body, "hm-hero") {
+		t.Fatal("expected marketing hero section in response body")
+	}
+	if strings.Contains(body, `id="app"`) {
+		t.Fatal("anonymous root should not serve the SPA app shell")
+	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html prefix", got)
+	}
+}
+
+func TestNewServerServesAppShellForAuthenticatedRoot(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "http://localhost:8080")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	server := NewServer(cfg)
+
+	// Inject an authenticated user directly into the request context (the
+	// Session middleware would do the same for a valid session cookie).
+	hhID := int64(7)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(middleware.WithUser(req.Context(), auth.User{ID: 1, HouseholdID: &hhID}))
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="app"`) {
+		t.Fatal("expected SPA app shell (#app) for authenticated root")
+	}
+	if strings.Contains(body, "hm-hero") {
+		t.Fatal("authenticated root should not serve marketing copy")
+	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 }
 
@@ -101,8 +187,19 @@ func TestNewServerServesHomeMarketingPage(t *testing.T) {
 	if !strings.Contains(body, "https://nabu-app.com/static/images/og-image.png") {
 		t.Fatal("expected og:image built from APP_BASE_URL")
 	}
+	// The canonical URL and og:url must both point at the root so search
+	// engines consolidate / and /home instead of treating them as duplicates.
+	if !strings.Contains(body, `rel="canonical" href="https://nabu-app.com/"`) {
+		t.Fatal("expected canonical URL at the root")
+	}
+	if !strings.Contains(body, `property="og:url" content="https://nabu-app.com/"`) {
+		t.Fatal("expected og:url at the root")
+	}
 	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
 		t.Fatalf("Content-Type = %q, want text/html prefix", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
 }
 
@@ -580,6 +677,9 @@ func TestStaticLegalPages(t *testing.T) {
 		}
 		if body := rec.Body.String(); !strings.Contains(body, want) {
 			t.Errorf("%s body missing %q", path, want)
+		}
+		if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+			t.Errorf("%s Cache-Control = %q, want no-store", path, got)
 		}
 	}
 }

@@ -30,7 +30,7 @@ a { color: #236886; }
 
 const privacyBody = `
 <h1>Privacy Policy</h1>
-<p><em>Last updated: 2026-07-04</em></p>
+<p><em>Last updated: 2026-08-20</em></p>
 <p>Nabu is a household activity tracker. This policy describes what data the
 service stores and how it is used.</p>
 
@@ -48,9 +48,11 @@ push token used only to deliver your reminders.</li>
 
 <h2>What we don't do</h2>
 <ul>
-<li>No advertising, no third-party analytics, and no tracking SDKs.</li>
-<li>Your data is never sold or shared with third parties.</li>
-<li>Data is not used to train machine-learning models.</li>
+<li>We don't run advertising, third-party analytics, or tracking SDKs.</li>
+<li>We don't sell or share your household's data with third parties.</li>
+<li>We don't use your data to train machine-learning models.</li>
+<li>If any of these practices change, we will update this policy before the
+change takes effect and let you know first.</li>
 </ul>
 
 <h2>Data retention and deletion</h2>
@@ -86,6 +88,7 @@ func registerStaticPages(mux *http.ServeMux) {
 		page := []byte(html)
 		return func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
 			w.Write(page) //nolint:errcheck
 		}
 	}

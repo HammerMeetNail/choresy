@@ -172,6 +172,8 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | followUpEnabled in chore request | `chores.js`, `app.js` | `API/RequestModels.swift`, `RequestEncodingTests.swift` | `/api/chores` | Done | |
 | **Service Worker** |
 | Update/reload | `sw-update-reload.spec.js` | N/A (native app) | N/A | N/A | PWA-only; native apps use App Store updates |
+| **Web & Marketing** |
+| Marketing homepage at "/" | `web/templates/home.html`, `marketing-home.spec.js` | N/A (native app has no web marketing surface) | N/A (client surface) | N/A | PWA-only: "/" serves server-rendered marketing HTML to anonymous visitors and the SPA app shell to authenticated users; the legacy `/home` URL canonicalizes to "/" via `<link rel="canonical">` + `og:url`. All server-rendered HTML (`index.html`, `home.html`, `/privacy`, `/support`) ships `Cache-Control: no-store`. iOS is unaffected — it never loads the web root |
 
 ## Real iOS test inventory
 

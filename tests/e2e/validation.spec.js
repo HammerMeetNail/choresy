@@ -36,7 +36,7 @@ async function setupFullAccount(page) {
 
 test.describe('Exhaustive: Auth Pages', () => {
   test('login page — all elements', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/login');
     await page.waitForSelector('#login-form');
 
     // Title
@@ -175,7 +175,7 @@ test.describe('Exhaustive: Auth Pages', () => {
   });
 
   test('auth page navigation via buttons', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/login');
 
     // Login → register
     await page.click('button[data-action="show-register"]');

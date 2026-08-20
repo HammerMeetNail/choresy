@@ -200,7 +200,7 @@ test.describe("Settings: auth features", () => {
 
 test.describe("Login page elements", () => {
   test("login page shows forgot password link", async ({ page }) => {
-    await page.goto(BASE);
+    await page.goto(`${BASE}/login`);
     await page.waitForSelector("#login-form");
 
     const forgotBtn = page.locator(
@@ -213,7 +213,7 @@ test.describe("Login page elements", () => {
   test("forgot password link navigates to forgot password view", async ({
     page,
   }) => {
-    await page.goto(BASE);
+    await page.goto(`${BASE}/login`);
     await page.waitForSelector("#login-form");
 
     await page.click("button[data-action=\"show-forgot-password\"]");
@@ -226,7 +226,7 @@ test.describe("Login page elements", () => {
   });
 
   test("Google button not visible when OAuth disabled", async ({ page }) => {
-    await page.goto(BASE);
+    await page.goto(`${BASE}/login`);
     await page.waitForSelector("#login-form");
 
     const googleBtn = page.locator(".btn-google");

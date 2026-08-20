@@ -16,7 +16,7 @@ make test        # Go + JS tests
 make test-go     # Go tests only
 make test-js     # JS tests only
 make coverage    # Go test coverage report
-make e2e         # End-to-end tests (~31 spec files)
+make e2e         # End-to-end tests (~63 spec files)
 make lint        # golangci-lint
 make fmt         # Format Go code
 ```
@@ -176,6 +176,8 @@ At startup, `buildVersionedJSCache` in `internal/app/server.go` walks every `.js
 
 The service worker file (`/service-worker.js`) is also version-injected at startup so the browser detects a new SW on every deploy.
 
+**HTML pages ship `no-store` too.** The root `/` serves server-rendered marketing HTML (`home.html`) to anonymous visitors and the SPA app shell to signed-in users, so it can never be cached by Cloudflare — a cached copy would serve the wrong page version to one of the two audiences. The same `Cache-Control: no-store` is applied to every HTML page the server renders (`/`, `/login`, `/register`, `/today`, static pages like `/privacy`, …) so each visit reflects the latest session state.
+
 ## Deployment
 
 - **Production URL**: `https://nabu-app.com`
@@ -191,7 +193,7 @@ Pushes to `main` and `v*` tags trigger:
 2. **Lint** (golangci-lint)
 3. **Go tests** with race detector and coverage (reported to Codecov)
 4. **JS tests** (Node built-in test runner)
-5. **E2E tests** (Playwright, Chromium, 31 spec files)
+5. **E2E tests** (Playwright, Chromium, 63 spec files)
 6. **iOS unit tests** (`xcodebuild test` of `NabuTests` on macOS, when `ios/**` changes)
 7. **Client parity** (PR only) — lints the parity matrix and requires it to be updated when client/API code changes
 8. **Build** — multi-arch container image (linux/amd64, linux/arm64) on Quay.io
@@ -211,9 +213,19 @@ curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: BYPASS
 
-# Version endpoint
-curl -s https://nabu-app.com/ | grep 'app.js'
+# Version endpoint — the app shell lives at SPA routes like /login; anonymous
+# GET / serves the marketing page, not the shell
+curl -s https://nabu-app.com/login | grep 'app.js'
 # Expected: src="/static/js/app.js?v=0.1.X"
+
+# Anonymous root serves server-rendered marketing HTML, canonicalized to /
+curl -s https://nabu-app.com/ | grep -o 'rel="canonical" href="[^"]*"'
+# Expected: rel="canonical" href="https://nabu-app.com/"
+
+# HTML cache headers — marketing page and app shell must both be no-store/BYPASS
+curl -sI https://nabu-app.com/ | grep -i cache
+# Expected: cache-control: no-store
+#           cf-cache-status: BYPASS
 ```
 
 See `compose.server.yaml` for full production setup (Cloudflare Tunnel, `/mnt/data` volumes, R2 backups). Server provisioning via `cloud-init.yaml`.
