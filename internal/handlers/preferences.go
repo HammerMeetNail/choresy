@@ -55,13 +55,14 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ChoreOrder         *[]int64                 `json:"choreOrder"`
-		HiddenHomeChoreIDs *[]int64                 `json:"hiddenHomeChoreIds"`
-		Timezone           *string                  `json:"timezone"`
-		VolumeUnit         *string                  `json:"volumeUnit"`
-		StatsSectionOrder  *[]string                `json:"statsSectionOrder"`
-		StatsSectionHidden *[]string                `json:"statsSectionHidden"`
-		StatsWidgets       *[]userprefs.StatsWidget `json:"statsWidgets"`
+		ChoreOrder            *[]int64                 `json:"choreOrder"`
+		HiddenHomeChoreIDs    *[]int64                 `json:"hiddenHomeChoreIds"`
+		Timezone              *string                  `json:"timezone"`
+		VolumeUnit            *string                  `json:"volumeUnit"`
+		StatsSectionOrder     *[]string                `json:"statsSectionOrder"`
+		StatsSectionHidden    *[]string                `json:"statsSectionHidden"`
+		StatsWidgets          *[]userprefs.StatsWidget `json:"statsWidgets"`
+		HideNotificationBadge *bool                    `json:"hideNotificationBadge"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -110,6 +111,13 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.StatsSectionHidden != nil {
 		if err := h.service.UpdateStatsSectionHidden(r.Context(), user.ID, *req.StatsSectionHidden); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	if req.HideNotificationBadge != nil {
+		if err := h.service.UpdateHideNotificationBadge(r.Context(), user.ID, *req.HideNotificationBadge); err != nil {
+			writeServerError(w, "failed to update preferences", err)
 			return
 		}
 	}

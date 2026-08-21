@@ -228,7 +228,9 @@ struct MainTabView: View {
                 .tabItem {
                     Label(MainTab.settings.title, systemImage: MainTab.settings.systemImage)
                 }
-                .badge(state.unreadNotifications)
+                // badge(0) renders nothing, so the hidden preference simply
+                // suppresses the count; notifications still accumulate.
+                .badge(state.hideNotificationBadge ? 0 : state.unreadNotifications)
                 .tag(MainTab.settings)
         }
         .tint(DesignColors.primary)

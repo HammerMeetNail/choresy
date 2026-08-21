@@ -210,3 +210,45 @@ func TestPreferences_GetIncludesNewFields(t *testing.T) {
 		t.Fatalf("body missing statsSectionHidden, body=%s", rec.Body.String())
 	}
 }
+
+func TestPreferences_PatchHideNotificationBadge(t *testing.T) {
+	handler, sessionID, authService := setupPrefsTest(t)
+
+	// Hide the badge.
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/preferences",
+		strings.NewReader(`{"hideNotificationBadge": true}`),
+	), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"hideNotificationBadge":true`) {
+		t.Fatalf("echo missing hideNotificationBadge=true, body=%s", rec.Body.String())
+	}
+
+	// The value must persist on a subsequent GET.
+	getReq := withUser(httptest.NewRequest(http.MethodGet, "/api/preferences", nil), authService, sessionID)
+	getRec := httptest.NewRecorder()
+	handler.Get(getRec, getReq)
+	if !strings.Contains(getRec.Body.String(), `"hideNotificationBadge":true`) {
+		t.Fatalf("GET missing hideNotificationBadge=true, body=%s", getRec.Body.String())
+	}
+
+	// Un-hiding works too.
+	req2 := withUser(httptest.NewRequest(http.MethodPatch, "/api/preferences",
+		strings.NewReader(`{"hideNotificationBadge": false}`),
+	), authService, sessionID)
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	handler.Update(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("second update status = %d, want 200, body=%s", rec2.Code, rec2.Body.String())
+	}
+	if !strings.Contains(rec2.Body.String(), `"hideNotificationBadge":false`) {
+		t.Fatalf("echo missing hideNotificationBadge=false, body=%s", rec2.Body.String())
+	}
+}

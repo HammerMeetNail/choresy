@@ -996,3 +996,79 @@ describe("Utils: volume units", () => {
     }
   });
 });
+
+describe("Hide notification badge preference", () => {
+  it("loadPreferences reads hideNotificationBadge from the server", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        preferences: { hideNotificationBadge: true, volumeUnit: "ml" },
+      }),
+      headers: {
+        get: (key) => key === "Content-Type" ? "application/json" : null,
+      },
+    });
+    const { loadPreferences } = await import("../preferences.js");
+    const { createAppState } = await import("../state.js");
+    const state = createAppState();
+    await loadPreferences(state);
+    assert.equal(state.hideNotificationBadge, true);
+  });
+
+  it("loadPreferences defaults hideNotificationBadge to false when absent", async () => {
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ preferences: {} }),
+      headers: {
+        get: (key) => key === "Content-Type" ? "application/json" : null,
+      },
+    });
+    const { loadPreferences } = await import("../preferences.js");
+    const { createAppState } = await import("../state.js");
+    const state = createAppState();
+    await loadPreferences(state);
+    assert.equal(state.hideNotificationBadge, false);
+  });
+
+  it("saveHideNotificationBadge PATCHes and adopts the server echo", async () => {
+    let capturedBody = null;
+    globalThis.fetch = async (_url, opts) => {
+      capturedBody = opts?.body ?? null;
+      return {
+        ok: true,
+        json: async () => ({
+          preferences: { hideNotificationBadge: true, choreOrder: [7] },
+        }),
+        headers: {
+          get: (key) => key === "Content-Type" ? "application/json" : null,
+        },
+      };
+    };
+    const { saveHideNotificationBadge } = await import("../preferences.js");
+    const { createAppState } = await import("../state.js");
+    const state = createAppState();
+    state.choreOrder = [7];
+    await saveHideNotificationBadge(state, true);
+    assert.equal(state.hideNotificationBadge, true);
+    assert.deepEqual(JSON.parse(capturedBody), { hideNotificationBadge: true });
+    // Other prefs survive the round trip.
+    assert.deepEqual(state.choreOrder, [7]);
+  });
+
+  it("saveHideNotificationBadge rolls back on failure", async () => {
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "boom" }),
+      headers: {
+        get: (key) => key === "Content-Type" ? "application/json" : null,
+      },
+    });
+    const { saveHideNotificationBadge } = await import("../preferences.js");
+    const { createAppState } = await import("../state.js");
+    const state = createAppState();
+    state.hideNotificationBadge = false;
+    await saveHideNotificationBadge(state, true);
+    assert.equal(state.hideNotificationBadge, false);
+  });
+});

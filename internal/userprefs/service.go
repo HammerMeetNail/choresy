@@ -148,3 +148,15 @@ func (s *Service) UpdateStatsSectionHidden(ctx context.Context, userID int64, hi
 	prefs.StatsSectionHidden = hidden
 	return s.store.Upsert(ctx, userID, prefs)
 }
+
+// UpdateHideNotificationBadge persists whether the in-app unread
+// notifications badge is hidden for this user. Notifications continue to
+// accumulate regardless; this only affects the badge display.
+func (s *Service) UpdateHideNotificationBadge(ctx context.Context, userID int64, hide bool) error {
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.HideNotificationBadge = hide
+	return s.store.Upsert(ctx, userID, prefs)
+}

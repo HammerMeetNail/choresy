@@ -25,7 +25,7 @@ import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHist
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets, saveHideNotificationBadge } from "./preferences.js";
 import { loadTimer, saveTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
@@ -775,6 +775,7 @@ function renderSettingsView() {
   }
 
   const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
+  const badgeHidden = !!state.hideNotificationBadge;
   const prefsCard = `<div class="card mt-3">
     <h3>Preferences</h3>
     <div class="pref-row">
@@ -786,6 +787,16 @@ function renderSettingsView() {
         <button type="button" class="segmented-btn${volumeUnit === "ml" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="ml" aria-pressed="${volumeUnit === "ml"}">mL</button>
         <button type="button" class="segmented-btn${volumeUnit === "oz" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="oz" aria-pressed="${volumeUnit === "oz"}">oz</button>
       </div>
+    </div>
+    <div class="pref-row">
+      <label class="pref-label">
+        <span class="pref-title">Hide notification badge</span>
+        <span class="pref-desc">Notifications still collect; the unread count on the bell stays hidden</span>
+      </label>
+      <label class="notif-pref-toggle">
+        <input type="checkbox" data-action="toggle-hide-notification-badge"${badgeHidden ? " checked" : ""} aria-label="Hide notification badge">
+        <span class="toggle-slider"></span>
+      </label>
     </div>
     <div class="pref-row">
       <label class="pref-label">
@@ -1317,7 +1328,9 @@ function updateTopBar() {
       bell.title = "Notifications";
     }
     if (badge) {
-      if (state.unreadNotifications > 0) {
+      // The hideNotificationBadge preference only suppresses the count
+      // display; notifications still accumulate (see settings toggle).
+      if (!state.hideNotificationBadge && state.unreadNotifications > 0) {
         badge.hidden = false;
         badge.textContent = String(state.unreadNotifications);
       } else {
@@ -3128,6 +3141,23 @@ export async function init() {
         // failure); render now for snappy feedback and again on completion.
         saveVolumeUnit(state, unit).then(() => render(app));
         render(app);
+        break;
+      }
+
+      case "toggle-hide-notification-badge": {
+        // No preventDefault: the checkbox keeps its native toggled state so
+        // the UI reflects the tap instantly. saveHideNotificationBadge
+        // applies the value optimistically and rolls back if the PATCH
+        // fails; the completion render redraws the toggle from persisted
+        // state either way.
+        const hide = actionEl.checked;
+        if (hide === state.hideNotificationBadge) break;
+        const saved = saveHideNotificationBadge(state, hide);
+        updateTopBar();
+        saved.then(() => {
+          updateTopBar();
+          render(app);
+        });
         break;
       }
 

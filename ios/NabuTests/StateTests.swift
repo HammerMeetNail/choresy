@@ -29,6 +29,15 @@ final class StateTests: XCTestCase {
         XCTAssertFalse(state.jiggleMode)
         XCTAssertNil(state.historyChoreFilter)
         XCTAssertFalse(state.historyFilterOpen)
+        // Badge is shown by default (PWA parity: hideNotificationBadge=false).
+        XCTAssertFalse(state.hideNotificationBadge)
+    }
+
+    func testResetClearsHideNotificationBadge() {
+        let state = AppState()
+        state.hideNotificationBadge = true
+        state.reset()
+        XCTAssertFalse(state.hideNotificationBadge)
     }
 
     func testResetClearsAllState() {

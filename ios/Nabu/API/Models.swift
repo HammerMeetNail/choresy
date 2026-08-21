@@ -396,8 +396,11 @@ struct UserPreferences: Codable, Equatable {
     let statsSectionOrder: [String]
     let statsSectionHidden: [String]
     let statsWidgets: [StatsWidget]
+    /// Hides the in-app unread notifications badge; notifications still
+    /// accumulate. Server default is false.
+    let hideNotificationBadge: Bool
 
-    init(choreOrder: [Int], hiddenHomeChoreIds: [Int], timezone: String, volumeUnit: String = "ml", statsSectionOrder: [String] = [], statsSectionHidden: [String] = [], statsWidgets: [StatsWidget] = []) {
+    init(choreOrder: [Int], hiddenHomeChoreIds: [Int], timezone: String, volumeUnit: String = "ml", statsSectionOrder: [String] = [], statsSectionHidden: [String] = [], statsWidgets: [StatsWidget] = [], hideNotificationBadge: Bool = false) {
         self.choreOrder = choreOrder
         self.hiddenHomeChoreIds = hiddenHomeChoreIds
         self.timezone = timezone
@@ -405,6 +408,7 @@ struct UserPreferences: Codable, Equatable {
         self.statsSectionOrder = statsSectionOrder
         self.statsSectionHidden = statsSectionHidden
         self.statsWidgets = statsWidgets
+        self.hideNotificationBadge = hideNotificationBadge
     }
 
     init(from decoder: Decoder) throws {
@@ -416,11 +420,13 @@ struct UserPreferences: Codable, Equatable {
         statsSectionOrder = try container.decodeIfPresent([String].self, forKey: .statsSectionOrder) ?? []
         statsSectionHidden = try container.decodeIfPresent([String].self, forKey: .statsSectionHidden) ?? []
         statsWidgets = try container.decodeIfPresent([StatsWidget].self, forKey: .statsWidgets) ?? []
+        hideNotificationBadge = try container.decodeIfPresent(Bool.self, forKey: .hideNotificationBadge) ?? false
     }
 
     enum CodingKeys: String, CodingKey {
         case choreOrder, hiddenHomeChoreIds, timezone, volumeUnit
         case statsSectionOrder, statsSectionHidden, statsWidgets
+        case hideNotificationBadge
     }
 }
 

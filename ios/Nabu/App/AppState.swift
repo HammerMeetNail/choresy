@@ -29,6 +29,9 @@ final class AppState: ObservableObject {
     @Published var historyFilterOpen = false
     /// Per-user volume display/input unit ("ml" | "oz"); volumes stay mL in the API.
     @Published var volumeUnit: String = "ml"
+    /// Per-user pref: hide the unread count badge on the Settings tab and
+    /// bell rows. Notifications still accumulate (PWA `hideNotificationBadge`).
+    @Published var hideNotificationBadge = false
     /// The single running duration timer (persisted via `DurationTimer`).
     @Published var activeTimer: ActiveTimer?
     /// Offline-queued logs shown inline in Activity with a "pending" badge
@@ -86,6 +89,7 @@ final class AppState: ObservableObject {
         historyChoreFilter = nil
         historyFilterOpen = false
         volumeUnit = "ml"
+        hideNotificationBadge = false
         // activeTimer intentionally survives reset: the PWA's localStorage
         // timer is device-scoped, not session-scoped.
         pendingLogs = []

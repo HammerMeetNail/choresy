@@ -35,6 +35,12 @@ type Preferences struct {
 
 	// StatsWidgets is the user's list of custom stats widgets (Phase 4).
 	StatsWidgets []StatsWidget `json:"statsWidgets"`
+
+	// HideNotificationBadge suppresses the in-app unread-notifications
+	// badge (the count on the bell / tab). Notifications still accumulate
+	// and remain visible in the notifications panel; only the badge is
+	// hidden. Default false.
+	HideNotificationBadge bool `json:"hideNotificationBadge"`
 }
 
 // Store is the persistence interface for user preferences.

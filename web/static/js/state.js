@@ -22,6 +22,7 @@ export function createAppState() {
     choreOrder: [],            // per-user preferred chore order (array of chore IDs)
     hiddenHomeChoreIDs: [],    // chore IDs hidden from the Home tab grid
     volumeUnit: "ml",          // per-user volume display/input unit ("ml" | "oz")
+    hideNotificationBadge: false, // per-user pref: hide the unread count on the bell
     jiggleMode: false,         // home grid reorder mode
     homeView: "log",           // "log" | "manage"
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
@@ -61,6 +62,7 @@ export function resetAuthedState(state) {
   state.choreOrder = [];
   state.hiddenHomeChoreIDs = [];
   state.volumeUnit = "ml";
+  state.hideNotificationBadge = false;
   state.jiggleMode = false;
   state.homeView = "log";
   state.latestLogs = {};
