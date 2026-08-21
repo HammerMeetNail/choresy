@@ -254,6 +254,7 @@ struct PatchUserPreferencesRequest: Codable {
     var statsSectionOrder: [String]? = nil
     var statsSectionHidden: [String]? = nil
     var statsWidgets: [StatsWidget]? = nil
+    var hideNotificationBadge: Bool? = nil
 }
 
 // MARK: - Day notes

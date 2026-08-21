@@ -13,6 +13,7 @@ export async function loadPreferences(state) {
     state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? [];
     state.timezone = data?.preferences?.timezone ?? "";
     state.volumeUnit = data?.preferences?.volumeUnit ?? "ml";
+    state.hideNotificationBadge = data?.preferences?.hideNotificationBadge ?? false;
     state.stats = state.stats || {};
     state.stats.sectionOrder = data?.preferences?.statsSectionOrder ?? [];
     state.stats.sectionHidden = data?.preferences?.statsSectionHidden ?? [];
@@ -22,6 +23,7 @@ export async function loadPreferences(state) {
     state.hiddenHomeChoreIDs = [];
     state.timezone = "";
     state.volumeUnit = "ml";
+    state.hideNotificationBadge = false;
     state.stats = state.stats || {};
     state.stats.sectionOrder = [];
     state.stats.sectionHidden = [];
@@ -69,6 +71,32 @@ export async function saveVolumeUnit(state, unit) {
     state.volumeUnit = data?.preferences?.volumeUnit ?? unit;
   } catch {
     state.volumeUnit = prev; // roll back on failure
+  }
+}
+
+/**
+ * Persist whether the in-app unread notifications badge is hidden and update
+ * state. Notifications keep accumulating server-side; this only affects the
+ * badge display on the bell.
+ *
+ * @param {object} state - The global app state (mutated in place).
+ * @param {boolean} hide - True to hide the badge, false to show it.
+ */
+export async function saveHideNotificationBadge(state, hide) {
+  const prev = state.hideNotificationBadge;
+  state.hideNotificationBadge = hide;
+  try {
+    const { response, data } = await apiFetch("/api/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ hideNotificationBadge: hide }),
+    });
+    if (!response.ok) {
+      state.hideNotificationBadge = prev; // roll back on failure
+      return;
+    }
+    state.hideNotificationBadge = data?.preferences?.hideNotificationBadge ?? hide;
+  } catch {
+    state.hideNotificationBadge = prev; // roll back on failure
   }
 }
 

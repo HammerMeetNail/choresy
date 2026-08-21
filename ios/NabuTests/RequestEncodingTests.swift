@@ -407,4 +407,23 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertNil(dict["choreOrder"])
         XCTAssertNil(dict["statsSectionOrder"])
     }
+
+    func testPatchUserPreferencesHideNotificationBadgeWireFormat() throws {
+        // Only the badge field is set: it must encode under the server's
+        // camelCase key and omit every untouched optional.
+        var req = PatchUserPreferencesRequest()
+        req.hideNotificationBadge = true
+        let data = try apiEncoder.encode(req)
+        let dict = json(data)
+        XCTAssertEqual(dict["hideNotificationBadge"] as? Bool, true)
+        XCTAssertNil(dict["volumeUnit"])
+        XCTAssertNil(dict["choreOrder"])
+        XCTAssertNil(dict["statsWidgets"])
+
+        // And the false direction round-trips too.
+        var off = PatchUserPreferencesRequest()
+        off.hideNotificationBadge = false
+        let offDict = json(try apiEncoder.encode(off))
+        XCTAssertEqual(offDict["hideNotificationBadge"] as? Bool, false)
+    }
 }

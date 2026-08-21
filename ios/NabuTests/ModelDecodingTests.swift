@@ -780,6 +780,48 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(w.title, "Bottles this week")
     }
 
+    func testDecodeUserPreferencesHideNotificationBadge() throws {
+        // Explicit true and false both decode; a payload from an older
+        // server that omits the field defaults to false (badge shown).
+        let on = #"""
+        {
+          "preferences": {
+            "choreOrder": [],
+            "hiddenHomeChoreIds": [],
+            "timezone": "UTC",
+            "volumeUnit": "ml",
+            "hideNotificationBadge": true
+          }
+        }
+        """#.data(using: .utf8)!
+        XCTAssertEqual(try decoder.decode(UserPreferencesResponse.self, from: on).preferences.hideNotificationBadge, true)
+
+        let off = #"""
+        {
+          "preferences": {
+            "choreOrder": [],
+            "hiddenHomeChoreIds": [],
+            "timezone": "UTC",
+            "volumeUnit": "ml",
+            "hideNotificationBadge": false
+          }
+        }
+        """#.data(using: .utf8)!
+        XCTAssertEqual(try decoder.decode(UserPreferencesResponse.self, from: off).preferences.hideNotificationBadge, false)
+
+        let legacy = #"""
+        {
+          "preferences": {
+            "choreOrder": [],
+            "hiddenHomeChoreIds": [],
+            "timezone": "UTC",
+            "volumeUnit": "ml"
+          }
+        }
+        """#.data(using: .utf8)!
+        XCTAssertEqual(try decoder.decode(UserPreferencesResponse.self, from: legacy).preferences.hideNotificationBadge, false)
+    }
+
     func testDecodeUserPreferencesLegacyDefaultsNewFields() throws {
         // Go marshals nil slices as null and older payloads omit the fields
         // entirely — both must decode with defaults.
@@ -800,6 +842,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(prefs.statsSectionOrder, [])
         XCTAssertEqual(prefs.statsSectionHidden, [])
         XCTAssertEqual(prefs.statsWidgets, [])
+        XCTAssertEqual(prefs.hideNotificationBadge, false)
     }
 
     // MARK: - Day notes

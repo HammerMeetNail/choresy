@@ -177,7 +177,7 @@ struct HouseholdView: View {
                         HStack {
                             Label("Notifications", systemImage: "bell")
                             Spacer()
-                            if state.unreadNotifications > 0 {
+                            if !state.hideNotificationBadge && state.unreadNotifications > 0 {
                                 Text("\(state.unreadNotifications)")
                                     .font(.caption)
                                     .fontWeight(.bold)
@@ -195,6 +195,18 @@ struct HouseholdView: View {
                     } label: {
                         Label("Notification Preferences", systemImage: "bell.badge")
                     }
+
+                    // Parity with the PWA settings toggle: notifications keep
+                    // accumulating; only the unread count display is hidden.
+                    Toggle("Hide notification badge", isOn: Binding(
+                        get: { state.hideNotificationBadge },
+                        set: { hide in
+                            Task {
+                                await PreferencesDataLoader(api: environment.apiClient, state: state)
+                                    .setHideNotificationBadge(hide)
+                            }
+                        }
+                    ))
                 }
 
                 // Volume unit (display-only preference; volumes stay mL in the API)

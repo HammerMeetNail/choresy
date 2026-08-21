@@ -163,7 +163,8 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 		        COALESCE(stats_section_order, '[]'::jsonb),
 		        COALESCE(stats_section_hidden, '[]'::jsonb),
 		        COALESCE(volume_unit, 'ml'),
-		        COALESCE(stats_widgets, '[]'::jsonb)
+		        COALESCE(stats_widgets, '[]'::jsonb),
+		        COALESCE(hide_notification_badge, FALSE)
 		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnError(sql.ErrNoRows)
@@ -180,6 +181,9 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	}
 	if p.Timezone != "" {
 		t.Fatalf("expected empty Timezone, got %q", p.Timezone)
+	}
+	if p.HideNotificationBadge {
+		t.Fatal("expected HideNotificationBadge=false by default")
 	}
 }
 
@@ -200,10 +204,11 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 		        COALESCE(stats_section_order, '[]'::jsonb),
 		        COALESCE(stats_section_hidden, '[]'::jsonb),
 		        COALESCE(volume_unit, 'ml'),
-		        COALESCE(stats_widgets, '[]'::jsonb)
+		        COALESCE(stats_widgets, '[]'::jsonb),
+		        COALESCE(hide_notification_badge, FALSE)
 		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce", "coalesce", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden, "oz", rawWidgets))
+		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce", "coalesce", "coalesce", "hide_notification_badge"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden, "oz", rawWidgets, true))
 
 	p, err := store.Get(context.Background(), 5)
 	if err != nil {
@@ -220,6 +225,9 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	}
 	if p.VolumeUnit != "oz" {
 		t.Fatalf("VolumeUnit = %q, want %q", p.VolumeUnit, "oz")
+	}
+	if !p.HideNotificationBadge {
+		t.Fatal("HideNotificationBadge = false, want true")
 	}
 }
 
@@ -267,10 +275,10 @@ func TestPostgresStore_Upsert(t *testing.T) {
 	rawSecHidden, _ := json.Marshal([]string{})
 	rawWidgetsUp, _ := json.Marshal([]userprefs.StatsWidget{})
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_preferences`)).
-		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden, "ml", rawWidgetsUp).
+		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden, "ml", rawWidgetsUp, true).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}, Timezone: "UTC"}); err != nil {
+	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}, Timezone: "UTC", HideNotificationBadge: true}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
 }
@@ -468,6 +476,84 @@ func TestService_UpdateStatsSectionHiddenNilBecomesEmpty(t *testing.T) {
 	p, _ := svc.GetPreferences(context.Background(), 1)
 	if p.StatsSectionHidden == nil {
 		t.Fatal("StatsSectionHidden must not be nil after UpdateStatsSectionHidden(nil)")
+	}
+}
+
+// ─── HideNotificationBadge tests ─────────────────────────────────────────────
+
+func TestService_UpdateHideNotificationBadge(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	// Default is false (badge shown).
+	p, err := svc.GetPreferences(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if p.HideNotificationBadge {
+		t.Fatal("default HideNotificationBadge = true, want false")
+	}
+
+	if err := svc.UpdateHideNotificationBadge(ctx, 1, true); err != nil {
+		t.Fatalf("UpdateHideNotificationBadge(true): %v", err)
+	}
+	p, _ = svc.GetPreferences(ctx, 1)
+	if !p.HideNotificationBadge {
+		t.Fatal("HideNotificationBadge = false after update, want true")
+	}
+
+	// And back off again.
+	if err := svc.UpdateHideNotificationBadge(ctx, 1, false); err != nil {
+		t.Fatalf("UpdateHideNotificationBadge(false): %v", err)
+	}
+	p, _ = svc.GetPreferences(ctx, 1)
+	if p.HideNotificationBadge {
+		t.Fatal("HideNotificationBadge = true after second update, want false")
+	}
+}
+
+func TestService_UpdateHideNotificationBadgePreservesOtherFields(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	if err := svc.UpdateChoreOrder(ctx, 1, []int64{10, 20}); err != nil {
+		t.Fatalf("UpdateChoreOrder: %v", err)
+	}
+	if err := svc.UpdateVolumeUnit(ctx, 1, "oz"); err != nil {
+		t.Fatalf("UpdateVolumeUnit: %v", err)
+	}
+
+	if err := svc.UpdateHideNotificationBadge(ctx, 1, true); err != nil {
+		t.Fatalf("UpdateHideNotificationBadge: %v", err)
+	}
+
+	p, _ := svc.GetPreferences(ctx, 1)
+	if len(p.ChoreOrder) != 2 || p.ChoreOrder[0] != 10 {
+		t.Fatalf("ChoreOrder = %v, want [10 20]", p.ChoreOrder)
+	}
+	if p.VolumeUnit != "oz" {
+		t.Fatalf("VolumeUnit = %q, want oz", p.VolumeUnit)
+	}
+	if !p.HideNotificationBadge {
+		t.Fatal("HideNotificationBadge = false, want true")
+	}
+}
+
+func TestMemoryStore_HideNotificationBadgeRoundTrip(t *testing.T) {
+	s := userprefs.NewMemoryStore()
+	want := userprefs.Preferences{
+		ChoreOrder:            []int64{3, 1},
+		HideNotificationBadge: true,
+	}
+	if err := s.Upsert(context.Background(), 42, want); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	got, err := s.Get(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !got.HideNotificationBadge {
+		t.Fatal("HideNotificationBadge = false after round trip, want true")
 	}
 }
 

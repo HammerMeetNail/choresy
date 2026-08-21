@@ -16,6 +16,7 @@ final class PreferencesDataLoader {
             state.choreOrder = data.preferences.choreOrder
             state.hiddenHomeChoreIDs = data.preferences.hiddenHomeChoreIds
             state.volumeUnit = data.preferences.volumeUnit == "oz" ? "oz" : "ml"
+            state.hideNotificationBadge = data.preferences.hideNotificationBadge
             state.statsSectionOrder = data.preferences.statsSectionOrder
             state.statsSectionHidden = data.preferences.statsSectionHidden
             state.statsWidgets = data.preferences.statsWidgets
@@ -79,6 +80,20 @@ final class PreferencesDataLoader {
             state.volumeUnit = data.preferences.volumeUnit == "oz" ? "oz" : "ml"
         } catch {
             state.volumeUnit = previous
+        }
+    }
+
+    /// Optimistically applies the badge visibility, then persists it; rolls
+    /// back on failure (mirrors the PWA's `saveHideNotificationBadge`).
+    func setHideNotificationBadge(_ hide: Bool) async {
+        let previous = state.hideNotificationBadge
+        state.hideNotificationBadge = hide
+        do {
+            let patch = PatchUserPreferencesRequest(hideNotificationBadge: hide)
+            let data: UserPreferencesResponse = try await api.patch("/api/preferences", body: patch)
+            state.hideNotificationBadge = data.preferences.hideNotificationBadge
+        } catch {
+            state.hideNotificationBadge = previous
         }
     }
 

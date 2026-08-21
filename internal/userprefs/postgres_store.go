@@ -23,23 +23,26 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 	var rawSecHidden []byte
 	var volumeUnit string
 	var rawWidgets []byte
+	var hideBadge bool
 	err := s.db.QueryRowContext(ctx,
 		`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
 		        COALESCE(stats_section_order, '[]'::jsonb),
 		        COALESCE(stats_section_hidden, '[]'::jsonb),
 		        COALESCE(volume_unit, 'ml'),
-		        COALESCE(stats_widgets, '[]'::jsonb)
+		        COALESCE(stats_widgets, '[]'::jsonb),
+		        COALESCE(hide_notification_badge, FALSE)
 		 FROM user_preferences WHERE user_id = $1`,
 		userID,
-	).Scan(&rawOrder, &rawHidden, &tz, &rawSecOrder, &rawSecHidden, &volumeUnit, &rawWidgets)
+	).Scan(&rawOrder, &rawHidden, &tz, &rawSecOrder, &rawSecHidden, &volumeUnit, &rawWidgets, &hideBadge)
 	if err == sql.ErrNoRows {
 		return Preferences{
-			ChoreOrder:         []int64{},
-			HiddenHomeChoreIDs: []int64{},
-			StatsSectionOrder:  []string{},
-			StatsSectionHidden: []string{},
-			VolumeUnit:         "ml",
-			StatsWidgets:       []StatsWidget{},
+			ChoreOrder:            []int64{},
+			HiddenHomeChoreIDs:    []int64{},
+			StatsSectionOrder:     []string{},
+			StatsSectionHidden:    []string{},
+			VolumeUnit:            "ml",
+			StatsWidgets:          []StatsWidget{},
+			HideNotificationBadge: false,
 		}, nil
 	}
 	if err != nil {
@@ -93,13 +96,14 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 	}
 
 	return Preferences{
-		ChoreOrder:         order,
-		HiddenHomeChoreIDs: hidden,
-		Timezone:           tz,
-		StatsSectionOrder:  secOrder,
-		StatsSectionHidden: secHidden,
-		VolumeUnit:         volumeUnit,
-		StatsWidgets:       widgets,
+		ChoreOrder:            order,
+		HiddenHomeChoreIDs:    hidden,
+		Timezone:              tz,
+		StatsSectionOrder:     secOrder,
+		StatsSectionHidden:    secHidden,
+		VolumeUnit:            volumeUnit,
+		StatsWidgets:          widgets,
+		HideNotificationBadge: hideBadge,
 	}, nil
 }
 
@@ -150,18 +154,20 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO user_preferences (user_id, chore_order, hidden_home_chore_ids, timezone,
-		                               stats_section_order, stats_section_hidden, volume_unit, stats_widgets, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+		                               stats_section_order, stats_section_hidden, volume_unit, stats_widgets,
+		                               hide_notification_badge, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
 		ON CONFLICT (user_id)
-		DO UPDATE SET chore_order           = EXCLUDED.chore_order,
-		              hidden_home_chore_ids = EXCLUDED.hidden_home_chore_ids,
-		              timezone              = EXCLUDED.timezone,
-		              stats_section_order   = EXCLUDED.stats_section_order,
-		              stats_section_hidden  = EXCLUDED.stats_section_hidden,
-		              volume_unit           = EXCLUDED.volume_unit,
-		              stats_widgets         = EXCLUDED.stats_widgets,
-		              updated_at            = EXCLUDED.updated_at`,
-		userID, rawOrder, rawHidden, p.Timezone, rawSecOrder, rawSecHidden, volumeUnit, rawWidgets,
+		DO UPDATE SET chore_order              = EXCLUDED.chore_order,
+		              hidden_home_chore_ids    = EXCLUDED.hidden_home_chore_ids,
+		              timezone                 = EXCLUDED.timezone,
+		              stats_section_order      = EXCLUDED.stats_section_order,
+		              stats_section_hidden     = EXCLUDED.stats_section_hidden,
+		              volume_unit              = EXCLUDED.volume_unit,
+		              stats_widgets            = EXCLUDED.stats_widgets,
+		              hide_notification_badge  = EXCLUDED.hide_notification_badge,
+		              updated_at               = EXCLUDED.updated_at`,
+		userID, rawOrder, rawHidden, p.Timezone, rawSecOrder, rawSecHidden, volumeUnit, rawWidgets, p.HideNotificationBadge,
 	)
 	return err
 }
