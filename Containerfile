@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOCACHE=/tmp/go-build go build \
     && rm -rf /tmp/go-build
 
 # Runtime stage
-FROM docker.io/library/alpine:3.21
+FROM docker.io/library/alpine:3.24
 
 WORKDIR /app
 
