@@ -121,10 +121,15 @@ test.describe('Private household tasks', () => {
     const adminCsrf = await getCSRF(adminPage);
     let adminList = await adminPage.request.get('/api/chores');
     let adminChores = (await adminList.json()).chores;
+    console.log('adminChores after first fetch:', JSON.stringify(adminChores.map(c => ({ name: c.name, visibility: c.visibility }))));
+    const adminHhAfter = await adminPage.request.get('/api/household');
+    const adminHhDataAfter = await adminHhAfter.json();
+    console.log('admin household members after promotion:', JSON.stringify(adminHhDataAfter.members));
     if (!adminChores.some(c => c.name === SENTINEL_NAME)) {
       await adminPage.waitForTimeout(500);
       adminList = await adminPage.request.get('/api/chores');
       adminChores = (await adminList.json()).chores;
+      console.log('adminChores after retry:', JSON.stringify(adminChores.map(c => ({ name: c.name, visibility: c.visibility }))));
     }
     expect(adminChores.some(c => c.name === SENTINEL_NAME)).toBe(true);
 
