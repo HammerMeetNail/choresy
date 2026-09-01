@@ -67,7 +67,7 @@ func (h *ReminderSnoozeHandler) Snooze(w http.ResponseWriter, r *http.Request) {
 	// Ownership + visibility: the chore must be visible to the caller.
 	c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "chore not found")
+		writeError(w, http.StatusForbidden, "chore does not belong to your household")
 		return
 	}
 	if c.HouseholdID != *user.HouseholdID {

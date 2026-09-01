@@ -44,19 +44,6 @@ func (h *ScheduleHandler) WithHouseholdStore(hs household.Store) *ScheduleHandle
 	return h
 }
 
-// choreBelongsToHousehold reports whether choreID is owned by householdID. When
-// no chore store is wired (some tests) it returns true so behavior is unchanged.
-func (h *ScheduleHandler) choreBelongsToHousehold(ctx context.Context, choreID, householdID int64) bool {
-	if h.choreStore == nil {
-		return true
-	}
-	c, err := h.choreStore.GetChore(ctx, choreID)
-	if err != nil {
-		return false
-	}
-	return c.HouseholdID == householdID
-}
-
 func (h *ScheduleHandler) choreVisibleToUser(ctx context.Context, userID, householdID, choreID int64) (chore.Chore, bool) {
 	if h.choreStore == nil {
 		return chore.Chore{}, true

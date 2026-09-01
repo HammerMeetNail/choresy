@@ -28,7 +28,7 @@ final class ChoreStore {
                      followUpEnabled: Bool? = nil,
                      metricType: String? = nil, metricUnit: String? = nil,
                      subjects: [String]? = nil, visibility: String? = nil) async throws -> ChoreResponse {
-        let body = PatchChoreRequest(name: name, icon: icon, color: color,
+        let body = PatchChoreRequest(name: name, icon: icon, color: color, category: nil,
                               indicatorLabels: indicatorLabels,
                               indicatorDefaults: indicatorDefaults,
                               followUpEnabled: followUpEnabled,

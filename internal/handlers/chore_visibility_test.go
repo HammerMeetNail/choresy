@@ -13,7 +13,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
-func setupVisibilityTest(t *testing.T) (ownerHandler *ChoreHandler, memberHandler *ChoreHandler, ownerReq func(*http.Request) *http.Request, memberReq func(*http.Request) *http.Request, householdID int64) {
+func setupVisibilityTest(t *testing.T) (*ChoreHandler, *ChoreHandler, func(*http.Request) *http.Request, func(*http.Request) *http.Request, int64) {
 	t.Helper()
 	authStore := auth.NewMemoryStore()
 	authService := auth.NewService(authStore)
@@ -30,7 +30,6 @@ func setupVisibilityTest(t *testing.T) (ownerHandler *ChoreHandler, memberHandle
 	if err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
-	householdID = hh.ID
 
 	// Create member
 	member, memberSession := quickRegister(authService, "member-vis@example.com")
