@@ -69,17 +69,15 @@ test.describe('Private household tasks', () => {
     });
     const code = (await inviteRes.json()).invite.code;
 
-    const { page: adminPage, context: adminCtx } = await joinAsUser(browser, code);
-    const { page: memberPage, context: memberCtx } = await joinAsUser(browser, code);
+    const { page: adminPage, email: adminEmail, context: adminCtx } = await joinAsUser(browser, code);
+    const { page: memberPage, email: memberEmail, context: memberCtx } = await joinAsUser(browser, code);
 
-    // Promote first non-owner to admin
+    // Promote adminPage's user to admin (match by email, not by array order)
     const hhRes2 = await ownerPage.request.get('/api/household');
     const hhData2 = await hhRes2.json();
     const members = hhData2.members;
-    const ownerId = members.find(m => m.role === 'owner')?.userId;
-    const nonOwners = members.filter(m => m.userId !== ownerId);
-    const adminUserId = nonOwners[0]?.userId;
-    const memberUserId = nonOwners[1]?.userId || nonOwners[0]?.userId;
+    const adminUserId = members.find(m => m.email === adminEmail)?.userId;
+    const memberUserId = members.find(m => m.email === memberEmail)?.userId;
     if (adminUserId) {
       const promRes = await ownerPage.request.patch(`/api/household/members/${adminUserId}`, {
         data: { role: 'admin' },
