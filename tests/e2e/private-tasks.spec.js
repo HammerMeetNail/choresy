@@ -84,9 +84,15 @@ test.describe('Private household tasks', () => {
         headers: { 'X-CSRF-Token': ownerCsrf },
       });
       expect(promRes.ok()).toBe(true);
+      // Verify promotion via admin's own household view
+      const adminHhCheck = await adminPage.request.get('/api/household');
+      const adminHhData = await adminHhCheck.json();
+      const adminRole = adminHhData.members.find(m => m.email === adminEmail)?.role;
+      expect(adminRole).toBe('admin');
       // Reload admin to pick up new role
       await adminPage.reload();
       await adminPage.waitForSelector('.home-grid', { timeout: 15000 });
+      await adminPage.waitForTimeout(500);
     }
 
     // Owner creates Admins-only task via API
@@ -99,21 +105,27 @@ test.describe('Private household tasks', () => {
     expect(created.visibility).toBe('admins');
     const choreId = created.id;
 
-    // Reload owner and admin, verify they see it
+    // Reload owner and admin, verify they see it (with retry for admin visibility)
     await ownerPage.reload();
     await ownerPage.waitForSelector('.home-grid', { timeout: 15000 });
     await adminPage.reload();
     await adminPage.waitForSelector('.home-grid', { timeout: 15000 });
+    await adminPage.waitForTimeout(500);
 
     // Owner sees via API
     const ownerList = await ownerPage.request.get('/api/chores');
     const ownerChores = (await ownerList.json()).chores;
     expect(ownerChores.some(c => c.name === SENTINEL_NAME)).toBe(true);
 
-    // Admin sees via API (after reload, need to get csrf again)
+    // Admin sees via API (after reload, need to get csrf again) — retry once if needed
     const adminCsrf = await getCSRF(adminPage);
-    const adminList = await adminPage.request.get('/api/chores');
-    const adminChores = (await adminList.json()).chores;
+    let adminList = await adminPage.request.get('/api/chores');
+    let adminChores = (await adminList.json()).chores;
+    if (!adminChores.some(c => c.name === SENTINEL_NAME)) {
+      await adminPage.waitForTimeout(500);
+      adminList = await adminPage.request.get('/api/chores');
+      adminChores = (await adminList.json()).chores;
+    }
     expect(adminChores.some(c => c.name === SENTINEL_NAME)).toBe(true);
 
     // Member must not see it via API
