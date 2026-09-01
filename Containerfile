@@ -27,8 +27,9 @@ FROM docker.io/library/alpine:3.24
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# Install runtime dependencies (apk upgrade pulls in security fixes for
+# base-image packages, e.g. OpenSSL CVE-2026-14456)
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
 
 # Create non-root user
 RUN adduser -D -g '' appuser
