@@ -34,6 +34,10 @@ type Chore struct {
 	// Subjects is an optional list of subject tags for this chore (e.g. twin
 	// names), used to distinguish which subject a log is about (Phase 5.5).
 	Subjects []string `json:"subjects"`
+	// Visibility controls who can see the chore. "household" (default) is
+	// visible to all household members; "admins" is visible only to owners and
+	// admins (private household tasks).
+	Visibility string `json:"visibility"`
 }
 
 // Metric type constants for Chore.MetricType.
@@ -44,6 +48,17 @@ const (
 	MetricDuration = "duration"
 )
 
+// Visibility constants for Chore.Visibility.
+const (
+	VisibilityHousehold = "household"
+	VisibilityAdmins    = "admins"
+)
+
+// ValidVisibility reports whether v is a recognized visibility value.
+func ValidVisibility(v string) bool {
+	return v == VisibilityHousehold || v == VisibilityAdmins
+}
+
 // ValidMetricType reports whether t is a recognized metric type.
 func ValidMetricType(t string) bool {
 	switch t {
@@ -51,6 +66,16 @@ func ValidMetricType(t string) bool {
 		return true
 	}
 	return false
+}
+
+// NormalizeVisibility fills in the default visibility when unset and validates it.
+func (c *Chore) NormalizeVisibility() {
+	if c.Visibility == "" {
+		c.Visibility = VisibilityHousehold
+	}
+	if !ValidVisibility(c.Visibility) {
+		c.Visibility = VisibilityHousehold
+	}
 }
 
 // NormalizeMetric fills in a default metric configuration, deriving it from the

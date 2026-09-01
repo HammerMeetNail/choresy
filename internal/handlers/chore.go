@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -8,7 +10,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
@@ -87,11 +91,32 @@ func validateSubjects(subjects []string) (int, string) {
 }
 
 type ChoreHandler struct {
-	service *chore.Service
+	service        *chore.Service
+	scheduleStore  scheduleStore
+	householdStore householdStore
+}
+
+type scheduleStore interface {
+	ListByHousehold(ctx context.Context, householdID int64) ([]schedule.ChoreSchedule, error)
+	Update(ctx context.Context, s schedule.ChoreSchedule) (schedule.ChoreSchedule, error)
+}
+
+type householdStore interface {
+	GetMembershipForHousehold(ctx context.Context, userID, householdID int64) (string, error)
 }
 
 func NewChoreHandler(service *chore.Service) *ChoreHandler {
 	return &ChoreHandler{service: service}
+}
+
+func (h *ChoreHandler) WithScheduleStore(s scheduleStore) *ChoreHandler {
+	h.scheduleStore = s
+	return h
+}
+
+func (h *ChoreHandler) WithHouseholdStore(hs householdStore) *ChoreHandler {
+	h.householdStore = hs
+	return h
 }
 
 func (h *ChoreHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +126,7 @@ func (h *ChoreHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chores, err := h.service.ListChores(r.Context(), *user.HouseholdID)
+	chores, err := h.service.ListVisible(r.Context(), user.ID, *user.HouseholdID)
 	if err != nil {
 		writeServerError(w, "failed to load chores", err)
 		return
@@ -131,6 +156,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MetricType        string   `json:"metricType"`
 		MetricUnit        string   `json:"metricUnit"`
 		Subjects          []string `json:"subjects"`
+		Visibility        *string  `json:"visibility"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -149,9 +175,25 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, code, msg)
 		return
 	}
+	vis := chore.VisibilityHousehold
+	if req.Visibility != nil {
+		if !chore.ValidVisibility(*req.Visibility) {
+			writeError(w, http.StatusBadRequest, "invalid visibility")
+			return
+		}
+		vis = *req.Visibility
+	}
 
-	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects)
+	created, err := h.service.CreateChoreWithVisibility(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, vis)
 	if err != nil {
+		if errors.Is(err, chore.ErrNotAdmin) {
+			writeError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		if strings.Contains(err.Error(), "invalid visibility") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -173,8 +215,8 @@ func (h *ChoreHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.service.GetChore(r.Context(), id)
-	if err != nil || c.HouseholdID != *user.HouseholdID {
+	c, err := h.service.GetVisible(r.Context(), user.ID, *user.HouseholdID, id)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "chore not found")
 		return
 	}
@@ -206,15 +248,23 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		MetricType        *string   `json:"metricType"`
 		MetricUnit        *string   `json:"metricUnit"`
 		Subjects          *[]string `json:"subjects"`
+		Visibility        *string   `json:"visibility"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); code != 0 {
-		writeError(w, code, msg)
-		return
+	// For PATCH, name may be empty (no change); validate only if provided.
+	if req.Name != "" || req.Icon != "" || req.Color != "" || req.Category != "" || req.IndicatorLabels != nil || req.IndicatorDefaults != nil {
+		nameForVal := req.Name
+		if nameForVal == "" {
+			nameForVal = "x"
+		}
+		if code, msg := validateChoreInput(nameForVal, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); code != 0 {
+			writeError(w, code, msg)
+			return
+		}
 	}
 	mt, mu := "", ""
 	if req.MetricType != nil {
@@ -233,13 +283,67 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.Visibility != nil && !chore.ValidVisibility(*req.Visibility) {
+		writeError(w, http.StatusBadRequest, "invalid visibility")
+		return
+	}
 
-	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects); err != nil {
+	// Capture old visibility for schedule-assignment cleanup on household→admins transition.
+	var oldVis string
+	if req.Visibility != nil {
+		if existing, err := h.service.GetChore(r.Context(), id); err == nil {
+			oldVis = existing.Visibility
+			if oldVis == "" {
+				oldVis = chore.VisibilityHousehold
+			}
+		}
+	}
+
+	updated, err := h.service.UpdateChoreWithVisibility(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, req.Visibility, user.ID)
+	if err != nil {
+		if errors.Is(err, chore.ErrNotAdmin) {
+			writeError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		if err.Error() == "chore not found" || errors.Is(err, chore.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
+		if strings.Contains(err.Error(), "invalid visibility") || strings.Contains(err.Error(), "invalid metric type") {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	cleared := 0
+	if req.Visibility != nil && oldVis == chore.VisibilityHousehold && updated.Visibility == chore.VisibilityAdmins && h.scheduleStore != nil && h.householdStore != nil {
+		if schedules, err := h.scheduleStore.ListByHousehold(r.Context(), *user.HouseholdID); err == nil {
+			for _, s := range schedules {
+				if s.ChoreID != id || s.AssignedUserID == nil {
+					continue
+				}
+				role, err := h.householdStore.GetMembershipForHousehold(r.Context(), *s.AssignedUserID, *user.HouseholdID)
+				if err != nil {
+					continue
+				}
+				if role != household.RoleOwner && role != household.RoleAdmin {
+					// Clear member assignment
+					s.AssignedUserID = nil
+					if _, uerr := h.scheduleStore.Update(r.Context(), s); uerr == nil {
+						cleared++
+					}
+				}
+			}
+		}
+	}
+
+	resp := map[string]any{"chore": updated, "status": "updated"}
+	if cleared > 0 {
+		resp["clearedAssignments"] = cleared
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *ChoreHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +360,11 @@ func (h *ChoreHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.DeleteChore(r.Context(), id, *user.HouseholdID); err != nil {
+	if err := h.service.DeleteChoreForUser(r.Context(), id, *user.HouseholdID, user.ID); err != nil {
+		if err.Error() == "chore not found" || errors.Is(err, chore.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
@@ -277,6 +385,14 @@ func (h *ChoreHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	// Verify each chore is visible to the caller; a member must not be able to reorder a private task.
+	for _, cid := range req.ChoreIDs {
+		if _, err := h.service.GetVisible(r.Context(), user.ID, *user.HouseholdID, cid); err != nil {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 	}
 
 	if err := h.service.ReorderChores(r.Context(), *user.HouseholdID, req.ChoreIDs); err != nil {
@@ -301,7 +417,11 @@ func (h *ChoreHandler) RestoreDefault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.RestoreDefaultChore(r.Context(), id, *user.HouseholdID); err != nil {
+	if err := h.service.RestoreDefaultChoreForUser(r.Context(), id, *user.HouseholdID, user.ID); err != nil {
+		if err.Error() == "chore not found" || errors.Is(err, chore.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}

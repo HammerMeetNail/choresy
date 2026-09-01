@@ -57,11 +57,13 @@ export function renderChoresView(state) {
     const isHidden = hiddenSet.has(c.id);
     const eyeTitle = isHidden ? "Show on Home" : "Hide from Home";
     const isDefault = c.isPredefined;
+    const isPrivate = c.visibility === "admins";
     return `<div class="chore-row${isHidden ? ' chore-row--hidden' : ''}"
       data-chores-tab-reorder-id="${c.id}" draggable="true">
       <span class="chore-row-drag-handle" aria-hidden="true">⋮⋮</span>
       <span class="chore-row-icon" style="background:${escapeHTML(c.color)}">${escapeHTML(c.icon)}</span>
       <span class="chore-row-name">${escapeHTML(c.name)}</span>
+      ${isPrivate ? `<span class="chore-row-badge chore-row-badge--private" title="Visible only to owners and admins">🔒 Admins only</span>` : ''}
       <span class="chore-row-badge${isDefault ? ' chore-row-badge--default' : ' chore-row-badge--custom'}">${isDefault ? 'Default' : 'Custom'}</span>
       <div class="chore-row-actions">
         <button type="button"
@@ -100,8 +102,9 @@ export function renderChoreSheet(chore, opts = {}) {
   const metricType = chore?.metricType || "none";
   const metricUnit = chore?.metricUnit || "";
   const subjects = chore?.subjects || [];
+  const visibility = chore?.visibility || "household";
 
-  const { scheduleReminderEnabled = false, reminderPref = null, defaultLeadMinutes = 10 } = opts;
+  const { scheduleReminderEnabled = false, reminderPref = null, defaultLeadMinutes = 10, isAdmin = false } = opts;
   const leadTimes = [5, 10, 15, 30, 60];
 
   const reminderEnabled = reminderPref?.enabled ?? false;
@@ -206,6 +209,26 @@ export function renderChoreSheet(chore, opts = {}) {
     </div>`
   ).join("");
 
+  const visibilitySection = isAdmin ? `
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">
+        Visible to
+        <span class="chore-edit-hint">Admins-only tasks are hidden from regular members</span>
+      </label>
+      <div class="visibility-options">
+        <label class="visibility-option">
+          <input type="radio" name="chore-visibility" value="household" ${visibility !== "admins" ? ' checked' : ''} />
+          <span>Everyone</span>
+        </label>
+        <label class="visibility-option">
+          <input type="radio" name="chore-visibility" value="admins" ${visibility === "admins" ? ' checked' : ''} />
+          <span>🔒 Owners and admins</span>
+        </label>
+      </div>
+      ${visibility === "admins" ? `<p class="chore-edit-hint" style="margin-top:6px">Visible only to household owners and admins.</p>` : ''}
+    </div>
+  ` : '';
+
   const deleteOrRestore = isNew ? "" : isPredefined
     ? `<button type="button" class="btn btn-outline btn-sm chore-sheet-restore"
         data-action="restore-chore-default" data-chore-id="${choreId}">↩ Restore default</button>`
@@ -262,6 +285,8 @@ export function renderChoreSheet(chore, opts = {}) {
         <span class="indicator-default-label">Enable follow-up scheduling</span>
       </label>
     </div>
+
+    ${visibilitySection}
 
     ${reminderSection}
 

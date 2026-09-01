@@ -9,6 +9,20 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/log"
 )
 
+type viewerKey struct{}
+
+// WithViewer returns a context carrying the viewer's user ID for visibility filtering.
+func WithViewer(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, viewerKey{}, userID)
+}
+
+func viewerIDFromContext(ctx context.Context) int64 {
+	if v, ok := ctx.Value(viewerKey{}).(int64); ok {
+		return v
+	}
+	return 0
+}
+
 func nowIn(loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC
@@ -56,8 +70,13 @@ type WeeklyOverview struct {
 }
 
 type Service struct {
-	logStore   log.Store
-	choreStore choreStore
+	logStore    log.Store
+	choreStore  choreStore
+	memberships MembershipReader
+}
+
+type MembershipReader interface {
+	GetMembershipForHousehold(ctx context.Context, userID, householdID int64) (string, error)
 }
 
 type choreStore interface {
@@ -77,6 +96,7 @@ type ChoreInfo struct {
 	MetricType      string
 	MetricUnit      string
 	IndicatorLabels []string
+	Visibility      string
 }
 
 type ChoreStats struct {
@@ -150,6 +170,79 @@ func NewService(logStore log.Store, choreStore choreStore) *Service {
 	return &Service{logStore: logStore, choreStore: choreStore}
 }
 
+func (s *Service) WithMemberships(m MembershipReader) *Service {
+	s.memberships = m
+	return s
+}
+
+func (s *Service) visibleChoreIDs(ctx context.Context, householdID, userID int64) (map[int64]struct{}, error) {
+	if userID == 0 || s.memberships == nil {
+		return nil, nil
+	}
+	chores, err := s.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	visible := make(map[int64]struct{}, len(chores))
+	for _, c := range chores {
+		if c.Visibility == "admins" {
+			role, err := s.memberships.GetMembershipForHousehold(ctx, userID, householdID)
+			if err != nil {
+				continue
+			}
+			if role != "owner" && role != "admin" {
+				continue
+			}
+		}
+		visible[c.ID] = struct{}{}
+	}
+	return visible, nil
+}
+
+func (s *Service) visibleChoreIDsForContext(ctx context.Context, householdID int64) (map[int64]struct{}, error) {
+	return s.visibleChoreIDs(ctx, householdID, viewerIDFromContext(ctx))
+}
+
+func filterLogs(logs []log.ChoreLog, visible map[int64]struct{}) []log.ChoreLog {
+	if visible == nil {
+		return logs
+	}
+	var out []log.ChoreLog
+	for _, l := range logs {
+		if _, ok := visible[l.ChoreID]; ok {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+func (s *Service) canViewChore(ctx context.Context, householdID, choreID, userID int64) (bool, error) {
+	if userID == 0 || s.memberships == nil {
+		return true, nil
+	}
+	c, err := s.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return false, err
+	}
+	if c.HouseholdID != householdID {
+		return false, nil
+	}
+	if c.Visibility == "admins" {
+		role, err := s.memberships.GetMembershipForHousehold(ctx, userID, householdID)
+		if err != nil {
+			return false, err
+		}
+		if role != "owner" && role != "admin" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *Service) canViewChoreForContext(ctx context.Context, householdID, choreID int64) (bool, error) {
+	return s.canViewChore(ctx, householdID, choreID, viewerIDFromContext(ctx))
+}
+
 func (s *Service) GetWeeklyLeaderboard(ctx context.Context, householdID int64, loc *time.Location) ([]LeaderboardEntry, error) {
 	now := nowIn(loc)
 	weekStart := wkStart(now, loc)
@@ -178,6 +271,9 @@ func (s *Service) GetAllTimeLeaderboard(ctx context.Context, householdID int64, 
 	logs, err := s.logStore.ListLogsRange(ctx, householdID, epochStart, farFuture)
 	if err != nil {
 		return nil, err
+	}
+	if visible, err := s.visibleChoreIDsForContext(ctx, householdID); err == nil && visible != nil {
+		logs = filterLogs(logs, visible)
 	}
 	counts := map[int64]int{}
 	for _, l := range logs {
@@ -285,7 +381,7 @@ func (s *Service) GetHeatmap(ctx context.Context, householdID int64, start, end 
 }
 
 func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]CategoryBreakdown, error) {
-	chores, err := s.choreStore.ListChores(ctx, householdID)
+	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +414,13 @@ func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, s
 }
 
 func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location, choreID, userID *int64) ([]BusyHour, error) {
+	if choreID != nil {
+		if ok, err := s.canViewChoreForContext(ctx, householdID, *choreID); err != nil {
+			return nil, err
+		} else if !ok {
+			return nil, fmt.Errorf("chore not found")
+		}
+	}
 	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return nil, err
@@ -386,7 +489,7 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *ti
 	}
 	recap.MostActiveDay = bestDay
 
-	chores, err := s.choreStore.ListChores(ctx, householdID)
+	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
 		return recap, nil
 	}
@@ -435,7 +538,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 		return nil, err
 	}
 
-	chores, err := s.choreStore.ListChores(ctx, householdID)
+	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -538,7 +641,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 		return WeeklyOverview{}, err
 	}
 
-	chores, err := s.choreStore.ListChores(ctx, householdID)
+	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
 		return WeeklyOverview{}, err
 	}
@@ -654,7 +757,10 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID in
 		if err != nil {
 			return nil, err
 		}
-		chores, err := s.choreStore.ListChores(ctx, householdID)
+		if visible, err := s.visibleChoreIDsForContext(ctx, householdID); err == nil && visible != nil {
+			allLogs = filterLogs(allLogs, visible)
+		}
+		chores, err := s.visibleChoresForContext(ctx, householdID)
 		if err != nil {
 			return nil, err
 		}
@@ -692,7 +798,7 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID in
 		rangeEnd = now
 	}
 
-	chores, err := s.choreStore.ListChores(ctx, householdID)
+	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -740,6 +846,11 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID in
 }
 
 func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID int64, period string, loc *time.Location) (*ChoreTimeSeries, error) {
+	if ok, err := s.canViewChoreForContext(ctx, householdID, choreID); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("chore not found")
+	}
 	ch, err := s.choreStore.GetChore(ctx, choreID)
 	if err != nil {
 		return nil, err
@@ -920,18 +1031,28 @@ func buildMonthBuckets(start, end time.Time, loc *time.Location) []timeBucket {
 // it must belong to the household; any chore where intervals matter (feeds,
 // medication, watering) can be analyzed.
 func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID *int64, start, end time.Time, loc *time.Location) ([]FeedingGap, error) {
-	chores, err := s.choreStore.ListChores(ctx, householdID)
+	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
 
 	var feedBabyID int64
 	if choreID != nil {
+		// Explicit ID must be visible; if not visible, treat as not found -> return 404 via error.
+		if ok, err := s.canViewChoreForContext(ctx, householdID, *choreID); err != nil {
+			return nil, err
+		} else if !ok {
+			return nil, fmt.Errorf("chore not found")
+		}
 		for _, ch := range chores {
 			if ch.HouseholdID == householdID && ch.ID == *choreID {
 				feedBabyID = ch.ID
 				break
 			}
+		}
+		// Also check if the chore exists but is private and not in visible list (already handled by canView)
+		if feedBabyID == 0 {
+			return nil, fmt.Errorf("chore not found")
 		}
 	} else {
 		for _, ch := range chores {
@@ -1003,6 +1124,11 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID
 // per-member split) for a single chore. period is day|week|month|all; "all"
 // counts every log ever recorded. The chore must belong to householdID.
 func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int64, period string, loc *time.Location) (*ChoreSummary, error) {
+	if ok, err := s.canViewChoreForContext(ctx, householdID, choreID); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("chore not found")
+	}
 	ch, err := s.choreStore.GetChore(ctx, choreID)
 	if err != nil {
 		return nil, err
@@ -1034,6 +1160,12 @@ func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int6
 		epochStart := time.Unix(0, 0).UTC()
 		farFuture := time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
 		logs, err = s.logStore.ListLogsRange(ctx, householdID, epochStart, farFuture)
+		if err != nil {
+			return nil, err
+		}
+		if visible, err := s.visibleChoreIDsForContext(ctx, householdID); err == nil && visible != nil {
+			logs = filterLogs(logs, visible)
+		}
 	} else {
 		logs, err = s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	}
@@ -1078,11 +1210,40 @@ func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int6
 }
 
 // fetchLogsInRange fetches logs with widened bounds to account for timezone
-// offsets, so that the caller can filter by local date in Go.
+// offsets, so that the caller can filter by local date in Go. It also filters
+// to the viewer's visible chores when a viewer is present in ctx.
 func (s *Service) fetchLogsInRange(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]log.ChoreLog, error) {
 	bufStart := start.Add(-48 * time.Hour)
 	bufEnd := end.Add(48 * time.Hour)
-	return s.logStore.ListLogsRange(ctx, householdID, bufStart, bufEnd)
+	logs, err := s.logStore.ListLogsRange(ctx, householdID, bufStart, bufEnd)
+	if err != nil {
+		return nil, err
+	}
+	if visible, err := s.visibleChoreIDsForContext(ctx, householdID); err == nil && visible != nil {
+		logs = filterLogs(logs, visible)
+	}
+	return logs, nil
+}
+
+func (s *Service) visibleChoresForContext(ctx context.Context, householdID int64) ([]ChoreInfo, error) {
+	chores, err := s.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	visibleMap, err := s.visibleChoreIDsForContext(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	if visibleMap == nil {
+		return chores, nil
+	}
+	var out []ChoreInfo
+	for _, c := range chores {
+		if _, ok := visibleMap[c.ID]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 // logInRange returns true if the log's local date falls within [start, end).

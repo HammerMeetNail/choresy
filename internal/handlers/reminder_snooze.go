@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 	"github.com/HammerMeetNail/nabu/internal/userprefs"
@@ -17,14 +18,20 @@ import (
 // re-emits the caller's own reminder — SameSite=Lax already blocks cross-site
 // POSTs from carrying the session cookie.
 type ReminderSnoozeHandler struct {
-	scheduleStore schedule.Store
-	choreStore    chore.Store
-	prefsStore    userprefs.Store
+	scheduleStore  schedule.Store
+	choreStore     chore.Store
+	prefsStore     userprefs.Store
+	householdStore household.Store
 }
 
 // NewReminderSnoozeHandler constructs a ReminderSnoozeHandler.
 func NewReminderSnoozeHandler(scheduleStore schedule.Store, choreStore chore.Store, prefsStore userprefs.Store) *ReminderSnoozeHandler {
 	return &ReminderSnoozeHandler{scheduleStore: scheduleStore, choreStore: choreStore, prefsStore: prefsStore}
+}
+
+func (h *ReminderSnoozeHandler) WithHouseholdStore(hs household.Store) *ReminderSnoozeHandler {
+	h.householdStore = hs
+	return h
 }
 
 // Snooze handles POST /api/reminders/snooze with {"choreId": N, "minutes": M}.
@@ -57,11 +64,22 @@ func (h *ReminderSnoozeHandler) Snooze(w http.ResponseWriter, r *http.Request) {
 		minutes = 24 * 60
 	}
 
-	// Ownership: the chore must belong to the caller's household.
+	// Ownership + visibility: the chore must be visible to the caller.
 	c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
-	if err != nil || c.HouseholdID != *user.HouseholdID {
+	if err != nil {
 		writeError(w, http.StatusForbidden, "chore does not belong to your household")
 		return
+	}
+	if c.HouseholdID != *user.HouseholdID {
+		writeError(w, http.StatusForbidden, "chore does not belong to your household")
+		return
+	}
+	if c.Visibility == chore.VisibilityAdmins && h.householdStore != nil {
+		role, err := h.householdStore.GetMembershipForHousehold(r.Context(), user.ID, *user.HouseholdID)
+		if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 	}
 
 	// Compute the target wall-clock time in the user's timezone so the

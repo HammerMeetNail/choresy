@@ -462,10 +462,13 @@ function renderHomeViewWrapper() {
     const isNew = choreId === null || choreId === undefined;
     const chore = isNew ? null : (state.chores || []).find(c => c.id === choreId);
     if (isNew || chore) {
+      const _memberSelf = (state.members || []).find(m => m.userId === state.user?.id);
+      const _isAdmin = _memberSelf?.role === "owner" || _memberSelf?.role === "admin";
       const sheetHTML = renderChoreSheet(isNew ? null : chore, {
         scheduleReminderEnabled: scheduleReminderTypeEnabled(),
         reminderPref: getChoreReminderPref(choreId),
         defaultLeadMinutes: state.notificationPrefs?.defaultReminderLeadMinutes ?? 10,
+        isAdmin: _isAdmin,
       });
       return `<div class="sheet-overlay-wrapper">
         ${header}
@@ -2586,11 +2589,18 @@ export async function init() {
           .map(el => el.value.trim())
           .filter(v => v.length > 0);
 
+        // Visibility (private household tasks): only owners/admins can set.
+        const memberSelf = (state.members || []).find(m => m.userId === state.user?.id);
+        const isAdmin = memberSelf?.role === "owner" || memberSelf?.role === "admin";
+        const visEl = document.querySelector('input[name="chore-visibility"]:checked');
+        const visibility = visEl?.value;
         if (isNew) {
           const followUpEnabled = document.querySelector("[data-action='toggle-followup-enabled']")?.checked ?? true;
+          const body = { name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects };
+          if (isAdmin && visibility) body.visibility = visibility;
           apiFetch("/api/chores", {
             method: "POST",
-            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects }),
+            body: JSON.stringify(body),
           }).then(async ({ data }) => {
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }
@@ -2606,17 +2616,54 @@ export async function init() {
             showToast(`${icon} ${name} added`, "success");
           }).catch(() => showToast("Failed to create chore", "error"));
         } else {
+          const chore = (state.chores || []).find(c => c.id === choreId);
+          const oldVis = chore?.visibility || "household";
+          const newVis = isAdmin && visibility ? visibility : oldVis;
+          if (oldVis !== newVis) {
+            const toPrivate = newVis === "admins";
+            const msg = toPrivate
+              ? `Make "${chore?.name || name}" Admins only?\n\nIt will disappear, along with its activity and statistics, for regular members. Information they saw while it was shared cannot be recalled.`
+              : `Make "${chore?.name || name}" visible to everyone?\n\nAll members will gain access to the entire retained history.`;
+            if (!confirm(msg)) break;
+          }
           const followUpEnabledEl = document.querySelector("[data-action='toggle-followup-enabled']");
           const followUpEnabled = followUpEnabledEl?.checked;
+          const body = { name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects };
+          if (isAdmin && visibility) body.visibility = visibility;
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects }),
-          }).then(async () => {
+            body: JSON.stringify(body),
+          }).then(async ({ data, response }) => {
+            if (!response.ok) {
+              const msg = data?.error || "Failed to update chore";
+              showToast(msg, "error");
+              // If 404, the task may have become private and viewer lost access; reload.
+              if (response.status === 404) {
+                state.activeSheet = null;
+                state.activeSheetData = {};
+                await loadChoreData();
+                render(app);
+              }
+              return;
+            }
+            const updated = data?.chore;
+            if (updated) {
+              const idx = (state.chores || []).findIndex(c => c.id === choreId);
+              if (idx >= 0) state.chores[idx] = updated;
+              else state.chores.push(updated);
+              // If visibility changed to private, ensure member assignments cleared are reflected in schedules
+              try { state.schedules = await loadSchedules(); } catch {}
+            } else {
+              await loadChoreData();
+            }
             state.activeSheet = null;
             state.activeSheetData = {};
-            await loadChoreData();
             render(app);
-            showToast("Chore updated", "success");
+            if (data?.clearedAssignments) {
+              showToast(`Chore updated — ${data.clearedAssignments} assignment(s) cleared`, "info");
+            } else {
+              showToast("Chore updated", "success");
+            }
           }).catch(() => showToast("Failed to update chore", "error"));
         }
         break;

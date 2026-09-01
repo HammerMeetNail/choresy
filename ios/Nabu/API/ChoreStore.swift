@@ -12,13 +12,13 @@ final class ChoreStore {
                      indicatorLabels: [String] = [], indicatorDefaults: [String] = [],
                      followUpEnabled: Bool? = nil,
                      metricType: String? = nil, metricUnit: String? = nil,
-                     subjects: [String]? = nil) async throws -> ChoreResponse {
+                     subjects: [String]? = nil, visibility: String? = nil) async throws -> ChoreResponse {
         let body = CreateChoreRequest(
             name: name, icon: icon, color: color, category: category,
             indicatorLabels: indicatorLabels.isEmpty ? nil : indicatorLabels,
             indicatorDefaults: indicatorDefaults.isEmpty ? nil : indicatorDefaults,
             followUpEnabled: followUpEnabled,
-            metricType: metricType, metricUnit: metricUnit, subjects: subjects
+            metricType: metricType, metricUnit: metricUnit, subjects: subjects, visibility: visibility
         )
         return try await api.post("/api/chores", body: body)
     }
@@ -27,25 +27,14 @@ final class ChoreStore {
                      indicatorLabels: [String], indicatorDefaults: [String],
                      followUpEnabled: Bool? = nil,
                      metricType: String? = nil, metricUnit: String? = nil,
-                     subjects: [String]? = nil) async throws -> ChoreResponse {
-        struct UpdateBody: Codable {
-            var name: String
-            var icon: String
-            var color: String
-            var indicatorLabels: [String]
-            var indicatorDefaults: [String]
-            var followUpEnabled: Bool?
-            var metricType: String?
-            var metricUnit: String?
-            var subjects: [String]?
-        }
-        let body = UpdateBody(name: name, icon: icon, color: color,
+                     subjects: [String]? = nil, visibility: String? = nil) async throws -> ChoreResponse {
+        let body = PatchChoreRequest(name: name, icon: icon, color: color, category: nil,
                               indicatorLabels: indicatorLabels,
                               indicatorDefaults: indicatorDefaults,
                               followUpEnabled: followUpEnabled,
                               metricType: metricType,
                               metricUnit: metricUnit,
-                              subjects: subjects)
+                              subjects: subjects, visibility: visibility)
         return try await api.patch("/api/chores/\(choreId)", body: body)
     }
 

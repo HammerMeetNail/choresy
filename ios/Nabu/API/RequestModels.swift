@@ -67,8 +67,9 @@ struct CreateChoreRequest: Codable {
     let metricType: String?   // none | amount | rating | duration
     let metricUnit: String?   // unit label for amount metrics (mL/oz/g/min/custom)
     let subjects: [String]?
+    let visibility: String?   // household | admins
 
-    init(name: String, icon: String?, color: String?, category: String?, indicatorLabels: [String]?, indicatorDefaults: [String]?, followUpEnabled: Bool?, metricType: String? = nil, metricUnit: String? = nil, subjects: [String]? = nil) {
+    init(name: String, icon: String?, color: String?, category: String?, indicatorLabels: [String]?, indicatorDefaults: [String]?, followUpEnabled: Bool?, metricType: String? = nil, metricUnit: String? = nil, subjects: [String]? = nil, visibility: String? = nil) {
         self.name = name
         self.icon = icon
         self.color = color
@@ -79,13 +80,14 @@ struct CreateChoreRequest: Codable {
         self.metricType = metricType
         self.metricUnit = metricUnit
         self.subjects = subjects
+        self.visibility = visibility
     }
 
     enum CodingKeys: String, CodingKey {
         case name, icon, color, category
         case indicatorLabels, indicatorDefaults
         case followUpEnabled
-        case metricType, metricUnit, subjects
+        case metricType, metricUnit, subjects, visibility
     }
 
     func encode(to encoder: Encoder) throws {
@@ -100,7 +102,22 @@ struct CreateChoreRequest: Codable {
         try container.encodeIfPresent(metricType, forKey: .metricType)
         try container.encodeIfPresent(metricUnit, forKey: .metricUnit)
         try container.encodeIfPresent(subjects, forKey: .subjects)
+        try container.encodeIfPresent(visibility, forKey: .visibility)
     }
+}
+
+struct PatchChoreRequest: Codable {
+    let name: String?
+    let icon: String?
+    let color: String?
+    let category: String?
+    let indicatorLabels: [String]?
+    let indicatorDefaults: [String]?
+    let followUpEnabled: Bool?
+    let metricType: String?
+    let metricUnit: String?
+    let subjects: [String]?
+    let visibility: String?
 }
 
 struct ReorderChoresRequest: Codable {

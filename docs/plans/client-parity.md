@@ -171,6 +171,8 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Once schedules not crossed out | `schedule-tab.js` | `Views/ScheduleView.swift` | N/A (client rendering) | Done | |
 | followUpTime in log request | `today.js`, `app.js` | `Views/LogSheet.swift`, `API/RequestModels.swift`, `RequestEncodingTests.swift` | `/api/logs` | Done | |
 | followUpEnabled in chore request | `chores.js`, `app.js` | `API/RequestModels.swift`, `RequestEncodingTests.swift` | `/api/chores` | Done | |
+| **Private Household Tasks** |
+| Private (Admins-only) tasks | `chores.js`, `app.js`, `today.js`, `schedule.js`, `schedule-tab.js`, `calendar.js`, `stats.js`, `preferences.js`, `notifications.js`, `service-worker.js`, `private-tasks.spec.js` | `Views/ChoreEditView.swift`, `Views/ManageChoresView.swift`, `API/Models.swift`, `API/RequestModels.swift`, `API/ChoreStore.swift`, `NabuTests/ChoreVisibilityTests.swift` | `/api/chores` (`visibility`), `/api/logs`, `/api/logs/history`, `/api/logs/export`, `/api/logs/latest-per-chore`, `/api/schedules`, `/api/schedules/for-date`, `/api/chore-reminder-prefs`, `/api/reminders/snooze`, `/api/preferences`, `/api/stats/*`, `/api/household/data` | Built | Role-based visibility `household` (default) vs `admins` (Admins only); server-authoritative filtering for every derived surface (logs, history/search, export, latest-per-chore, schedules, reminders/snooze, notifications, stats, prefs, household export); admin-only create/transition with confirmations; member schedule assignments cleared on transition; iOS picker + confirmation parities PWA |
 | **Service Worker** |
 | Update/reload | `sw-update-reload.spec.js` | N/A (native app) | N/A | N/A | PWA-only; native apps use App Store updates |
 | **Web & Marketing** |
