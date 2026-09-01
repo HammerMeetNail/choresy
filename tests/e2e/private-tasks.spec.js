@@ -69,25 +69,25 @@ test.describe('Private household tasks', () => {
     });
     const code = (await inviteRes.json()).invite.code;
 
-    const { page: adminPage, email: adminEmail, context: adminCtx } = await joinAsUser(browser, code);
-    const { page: memberPage, email: memberEmail, context: memberCtx } = await joinAsUser(browser, code);
+    const { page: adminPage, context: adminCtx } = await joinAsUser(browser, code);
+    const { page: memberPage, context: memberCtx } = await joinAsUser(browser, code);
 
-    // Promote adminPage's user to admin (match by email, not by array order)
-    const hhRes2 = await ownerPage.request.get('/api/household');
-    const hhData2 = await hhRes2.json();
-    const members = hhData2.members;
-    const adminUserId = members.find(m => m.email === adminEmail)?.userId;
-    const memberUserId = members.find(m => m.email === memberEmail)?.userId;
+    // Promote adminPage's user to admin — get admin's userId via /api/me
+    const adminMeRes = await adminPage.request.get('/api/me');
+    const adminMe = (await adminMeRes.json()).user;
+    const adminUserId = adminMe.id;
+    const memberMeRes = await memberPage.request.get('/api/me');
+    const memberUserId = (await memberMeRes.json()).user.id;
     if (adminUserId) {
       const promRes = await ownerPage.request.patch(`/api/household/members/${adminUserId}`, {
         data: { role: 'admin' },
         headers: { 'X-CSRF-Token': ownerCsrf },
       });
       expect(promRes.ok()).toBe(true);
-      // Verify promotion via admin's own household view
+      // Verify promotion via admin's own household view (by userId, not email)
       const adminHhCheck = await adminPage.request.get('/api/household');
       const adminHhData = await adminHhCheck.json();
-      const adminRole = adminHhData.members.find(m => m.email === adminEmail)?.role;
+      const adminRole = adminHhData.members.find(m => m.userId === adminUserId)?.role;
       expect(adminRole).toBe('admin');
       // Reload admin to pick up new role
       await adminPage.reload();
