@@ -143,7 +143,7 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 			continue
 		}
 		if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "chore_logged") {
-			log.Printf("notif: sending push to user %d title=%q", n.UserID, n.Title)
+			log.Printf("notif: sending push to user %d type=chore_logged", n.UserID)
 			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
 		}
 	}

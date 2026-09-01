@@ -325,10 +325,10 @@ func TestReminderSnoozeStoreErrorHidesInternals(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	// Ownership check must succeed: chore 1 belongs to household 1.
-	mock.ExpectQuery(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE\(predefined_key,''\), created_by, created_at, indicator_labels, has_volume_ml, COALESCE\(indicator_defaults,'\[\]'\), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE\(metric_type,'none'\), COALESCE\(metric_unit,''\), COALESCE\(subjects,'\[\]'\) FROM chores WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT.*FROM chores WHERE id = \$1`).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "predefined_key", "created_by", "created_at", "indicator_labels", "has_volume_ml", "indicator_defaults", "follow_up_enabled", "last_follow_up_minutes", "has_rating", "metric_type", "metric_unit", "subjects"}).
-			AddRow(1, 1, "Sweep", "🧹", "#FF0000", 0, "", false, "", 1, time.Now(), "[]", false, "[]", false, 0, false, "none", "", "[]"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "predefined_key", "created_by", "created_at", "indicator_labels", "has_volume_ml", "indicator_defaults", "follow_up_enabled", "last_follow_up_minutes", "has_rating", "metric_type", "metric_unit", "subjects", "visibility"}).
+			AddRow(1, 1, "Sweep", "🧹", "#FF0000", 0, "", false, "", 1, time.Now(), "[]", false, "[]", false, 0, false, "none", "", "[]", "household"))
 	// The follow-up delete then fails.
 	mock.ExpectExec(`DELETE FROM schedules WHERE chore_id = \$1 AND is_follow_up = true`).
 		WithArgs(int64(1)).

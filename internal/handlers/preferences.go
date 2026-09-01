@@ -1,18 +1,23 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 // PreferencesHandler handles GET /api/preferences and PATCH /api/preferences.
 type PreferencesHandler struct {
-	service    *userprefs.Service
-	choreStore chore.Store // optional; used to ownership-check widget choreIds
+	service        *userprefs.Service
+	choreStore     chore.Store // optional; used to ownership-check widget choreIds
+	householdStore household.Store
 }
 
 // NewPreferencesHandler constructs a PreferencesHandler.
@@ -27,6 +32,146 @@ func (h *PreferencesHandler) WithChoreStore(cs chore.Store) *PreferencesHandler 
 	return h
 }
 
+func (h *PreferencesHandler) WithHouseholdStore(hs household.Store) *PreferencesHandler {
+	h.householdStore = hs
+	return h
+}
+
+func (h *PreferencesHandler) visibleChoreSet(userID, householdID int64, ctx context.Context) map[int64]struct{} {
+	if h.choreStore == nil || householdID == 0 {
+		return nil
+	}
+	chores, err := h.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil
+	}
+	visible := make(map[int64]struct{}, len(chores))
+	for _, c := range chores {
+		if c.Visibility == chore.VisibilityAdmins {
+			if h.householdStore == nil {
+				continue
+			}
+			role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+			if err != nil {
+				continue
+			}
+			if role != household.RoleOwner && role != household.RoleAdmin {
+				continue
+			}
+		}
+		visible[c.ID] = struct{}{}
+	}
+	return visible
+}
+
+func (h *PreferencesHandler) filterPreferencesForResponse(prefs userprefs.Preferences, visible map[int64]struct{}) userprefs.Preferences {
+	if visible == nil {
+		return prefs
+	}
+	// Filter choreOrder and hiddenHomeChoreIDs
+	var filteredOrder []int64
+	for _, id := range prefs.ChoreOrder {
+		if _, ok := visible[id]; ok {
+			filteredOrder = append(filteredOrder, id)
+		}
+	}
+	prefs.ChoreOrder = filteredOrder
+	if prefs.ChoreOrder == nil {
+		prefs.ChoreOrder = []int64{}
+	}
+	var filteredHidden []int64
+	for _, id := range prefs.HiddenHomeChoreIDs {
+		if _, ok := visible[id]; ok {
+			filteredHidden = append(filteredHidden, id)
+		}
+	}
+	prefs.HiddenHomeChoreIDs = filteredHidden
+	if prefs.HiddenHomeChoreIDs == nil {
+		prefs.HiddenHomeChoreIDs = []int64{}
+	}
+	// Filter stats widgets: omit any widget that references an invisible chore.
+	var filteredWidgets []userprefs.StatsWidget
+	for _, w := range prefs.StatsWidgets {
+		visibleWidget := true
+		for _, cid := range w.ChoreIDs {
+			if _, ok := visible[cid]; !ok {
+				visibleWidget = false
+				break
+			}
+		}
+		if visibleWidget {
+			filteredWidgets = append(filteredWidgets, w)
+		}
+	}
+	prefs.StatsWidgets = filteredWidgets
+	if prefs.StatsWidgets == nil {
+		prefs.StatsWidgets = []userprefs.StatsWidget{}
+	}
+	// Filter stats section keys that reference chore IDs or widget IDs for invisible tasks
+	// Section keys like "chore:123" or "widget:abc" where widget's title may leak private name.
+	// We already filtered widgets; now filter section order/hidden that reference invisible chores.
+	// For simplicity, check "chore:" prefix.
+	var filteredOrderSecs []string
+	for _, k := range prefs.StatsSectionOrder {
+		if strings.HasPrefix(k, "chore:") {
+			var cid int64
+			if _, err := parseChoreSection(k, &cid); err == nil {
+				if _, ok := visible[cid]; !ok {
+					continue
+				}
+			}
+		}
+		if strings.HasPrefix(k, "widget:") {
+			// widget IDs already filtered, but keep only if widget still exists
+			found := false
+			for _, w := range prefs.StatsWidgets {
+				if k == "widget:"+w.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		filteredOrderSecs = append(filteredOrderSecs, k)
+	}
+	prefs.StatsSectionOrder = filteredOrderSecs
+	if prefs.StatsSectionOrder == nil {
+		prefs.StatsSectionOrder = []string{}
+	}
+	var filteredHiddenSecs []string
+	for _, k := range prefs.StatsSectionHidden {
+		if strings.HasPrefix(k, "chore:") {
+			var cid int64
+			if _, err := parseChoreSection(k, &cid); err == nil {
+				if _, ok := visible[cid]; !ok {
+					continue
+				}
+			}
+		}
+		filteredHiddenSecs = append(filteredHiddenSecs, k)
+	}
+	prefs.StatsSectionHidden = filteredHiddenSecs
+	if prefs.StatsSectionHidden == nil {
+		prefs.StatsSectionHidden = []string{}
+	}
+	return prefs
+}
+
+func parseChoreSection(k string, out *int64) (int64, error) {
+	parts := strings.SplitN(k, ":", 2)
+	if len(parts) != 2 {
+		return 0, errors.New("invalid")
+	}
+	v, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	*out = v
+	return v, nil
+}
+
 // Get returns the current user's preferences.
 func (h *PreferencesHandler) Get(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
@@ -39,6 +184,10 @@ func (h *PreferencesHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeServerError(w, "failed to load preferences", err)
 		return
+	}
+	if user.HouseholdID != nil {
+		visible := h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+		prefs = h.filterPreferencesForResponse(prefs, visible)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
@@ -69,7 +218,20 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var visible map[int64]struct{}
+	if user.HouseholdID != nil {
+		visible = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+	}
+
 	if req.ChoreOrder != nil {
+		if visible != nil {
+			for _, cid := range *req.ChoreOrder {
+				if _, ok := visible[cid]; !ok {
+					writeError(w, http.StatusNotFound, "chore not found")
+					return
+				}
+			}
+		}
 		if err := h.service.UpdateChoreOrder(r.Context(), user.ID, *req.ChoreOrder); err != nil {
 			writeServerError(w, "failed to update preferences", err)
 			return
@@ -77,6 +239,14 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.HiddenHomeChoreIDs != nil {
+		if visible != nil {
+			for _, cid := range *req.HiddenHomeChoreIDs {
+				if _, ok := visible[cid]; !ok {
+					writeError(w, http.StatusNotFound, "chore not found")
+					return
+				}
+			}
+		}
 		if err := h.service.UpdateHiddenHomeChores(r.Context(), user.ID, *req.HiddenHomeChoreIDs); err != nil {
 			writeServerError(w, "failed to update preferences", err)
 			return
@@ -123,26 +293,35 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.StatsWidgets != nil {
-		// Ownership check: every referenced chore must belong to the caller's
-		// household. This is defense-in-depth on top of the stats endpoints'
-		// own ownership checks (a widget renders via those endpoints).
+		// Ownership + visibility check: every referenced chore must be visible to caller.
 		if h.choreStore != nil {
-			owned := map[int64]bool{}
-			if user.HouseholdID != nil {
-				chores, err := h.choreStore.ListChores(r.Context(), *user.HouseholdID)
-				if err != nil {
-					writeServerError(w, "failed to update preferences", err)
-					return
-				}
-				for _, c := range chores {
-					owned[c.ID] = true
-				}
+			if visible == nil && user.HouseholdID != nil {
+				visible = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
 			}
 			for _, wdg := range *req.StatsWidgets {
 				for _, cid := range wdg.ChoreIDs {
-					if !owned[cid] {
-						writeError(w, http.StatusForbidden, "widget references a chore outside your household")
-						return
+					if visible != nil {
+						if _, ok := visible[cid]; !ok {
+							writeError(w, http.StatusNotFound, "chore not found")
+							return
+						}
+					} else {
+						// Fallback ownership check
+						owned := false
+						if user.HouseholdID != nil {
+							if chores, err := h.choreStore.ListChores(r.Context(), *user.HouseholdID); err == nil {
+								for _, c := range chores {
+									if c.ID == cid {
+										owned = true
+										break
+									}
+								}
+							}
+						}
+						if !owned {
+							writeError(w, http.StatusForbidden, "widget references a chore outside your household")
+							return
+						}
 					}
 				}
 			}
@@ -157,6 +336,12 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeServerError(w, "failed to load preferences", err)
 		return
+	}
+	if user.HouseholdID != nil {
+		if visible == nil {
+			visible = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+		}
+		prefs = h.filterPreferencesForResponse(prefs, visible)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})

@@ -37,8 +37,8 @@ func TestAudit_ChoreCreated(t *testing.T) {
 	if ev.Attrs["household_id"] != "1" {
 		t.Errorf("household_id = %q, want 1", ev.Attrs["household_id"])
 	}
-	if ev.Attrs["name"] != "Wash Dishes" {
-		t.Errorf("name = %q", ev.Attrs["name"])
+	if _, has := ev.Attrs["name"]; has {
+		t.Errorf("chore.created should not contain name (privacy for private tasks), got %q", ev.Attrs["name"])
 	}
 	// Actor must be enriched from context — this is who did it, even though the
 	// service method does not take an actor parameter.

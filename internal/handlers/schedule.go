@@ -11,16 +11,18 @@ import (
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 // ScheduleHandler handles HTTP requests for schedule CRUD and queries.
 type ScheduleHandler struct {
-	store       schedule.Store
-	service     *schedule.Service
-	choreStore  chore.Store
-	auditLogger audit.Logger
+	store          schedule.Store
+	service        *schedule.Service
+	choreStore     chore.Store
+	householdStore household.Store
+	auditLogger    audit.Logger
 }
 
 // NewScheduleHandler creates a new ScheduleHandler.
@@ -36,6 +38,12 @@ func (h *ScheduleHandler) WithChoreStore(cs chore.Store) *ScheduleHandler {
 	return h
 }
 
+// WithHouseholdStore attaches the household store for visibility/assignment checks.
+func (h *ScheduleHandler) WithHouseholdStore(hs household.Store) *ScheduleHandler {
+	h.householdStore = hs
+	return h
+}
+
 // choreBelongsToHousehold reports whether choreID is owned by householdID. When
 // no chore store is wired (some tests) it returns true so behavior is unchanged.
 func (h *ScheduleHandler) choreBelongsToHousehold(ctx context.Context, choreID, householdID int64) bool {
@@ -47,6 +55,86 @@ func (h *ScheduleHandler) choreBelongsToHousehold(ctx context.Context, choreID, 
 		return false
 	}
 	return c.HouseholdID == householdID
+}
+
+func (h *ScheduleHandler) choreVisibleToUser(ctx context.Context, userID, householdID, choreID int64) (chore.Chore, bool) {
+	if h.choreStore == nil {
+		return chore.Chore{}, true
+	}
+	c, err := h.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return chore.Chore{}, false
+	}
+	if c.HouseholdID != householdID {
+		return chore.Chore{}, false
+	}
+	if c.Visibility == chore.VisibilityAdmins {
+		if h.householdStore == nil {
+			return c, false
+		}
+		role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+		if err != nil {
+			return c, false
+		}
+		if role != household.RoleOwner && role != household.RoleAdmin {
+			return c, false
+		}
+	}
+	return c, true
+}
+
+func (h *ScheduleHandler) isAdmin(ctx context.Context, userID, householdID int64) bool {
+	if h.householdStore == nil {
+		return true
+	}
+	role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+	if err != nil {
+		return false
+	}
+	return role == household.RoleOwner || role == household.RoleAdmin
+}
+
+func (h *ScheduleHandler) filterSchedulesVisible(ctx context.Context, userID, householdID int64, schedules []schedule.ChoreSchedule) []schedule.ChoreSchedule {
+	if h.choreStore == nil {
+		return schedules
+	}
+	var out []schedule.ChoreSchedule
+	for _, s := range schedules {
+		if _, ok := h.choreVisibleToUser(ctx, userID, householdID, s.ChoreID); ok {
+			out = append(out, s)
+		}
+	}
+	if out == nil {
+		return []schedule.ChoreSchedule{}
+	}
+	return out
+}
+
+func (h *ScheduleHandler) validateAssignment(ctx context.Context, choreID int64, assignedUserID *int64, householdID int64) (int, string) {
+	if assignedUserID == nil {
+		return 0, ""
+	}
+	if h.choreStore == nil {
+		return 0, ""
+	}
+	c, err := h.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return 0, ""
+	}
+	if c.Visibility != chore.VisibilityAdmins {
+		return 0, ""
+	}
+	if h.householdStore == nil {
+		return 0, ""
+	}
+	role, err := h.householdStore.GetMembershipForHousehold(ctx, *assignedUserID, householdID)
+	if err != nil {
+		return 400, "assigned user is not a member"
+	}
+	if role != household.RoleOwner && role != household.RoleAdmin {
+		return 400, "private task may only be assigned to an admin"
+	}
+	return 0, ""
 }
 
 // SetAuditLogger attaches a sink for schedule mutation events. A nil logger is
@@ -74,6 +162,7 @@ func (h *ScheduleHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, "failed to load schedule", err)
 		return
 	}
+	schedules = h.filterSchedulesVisible(r.Context(), user.ID, *user.HouseholdID, schedules)
 	if schedules == nil {
 		schedules = []schedule.ChoreSchedule{}
 	}
@@ -102,6 +191,7 @@ func (h *ScheduleHandler) ForDate(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, "failed to load schedule", err)
 		return
 	}
+	all = h.filterSchedulesVisible(r.Context(), user.ID, *user.HouseholdID, all)
 
 	active := h.service.GetSchedulesForDate(all, date)
 	if active == nil {
@@ -131,15 +221,30 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "choreId is required")
 		return
 	}
-	if !h.choreBelongsToHousehold(r.Context(), req.ChoreID, *user.HouseholdID) {
-		writeError(w, http.StatusForbidden, "chore does not belong to your household")
-		return
+	if h.choreStore != nil {
+		c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
+		if c.HouseholdID != *user.HouseholdID {
+			writeError(w, http.StatusForbidden, "chore does not belong to your household")
+			return
+		}
+		if c.Visibility == chore.VisibilityAdmins && !h.isAdmin(r.Context(), user.ID, *user.HouseholdID) {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 	}
 	if req.TimePeriod == "" {
 		req.TimePeriod = schedule.PeriodAnytime
 	}
 	if req.FrequencyType == "" {
 		req.FrequencyType = "once"
+	}
+	if code, msg := h.validateAssignment(r.Context(), req.ChoreID, req.AssignedUserID, *user.HouseholdID); code != 0 {
+		writeError(w, code, msg)
+		return
 	}
 	req.HouseholdID = *user.HouseholdID
 	req.IsActive = true
@@ -184,6 +289,10 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "not your schedule")
 		return
 	}
+	if _, ok := h.choreVisibleToUser(r.Context(), user.ID, *user.HouseholdID, existing.ChoreID); !ok {
+		writeError(w, http.StatusNotFound, "schedule not found")
+		return
+	}
 
 	// Decode as a raw map so we can distinguish "field not sent" from "field
 	// sent as zero/false/null".  Only keys present in the payload are applied.
@@ -200,10 +309,33 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if v, ok := raw["choreId"]; ok {
 		_ = json.Unmarshal(v, &req.ChoreID)
-		// Re-check ownership: a patched choreId must not point at another
-		// household's chore.
-		if !h.choreBelongsToHousehold(r.Context(), req.ChoreID, *user.HouseholdID) {
-			writeError(w, http.StatusForbidden, "chore does not belong to your household")
+		if h.choreStore != nil {
+			c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+			if err != nil {
+				writeError(w, http.StatusNotFound, "chore not found")
+				return
+			}
+			if c.HouseholdID != *user.HouseholdID {
+				writeError(w, http.StatusForbidden, "chore does not belong to your household")
+				return
+			}
+			if c.Visibility == chore.VisibilityAdmins && !h.isAdmin(r.Context(), user.ID, *user.HouseholdID) {
+				writeError(w, http.StatusNotFound, "chore not found")
+				return
+			}
+		}
+	}
+	if v, ok := raw["assignedUserId"]; ok {
+		if string(v) == "null" {
+			req.AssignedUserID = nil
+		} else {
+			var uid int64
+			if json.Unmarshal(v, &uid) == nil {
+				req.AssignedUserID = &uid
+			}
+		}
+		if code, msg := h.validateAssignment(r.Context(), req.ChoreID, req.AssignedUserID, *user.HouseholdID); code != 0 {
+			writeError(w, code, msg)
 			return
 		}
 	}
@@ -258,6 +390,13 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// If chore changed to private but assignment wasn't explicitly patched, still validate.
+	if _, ok := raw["assignedUserId"]; !ok {
+		if code, msg := h.validateAssignment(r.Context(), req.ChoreID, req.AssignedUserID, *user.HouseholdID); code != 0 {
+			writeError(w, code, msg)
+			return
+		}
+	}
 
 	updated, err := h.store.Update(r.Context(), req)
 	if err != nil {
@@ -293,6 +432,10 @@ func (h *ScheduleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing.HouseholdID != *user.HouseholdID {
 		writeError(w, http.StatusForbidden, "not your schedule")
+		return
+	}
+	if _, ok := h.choreVisibleToUser(r.Context(), user.ID, *user.HouseholdID, existing.ChoreID); !ok {
+		writeError(w, http.StatusNotFound, "schedule not found")
 		return
 	}
 

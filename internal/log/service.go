@@ -317,6 +317,21 @@ func (s *Service) today() time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }
 
+func (s *Service) GetLog(ctx context.Context, id int64) (ChoreLog, error) {
+	return s.store.GetLog(ctx, id)
+}
+
+func (s *Service) GetLogForHousehold(ctx context.Context, id, householdID int64) (ChoreLog, error) {
+	l, err := s.store.GetLog(ctx, id)
+	if err != nil {
+		return ChoreLog{}, err
+	}
+	if l.HouseholdID != householdID {
+		return ChoreLog{}, ErrNotFound
+	}
+	return l, nil
+}
+
 func (s *Service) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
 	return s.store.LatestPerChore(ctx, householdID)
 }

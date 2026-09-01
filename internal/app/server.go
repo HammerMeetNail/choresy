@@ -127,10 +127,11 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	householdHandler := handlers.NewHouseholdHandler(householdService)
 	choreService := chore.NewService(choreStore)
 	choreService.SetAuditLogger(auditLog)
-	choreHandler := handlers.NewChoreHandler(choreService)
+	choreService.WithMemberships(householdStore)
+	choreHandler := handlers.NewChoreHandler(choreService).WithHouseholdStore(householdStore)
 	logService := logsvc.NewService(logStore)
 	logService.SetAuditLogger(auditLog)
-	logHandler := handlers.NewLogHandler(logService)
+	logHandler := handlers.NewLogHandler(logService).WithChoreStore(choreStore, householdStore)
 	notifService := notification.NewService(notifStore)
 	notifHandler := handlers.NewNotificationHandler(notifService)
 	logHandler.WithNotification(notifService, choreStore, householdStore)
@@ -142,9 +143,11 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	} else {
 		scheduleStore = schedule.NewMemoryStore()
 	}
+	// Need to re-wire choreHandler after scheduleStore is created (earlier ref was nil)
+	choreHandler.WithScheduleStore(scheduleStore).WithHouseholdStore(householdStore)
 	scheduleService := schedule.NewService()
 	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
-	scheduleHandler.WithChoreStore(choreStore)
+	scheduleHandler.WithChoreStore(choreStore).WithHouseholdStore(householdStore)
 	scheduleHandler.SetAuditLogger(auditLog)
 	logHandler.WithScheduleStore(scheduleStore)
 
@@ -200,13 +203,13 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	}
 	go reminderSched.Start(ctx)
 
-	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore).WithChoreStore(choreStore)
+	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore).WithChoreStore(choreStore).WithHouseholdStore(householdStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
-	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore)
+	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService).WithChoreStore(choreStore).WithHouseholdStore(householdStore)
 	dayNoteService := daynote.NewService(dayNoteStore)
 	dayNoteHandler := handlers.NewDayNoteHandler(dayNoteService)
-	reminderSnoozeHandler := handlers.NewReminderSnoozeHandler(scheduleStore, choreStore, userPrefsStore)
-	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
+	reminderSnoozeHandler := handlers.NewReminderSnoozeHandler(scheduleStore, choreStore, userPrefsStore).WithHouseholdStore(householdStore)
+	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore}).WithMemberships(householdStore)
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 	exportHandler := handlers.NewExportHandler(householdService, householdStore, choreStore, logService, scheduleStore, dayNoteService)
 
@@ -737,7 +740,7 @@ func (a *choreStatsAdapter) GetChore(ctx context.Context, id int64) (stats.Chore
 	if err != nil {
 		return stats.ChoreInfo{}, err
 	}
-	return stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels}, nil
+	return stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels, Visibility: c.Visibility}, nil
 }
 
 func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) ([]stats.ChoreInfo, error) {
@@ -747,7 +750,7 @@ func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) (
 	}
 	result := make([]stats.ChoreInfo, len(chores))
 	for i, c := range chores {
-		result[i] = stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels}
+		result[i] = stats.ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, HasRating: c.HasRating, MetricType: c.MetricType, MetricUnit: c.MetricUnit, IndicatorLabels: c.IndicatorLabels, Visibility: c.Visibility}
 	}
 	return result, nil
 }

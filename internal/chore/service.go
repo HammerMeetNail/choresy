@@ -11,10 +11,27 @@ import (
 type Service struct {
 	store       Store
 	auditLogger audit.Logger
+	memberships MembershipReader
 }
+
+// ErrNotAdmin is returned when a visibility mutation requires admin but the
+// caller is a regular member.
+var ErrNotAdmin = fmt.Errorf("admin access required")
 
 func NewService(store Store) *Service {
 	return &Service{store: store, auditLogger: audit.NopLogger{}}
+}
+
+// WithMemberships attaches the household membership reader used for visibility
+// checks. Nil is allowed for tests that don't need role gating.
+func (s *Service) WithMemberships(m MembershipReader) *Service {
+	s.memberships = m
+	return s
+}
+
+// SetMemberships is an alias for WithMemberships for wiring convenience.
+func (s *Service) SetMemberships(m MembershipReader) {
+	s.memberships = m
 }
 
 // SetAuditLogger attaches a sink for chore mutation events. A nil logger is a
@@ -32,6 +49,10 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string, subjects []string) (Chore, error) {
+	return s.CreateChoreWithVisibility(ctx, householdID, userID, name, icon, color, category, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects, VisibilityHousehold)
+}
+
+func (s *Service) CreateChoreWithVisibility(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string, subjects []string, visibility string) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -60,6 +81,17 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if subjects == nil {
 		subjects = []string{}
 	}
+	if visibility == "" {
+		visibility = VisibilityHousehold
+	}
+	if !ValidVisibility(visibility) {
+		return Chore{}, fmt.Errorf("invalid visibility: %q", visibility)
+	}
+	if visibility == VisibilityAdmins {
+		if err := s.RequireAdmin(ctx, userID, householdID); err != nil {
+			return Chore{}, err
+		}
+	}
 	created, err := s.store.CreateChore(ctx, Chore{
 		HouseholdID:       householdID,
 		Name:              name,
@@ -74,6 +106,7 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 		MetricType:        metricType,
 		MetricUnit:        metricUnit,
 		Subjects:          subjects,
+		Visibility:        visibility,
 	})
 	if err != nil {
 		return Chore{}, err
@@ -81,7 +114,6 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	s.logAudit(ctx, "chore.created", map[string]string{
 		"household_id": idStr(householdID),
 		"chore_id":     idStr(created.ID),
-		"name":         name,
 	})
 	return created, nil
 }
@@ -95,12 +127,52 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 }
 
 func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string, subjects *[]string) error {
+	_, err := s.UpdateChoreWithVisibility(ctx, choreID, householdID, name, icon, color, category, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects, nil, 0)
+	return err
+}
+
+// UpdateChoreWithVisibility is the visibility-aware update path. visibility may be nil (unchanged).
+// userID is the actor for access checks; when 0, visibility checks are skipped for backward compat.
+func (s *Service) UpdateChoreWithVisibility(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string, subjects *[]string, visibility *string, userID int64) (Chore, error) {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
-		return err
+		return Chore{}, err
 	}
 	if existing.HouseholdID != householdID {
-		return fmt.Errorf("chore not found")
+		return Chore{}, fmt.Errorf("chore not found")
+	}
+	// Visibility-aware read check: if userID provided, ensure they can view the existing chore.
+	// A member requesting PATCH on a private chore should get 404.
+	if userID != 0 {
+		ok, err := s.CanView(ctx, userID, householdID, existing)
+		if err != nil {
+			return Chore{}, err
+		}
+		if !ok {
+			return Chore{}, fmt.Errorf("chore not found")
+		}
+	}
+	oldVisibility := existing.Visibility
+	if visibility != nil {
+		v := *visibility
+		if !ValidVisibility(v) {
+			return Chore{}, fmt.Errorf("invalid visibility: %q", v)
+		}
+		if v != existing.Visibility {
+			if userID == 0 {
+				// No actor supplied - require admin via household check not possible; reject if trying to set admins.
+				if v == VisibilityAdmins {
+					return Chore{}, ErrNotAdmin
+				}
+			} else {
+				if err := s.RequireAdmin(ctx, userID, householdID); err != nil {
+					// Member trying to change visibility while not admin.
+					// If they could view the chore (shared case) return 403, else 404 already handled.
+					return Chore{}, err
+				}
+			}
+			existing.Visibility = v
+		}
 	}
 	if name != "" {
 		existing.Name = name
@@ -126,7 +198,7 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 	if metricType != nil {
 		mt := *metricType
 		if !ValidMetricType(mt) {
-			return fmt.Errorf("invalid metric type: %q", mt)
+			return Chore{}, fmt.Errorf("invalid metric type: %q", mt)
 		}
 		existing.MetricType = mt
 		// A change of metric type resets the unit; the caller supplies a new
@@ -137,29 +209,52 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 		existing.MetricUnit = *metricUnit
 	}
 	if subjects != nil {
-		s := *subjects
-		if s == nil {
-			s = []string{}
+		s2 := *subjects
+		if s2 == nil {
+			s2 = []string{}
 		}
-		existing.Subjects = s
+		existing.Subjects = s2
 	}
 	if err := s.store.UpdateChore(ctx, existing); err != nil {
-		return err
+		return Chore{}, err
 	}
-	s.logAudit(ctx, "chore.updated", map[string]string{
-		"household_id": idStr(householdID),
-		"chore_id":     idStr(choreID),
-	})
-	return nil
+	if visibility != nil && *visibility != oldVisibility {
+		s.logAudit(ctx, "chore.visibility_changed", map[string]string{
+			"household_id": idStr(householdID),
+			"chore_id":     idStr(choreID),
+			"from":         oldVisibility,
+			"to":           existing.Visibility,
+		})
+	} else {
+		s.logAudit(ctx, "chore.updated", map[string]string{
+			"household_id": idStr(householdID),
+			"chore_id":     idStr(choreID),
+		})
+	}
+	return existing, nil
 }
 
 func (s *Service) DeleteChore(ctx context.Context, choreID int64, householdID int64) error {
+	return s.DeleteChoreForUser(ctx, choreID, householdID, 0)
+}
+
+// DeleteChoreForUser enforces visibility: caller must be able to view the chore.
+func (s *Service) DeleteChoreForUser(ctx context.Context, choreID int64, householdID int64, userID int64) error {
 	chore, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
 	}
 	if chore.HouseholdID != householdID {
 		return fmt.Errorf("chore not found")
+	}
+	if userID != 0 {
+		ok, err := s.CanView(ctx, userID, householdID, chore)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("chore not found")
+		}
 	}
 	if chore.IsPredefined {
 		return fmt.Errorf("cannot delete predefined chores")
@@ -186,6 +281,10 @@ func (s *Service) ReorderChores(ctx context.Context, householdID int64, choreIDs
 }
 
 func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, householdID int64) error {
+	return s.RestoreDefaultChoreForUser(ctx, choreID, householdID, 0)
+}
+
+func (s *Service) RestoreDefaultChoreForUser(ctx context.Context, choreID int64, householdID int64, userID int64) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
@@ -193,11 +292,21 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, househ
 	if existing.HouseholdID != householdID {
 		return fmt.Errorf("chore not found")
 	}
+	if userID != 0 {
+		ok, err := s.CanView(ctx, userID, householdID, existing)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("chore not found")
+		}
+	}
 	if !existing.IsPredefined || existing.PredefinedKey == "" {
 		return fmt.Errorf("chore is not a predefined chore")
 	}
 	for _, pc := range PredefinedChores {
 		if pc.Name == existing.PredefinedKey {
+			vis := existing.Visibility
 			existing.Name = pc.Name
 			existing.Icon = pc.Icon
 			existing.Color = pc.Color
@@ -209,6 +318,7 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, househ
 			existing.MetricType = pc.MetricType
 			existing.MetricUnit = pc.MetricUnit
 			existing.NormalizeMetric()
+			existing.Visibility = vis
 			existing.FollowUpEnabled = true
 			if existing.IndicatorLabels == nil {
 				existing.IndicatorLabels = []string{}
@@ -246,6 +356,7 @@ func (s *Service) GetSystemDefaults() []Chore {
 			MetricType:        pc.MetricType,
 			MetricUnit:        pc.MetricUnit,
 			FollowUpEnabled:   true,
+			Visibility:        VisibilityHousehold,
 		})
 	}
 	return result

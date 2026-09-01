@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/middleware"
@@ -56,22 +57,23 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 
 	loc := h.userLocation(r)
 	now := nowInLoc(loc)
+	ctx := stats.WithViewer(r.Context(), user.ID)
 
 	switch period {
 	case "day":
 		y, m, d := now.Date()
 		rangeStart = time.Date(y, m, d, 0, 0, 0, 0, loc)
 		rangeEnd = rangeStart.AddDate(0, 0, 1)
-		board, err = h.service.GetDailyLeaderboard(r.Context(), *user.HouseholdID, loc)
+		board, err = h.service.GetDailyLeaderboard(ctx, *user.HouseholdID, loc)
 	case "month":
 		rangeStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 		rangeEnd = rangeStart.AddDate(0, 1, 0)
-		board, err = h.service.GetMonthlyLeaderboard(r.Context(), *user.HouseholdID, now.Year(), now.Month(), loc)
+		board, err = h.service.GetMonthlyLeaderboard(ctx, *user.HouseholdID, now.Year(), now.Month(), loc)
 	case "all":
 		// No time bound: fetch every log ever recorded for this household.
 		rangeStart = time.Time{}
 		rangeEnd = time.Time{}
-		board, err = h.service.GetAllTimeLeaderboard(r.Context(), *user.HouseholdID, loc)
+		board, err = h.service.GetAllTimeLeaderboard(ctx, *user.HouseholdID, loc)
 	default:
 		weekday := int(now.Weekday()) - int(time.Sunday)
 		if weekday < 0 {
@@ -80,7 +82,7 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 		y, m, d := now.Date()
 		rangeStart = time.Date(y, m, d-weekday, 0, 0, 0, 0, loc)
 		rangeEnd = rangeStart.AddDate(0, 0, 7)
-		board, err = h.service.GetWeeklyLeaderboard(r.Context(), *user.HouseholdID, loc)
+		board, err = h.service.GetWeeklyLeaderboard(ctx, *user.HouseholdID, loc)
 	}
 
 	if err != nil {
@@ -108,7 +110,8 @@ func (h *StatsHandler) Streaks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	streaks, err := h.service.GetUserStreaks(r.Context(), *user.HouseholdID, user.ID, h.userLocation(r))
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	streaks, err := h.service.GetUserStreaks(ctx, *user.HouseholdID, user.ID, h.userLocation(r))
 	if err != nil {
 		writeServerError(w, "failed to load streaks", err)
 		return
@@ -145,7 +148,8 @@ func (h *StatsHandler) Heatmap(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cells, err := h.service.GetHeatmap(r.Context(), *user.HouseholdID, start, end, loc)
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	cells, err := h.service.GetHeatmap(ctx, *user.HouseholdID, start, end, loc)
 	if err != nil {
 		writeServerError(w, "failed to load heatmap", err)
 		return
@@ -215,7 +219,8 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 		end = start.AddDate(0, 0, 7)
 	}
 
-	breakdown, err := h.service.GetCategoryBreakdown(r.Context(), *user.HouseholdID, start, end, loc)
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	breakdown, err := h.service.GetCategoryBreakdown(ctx, *user.HouseholdID, start, end, loc)
 	if err != nil {
 		writeServerError(w, "failed to load breakdown", err)
 		return
@@ -235,7 +240,8 @@ func (h *StatsHandler) Recap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recap, err := h.service.GetWeeklyRecap(r.Context(), *user.HouseholdID, h.userLocation(r))
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	recap, err := h.service.GetWeeklyRecap(ctx, *user.HouseholdID, h.userLocation(r))
 	if err != nil {
 		writeServerError(w, "failed to load recap", err)
 		return
@@ -251,7 +257,8 @@ func (h *StatsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	overview, err := h.service.GetWeeklyOverview(r.Context(), *user.HouseholdID, user.ID, h.userLocation(r))
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	overview, err := h.service.GetWeeklyOverview(ctx, *user.HouseholdID, user.ID, h.userLocation(r))
 	if err != nil {
 		writeServerError(w, "failed to load overview", err)
 		return
@@ -299,8 +306,13 @@ func (h *StatsHandler) BusyHours(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	hours, err := h.service.GetBusyHours(r.Context(), *user.HouseholdID, start, end, loc, choreID, userID)
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	hours, err := h.service.GetBusyHours(ctx, *user.HouseholdID, start, end, loc, choreID, userID)
 	if err != nil {
+		if strings.Contains(err.Error(), "chore not found") {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeServerError(w, "failed to load busy hours", err)
 		return
 	}
@@ -362,7 +374,8 @@ func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	choreStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, loc, customStart, customEnd)
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	choreStats, err := h.service.GetChoreStats(ctx, *user.HouseholdID, loc, customStart, customEnd)
 	if err != nil {
 		writeServerError(w, "failed to load chore stats", err)
 		return
@@ -402,7 +415,8 @@ func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, h.userLocation(r), nil, nil)
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	allStats, err := h.service.GetChoreStats(ctx, *user.HouseholdID, h.userLocation(r), nil, nil)
 	if err != nil {
 		writeServerError(w, "failed to load chore stats", err)
 		return
@@ -440,7 +454,8 @@ func (h *StatsHandler) TopChores(w http.ResponseWriter, r *http.Request) {
 		period = "month"
 	}
 
-	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, userID, 5, period, h.userLocation(r))
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	entries, err := h.service.GetTopChores(ctx, *user.HouseholdID, userID, 5, period, h.userLocation(r))
 	if err != nil {
 		writeServerError(w, "failed to load top chores", err)
 		return
@@ -475,8 +490,13 @@ func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {
 		period = "daily"
 	}
 
-	ts, err := h.service.GetChoreTimeSeries(r.Context(), *user.HouseholdID, choreID, period, h.userLocation(r))
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	ts, err := h.service.GetChoreTimeSeries(ctx, *user.HouseholdID, choreID, period, h.userLocation(r))
 	if err != nil {
+		if strings.Contains(err.Error(), "chore not found") {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeServerError(w, "failed to load chore time series", err)
 		return
 	}
@@ -503,8 +523,13 @@ func (h *StatsHandler) ChoreSummary(w http.ResponseWriter, r *http.Request) {
 		period = "week"
 	}
 
-	summary, err := h.service.GetChoreSummary(r.Context(), *user.HouseholdID, choreID, period, h.userLocation(r))
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	summary, err := h.service.GetChoreSummary(ctx, *user.HouseholdID, choreID, period, h.userLocation(r))
 	if err != nil {
+		if strings.Contains(err.Error(), "chore not found") {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeError(w, http.StatusNotFound, "chore not found")
 		return
 	}
@@ -549,8 +574,13 @@ func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, choreID, start, end, loc)
+	ctx := stats.WithViewer(r.Context(), user.ID)
+	gaps, err := h.service.GetFeedingGaps(ctx, *user.HouseholdID, choreID, start, end, loc)
 	if err != nil {
+		if strings.Contains(err.Error(), "chore not found") {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeServerError(w, "failed to load feeding gaps", err)
 		return
 	}

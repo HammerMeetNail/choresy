@@ -146,6 +146,8 @@ struct Chore: Codable, Identifiable, Equatable {
     let metricUnit: String
     /// Optional subject tags (migration 039), e.g. twin names for Feed Baby.
     let subjects: [String]
+    /// Visibility: "household" (default) or "admins" (private household tasks, migration 042).
+    let visibility: String
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -169,9 +171,10 @@ struct Chore: Codable, Identifiable, Equatable {
         metricType = try container.decodeIfPresent(String.self, forKey: .metricType) ?? "none"
         metricUnit = try container.decodeIfPresent(String.self, forKey: .metricUnit) ?? ""
         subjects = try container.decodeIfPresent([String].self, forKey: .subjects) ?? []
+        visibility = try container.decodeIfPresent(String.self, forKey: .visibility) ?? "household"
     }
 
-    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool, hasRating: Bool = false, metricType: String = "none", metricUnit: String = "", subjects: [String] = []) {
+    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool, hasRating: Bool = false, metricType: String = "none", metricUnit: String = "", subjects: [String] = [], visibility: String = "household") {
         self.id = id
         self.householdId = householdId
         self.name = name
@@ -192,6 +195,7 @@ struct Chore: Codable, Identifiable, Equatable {
         self.metricType = metricType
         self.metricUnit = metricUnit
         self.subjects = subjects
+        self.visibility = visibility
     }
 
     enum CodingKeys: String, CodingKey {
@@ -199,7 +203,7 @@ struct Chore: Codable, Identifiable, Equatable {
         case isPredefined, predefinedKey, createdBy, createdAt
         case indicatorLabels, indicatorDefaults, hasVolumeML
         case followUpEnabled, lastFollowUpMinutes
-        case hasRating, metricType, metricUnit, subjects
+        case hasRating, metricType, metricUnit, subjects, visibility
     }
 }
 

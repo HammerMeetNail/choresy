@@ -104,6 +104,16 @@ struct ManageChoresView: View {
             Text(chore.name)
                 .lineLimit(1)
 
+            if chore.visibility == "admins" {
+                Label("Admins only", systemImage: "lock.fill")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(DesignColors.surfaceSecondary)
+                    .clipShape(Capsule())
+            }
+
             Spacer()
 
             Text(chore.isPredefined ? "Default" : "Custom")

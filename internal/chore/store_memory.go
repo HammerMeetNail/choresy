@@ -42,6 +42,7 @@ func (s *MemoryStore) CreateChore(_ context.Context, chore Chore) (Chore, error)
 
 	chore.ID = s.nextID()
 	chore.CreatedAt = time.Now().UTC()
+	chore.NormalizeVisibility()
 	chore.NormalizeMetric()
 	s.chores[chore.ID] = chore
 	return chore, nil
@@ -86,6 +87,7 @@ func (s *MemoryStore) UpdateChore(_ context.Context, chore Chore) error {
 	chore.IsPredefined = existing.IsPredefined
 	chore.CreatedAt = existing.CreatedAt
 	chore.CreatedBy = existing.CreatedBy
+	chore.NormalizeVisibility()
 	chore.NormalizeMetric()
 	s.chores[chore.ID] = chore
 	return nil
@@ -150,7 +152,9 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 				MetricType:        pc.MetricType,
 				MetricUnit:        pc.MetricUnit,
 				FollowUpEnabled:   true,
+				Visibility:        VisibilityHousehold,
 			}
+			chore.NormalizeVisibility()
 			chore.NormalizeMetric()
 			s.chores[chore.ID] = chore
 		}

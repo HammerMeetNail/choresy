@@ -139,19 +139,19 @@ func (s *Scheduler) tick(ctx context.Context) error {
 
 		activeToday++
 
-		users := s.eligibleUsers(ctx, sch)
+		ch, err := s.choreStore.GetChore(ctx, sch.ChoreID)
+		if err != nil {
+			log.Printf("reminder: get chore %d: %v", sch.ChoreID, err)
+			continue
+		}
+
+		users := s.eligibleUsers(ctx, sch, ch)
 		if len(users) == 0 {
 			continue
 		}
 
 		log.Printf("reminder: checking schedule=%d chore=%d time=%q users=%v",
 			sch.ID, sch.ChoreID, sch.SpecificTime, users)
-
-		ch, err := s.choreStore.GetChore(ctx, sch.ChoreID)
-		if err != nil {
-			log.Printf("reminder: get chore %d: %v", sch.ChoreID, err)
-			continue
-		}
 
 		for _, userID := range users {
 			leadMin := s.getLeadMinutes(ctx, userID, sch.ChoreID)
@@ -194,6 +194,14 @@ func (s *Scheduler) tick(ctx context.Context) error {
 				continue
 			}
 
+			// Re-check private visibility immediately before send (role may have changed since eligibleUsers)
+			if ch.Visibility == chore.VisibilityAdmins {
+				role, err := s.hhStore.GetMembershipForHousehold(ctx, userID, sch.HouseholdID)
+				if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
+					continue
+				}
+			}
+
 			title := fmt.Sprintf("%s %s", ch.Icon, ch.Name)
 			body := fmt.Sprintf("Due at %s", formatTime(sch.SpecificTime))
 
@@ -213,7 +221,7 @@ func (s *Scheduler) tick(ctx context.Context) error {
 			}
 			sent++
 
-			log.Printf("reminder: sent to user %d title=%q", userID, title)
+			log.Printf("reminder: sent to user %d chore=%d", userID, ch.ID)
 
 			if err := s.store.RecordReminder(ctx, sch.ID, userID, userToday); err != nil {
 				log.Printf("reminder: record: %v", err)
@@ -226,10 +234,20 @@ func (s *Scheduler) tick(ctx context.Context) error {
 	return nil
 }
 
-func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedule) []int64 {
+func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedule, c chore.Chore) []int64 {
+	isPrivate := c.Visibility == chore.VisibilityAdmins
+	// For private chores, verify assigned user is still admin
 	if sch.AssignedUserID != nil {
-		if s.userHasScheduleReminderEnabled(ctx, *sch.AssignedUserID) {
-			return []int64{*sch.AssignedUserID}
+		uid := *sch.AssignedUserID
+		// If private, check assigned user is admin/owner
+		if isPrivate {
+			role, err := s.hhStore.GetMembershipForHousehold(ctx, uid, sch.HouseholdID)
+			if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
+				return nil
+			}
+		}
+		if s.userHasScheduleReminderEnabled(ctx, uid) {
+			return []int64{uid}
 		}
 		return nil
 	}
@@ -242,6 +260,9 @@ func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedul
 
 	var users []int64
 	for _, m := range members {
+		if isPrivate && m.Role != household.RoleOwner && m.Role != household.RoleAdmin {
+			continue
+		}
 		if !s.userHasScheduleReminderEnabled(ctx, m.UserID) {
 			continue
 		}

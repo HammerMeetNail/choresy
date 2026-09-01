@@ -372,8 +372,8 @@ func TestChoreUpdateNotFound(t *testing.T) {
 	req.SetPathValue("id", "9999")
 	rec := httptest.NewRecorder()
 	handler.Update(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d, body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d, body=%s", rec.Code, rec.Body.String())
 	}
 }
 

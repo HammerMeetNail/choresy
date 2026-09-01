@@ -29,12 +29,20 @@ struct ChoreEditView: View {
     @State private var metricType: String = "none"
     @State private var metricUnit: String = "mL"
     @State private var subjects: [String] = []
+    @State private var visibility: String = "household"
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var reminderEnabled: Bool = false
     @State private var reminderLeadMinutes: Int = 10
+    @State private var showPrivateConfirm = false
+    @State private var showHouseholdConfirm = false
 
     private var isNew: Bool { chore == nil }
+
+    private var isAdmin: Bool {
+        let role = state.members.first(where: { $0.userId == state.user?.id })?.role ?? state.user?.role ?? "member"
+        return role == "owner" || role == "admin"
+    }
 
     private var scheduleReminderTypeEnabled: Bool {
         let prefs = state.notificationPrefs
@@ -67,6 +75,20 @@ struct ChoreEditView: View {
 
                 Section("Color") {
                     colorGrid
+                }
+
+                if isAdmin {
+                    Section {
+                        Picker("Visible to", selection: $visibility) {
+                            Text("Everyone").tag("household")
+                            Text("Owners and admins").tag("admins")
+                        }
+                        .pickerStyle(.segmented)
+                    } header: {
+                        Text("Visible to")
+                    } footer: {
+                        Text(visibility == "admins" ? "Visible only to household owners and admins." : "Visible to all household members.")
+                    }
                 }
 
                 Section {
@@ -242,8 +264,21 @@ struct ChoreEditView: View {
                 metricType = chore.metricType
                 metricUnit = chore.metricUnit.isEmpty ? "mL" : chore.metricUnit
                 subjects = chore.subjects
+                visibility = chore.visibility
                 loadReminderPref()
             }
+        }
+        .alert("Make \"\(name)\" Admins only?", isPresented: $showPrivateConfirm) {
+            Button("Make Admins only", role: .destructive) { Task { await performSave() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It will disappear, along with its activity and statistics, for regular members. Information they saw while it was shared cannot be recalled.")
+        }
+        .alert("Make \"\(name)\" visible to everyone?", isPresented: $showHouseholdConfirm) {
+            Button("Make Household") { Task { await performSave() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All members will gain access to the entire retained history.")
         }
     }
 
@@ -323,14 +358,31 @@ struct ChoreEditView: View {
     }
 
     private func save() async {
+        // Handle visibility transition confirmations before performing save.
+        if !isNew, let oldVis = chore?.visibility {
+            let newVis = isAdmin ? visibility : oldVis
+            if oldVis != newVis {
+                if newVis == "admins" {
+                    showPrivateConfirm = true
+                    return
+                } else if oldVis == "admins" && newVis == "household" {
+                    showHouseholdConfirm = true
+                    return
+                }
+            }
+        }
+        await performSave()
+    }
+
+    private func performSave() async {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
         let cleanedLabels = indicatorLabels.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let cleanedDefaults = cleanedLabels.filter { indicatorDefaults.contains($0) }
-        // Amount metrics carry a display unit (default mL); other types send "".
         let trimmedUnit = metricUnit.trimmingCharacters(in: .whitespaces)
         let finalMetricUnit = metricType == "amount" ? (trimmedUnit.isEmpty ? "mL" : trimmedUnit) : ""
         let cleanedSubjects = subjects.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let visToSend: String? = isAdmin ? visibility : nil
 
         isSaving = true
         do {
@@ -340,7 +392,7 @@ struct ChoreEditView: View {
                     indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
                     followUpEnabled: followUpEnabled,
                     metricType: metricType, metricUnit: finalMetricUnit,
-                    subjects: cleanedSubjects
+                    subjects: cleanedSubjects, visibility: visToSend
                 )
                 state.chores.append(response.chore)
                 var newOrder = state.choreOrder
@@ -356,11 +408,9 @@ struct ChoreEditView: View {
                     indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
                     followUpEnabled: followUpEnabled,
                     metricType: metricType, metricUnit: finalMetricUnit,
-                    subjects: cleanedSubjects
+                    subjects: cleanedSubjects, visibility: visToSend
                 )
                 if let idx = state.chores.firstIndex(where: { $0.id == choreId }) {
-                    // The server keeps hasVolumeML/hasRating in sync with
-                    // metricType — trust its copy over a local reconstruction.
                     state.chores[idx] = response.chore
                 }
             }

@@ -1,17 +1,20 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/reminder"
 )
 
 type ChoreReminderPrefsHandler struct {
-	store      reminder.Store
-	choreStore chore.Store // optional; nil disables the ownership check
+	store          reminder.Store
+	choreStore     chore.Store // optional; nil disables the ownership check
+	householdStore household.Store
 }
 
 func NewChoreReminderPrefsHandler(store reminder.Store) *ChoreReminderPrefsHandler {
@@ -23,6 +26,40 @@ func NewChoreReminderPrefsHandler(store reminder.Store) *ChoreReminderPrefsHandl
 func (h *ChoreReminderPrefsHandler) WithChoreStore(cs chore.Store) *ChoreReminderPrefsHandler {
 	h.choreStore = cs
 	return h
+}
+
+func (h *ChoreReminderPrefsHandler) WithHouseholdStore(hs household.Store) *ChoreReminderPrefsHandler {
+	h.householdStore = hs
+	return h
+}
+
+func (h *ChoreReminderPrefsHandler) visibleChoreIDs(userID, householdID int64, ctx context.Context) map[int64]struct{} {
+	if h.choreStore == nil {
+		return nil
+	}
+	chores, err := h.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil
+	}
+	visible := make(map[int64]struct{}, len(chores))
+	for _, c := range chores {
+		if c.Visibility == chore.VisibilityAdmins {
+			if h.householdStore == nil {
+				continue
+			}
+			role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+			if err != nil {
+				continue
+			}
+			if role != household.RoleOwner && role != household.RoleAdmin {
+				continue
+			}
+		}
+		if c.HouseholdID == householdID {
+			visible[c.ID] = struct{}{}
+		}
+	}
+	return visible
 }
 
 func (h *ChoreReminderPrefsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +77,22 @@ func (h *ChoreReminderPrefsHandler) List(w http.ResponseWriter, r *http.Request)
 
 	if prefs == nil {
 		prefs = []reminder.ChoreReminderPref{}
+	}
+	// Filter to visible chores.
+	if h.choreStore != nil && user.HouseholdID != nil {
+		visible := h.visibleChoreIDs(user.ID, *user.HouseholdID, r.Context())
+		if visible != nil {
+			var filtered []reminder.ChoreReminderPref
+			for _, p := range prefs {
+				if _, ok := visible[p.ChoreID]; ok {
+					filtered = append(filtered, p)
+				}
+			}
+			if filtered == nil {
+				filtered = []reminder.ChoreReminderPref{}
+			}
+			prefs = filtered
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -61,13 +114,25 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Do not trust the choreId from the client: verify the chore belongs to
-	// the caller's household before touching prefs for it (defense in depth).
+	// Do not trust the choreId from the client: verify the chore is visible to the caller.
 	if h.choreStore != nil {
 		c, err := h.choreStore.GetChore(r.Context(), choreID)
-		if err != nil || c.HouseholdID != *user.HouseholdID {
+		if err != nil {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
+		if user.HouseholdID == nil || c.HouseholdID != *user.HouseholdID {
 			writeError(w, http.StatusForbidden, "chore does not belong to your household")
 			return
+		}
+		if c.Visibility == chore.VisibilityAdmins {
+			if h.householdStore != nil {
+				role, err := h.householdStore.GetMembershipForHousehold(r.Context(), user.ID, *user.HouseholdID)
+				if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
+					writeError(w, http.StatusNotFound, "chore not found")
+					return
+				}
+			}
 		}
 	}
 

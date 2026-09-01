@@ -63,6 +63,95 @@ func (h *LogHandler) WithScheduleStore(ss schedule.Store) *LogHandler {
 	return h
 }
 
+// WithChoreStore attaches the chore and household stores for visibility checks.
+func (h *LogHandler) WithChoreStore(cs chore.Store, hs household.Store) *LogHandler {
+	h.choreStore = cs
+	h.householdStore = hs
+	return h
+}
+
+func (h *LogHandler) visibleChoreIDs(ctx context.Context, userID, householdID int64) (map[int64]struct{}, error) {
+	if h.choreStore == nil {
+		return nil, nil
+	}
+	chores, err := h.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	visible := make(map[int64]struct{}, len(chores))
+	for _, c := range chores {
+		if c.Visibility == chore.VisibilityAdmins {
+			if h.householdStore == nil {
+				continue
+			}
+			role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+			if err != nil {
+				continue
+			}
+			if role != household.RoleOwner && role != household.RoleAdmin {
+				continue
+			}
+		}
+		if c.HouseholdID == householdID {
+			visible[c.ID] = struct{}{}
+		}
+	}
+	return visible, nil
+}
+
+func (h *LogHandler) canViewChore(ctx context.Context, userID, householdID, choreID int64) (chore.Chore, bool) {
+	if h.choreStore == nil {
+		return chore.Chore{}, true
+	}
+	c, err := h.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return chore.Chore{}, false
+	}
+	if c.HouseholdID != householdID {
+		return chore.Chore{}, false
+	}
+	if c.Visibility == chore.VisibilityAdmins {
+		if h.householdStore == nil {
+			return c, false
+		}
+		role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+		if err != nil {
+			return c, false
+		}
+		if role != household.RoleOwner && role != household.RoleAdmin {
+			return c, false
+		}
+	}
+	return c, true
+}
+
+func (h *LogHandler) isAdmin(ctx context.Context, userID, householdID int64) bool {
+	if h.householdStore == nil {
+		return true
+	}
+	role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
+	if err != nil {
+		return false
+	}
+	return role == household.RoleOwner || role == household.RoleAdmin
+}
+
+func filterLogsByVisible(logs []log.ChoreLog, visible map[int64]struct{}) []log.ChoreLog {
+	if visible == nil {
+		return logs
+	}
+	var out []log.ChoreLog
+	for _, l := range logs {
+		if _, ok := visible[l.ChoreID]; ok {
+			out = append(out, l)
+		}
+	}
+	if out == nil {
+		return []log.ChoreLog{}
+	}
+	return out
+}
+
 // fanOutNotification creates notifications for all household members except
 // the one attributed on the log and the one who performed the action.
 // It is always called in a goroutine so that push / DB latency never delays
@@ -77,9 +166,23 @@ func (h *LogHandler) fanOutNotification(householdID, loggerID, actorID, choreID 
 	if err != nil {
 		return
 	}
+	// For Admins-only tasks, only notify other admins/owners.
+	isPrivate := c.Visibility == chore.VisibilityAdmins
 	members, err := h.householdStore.GetMembers(ctx, householdID)
 	if err != nil {
 		return
+	}
+	var filtered []household.Member
+	if isPrivate {
+		for _, m := range members {
+			if m.Role == household.RoleOwner || m.Role == household.RoleAdmin {
+				filtered = append(filtered, m)
+			}
+		}
+		members = filtered
+		if len(members) == 0 {
+			return
+		}
 	}
 	mi := make([]notification.MemberInfo, len(members))
 	for i, m := range members {
@@ -142,17 +245,32 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logUserID = *req.UserID
 	}
 
-	// Verify the chore belongs to this household (defense in depth).
+	// Verify the chore belongs to this household and is visible to the requester.
+	var choreForVis chore.Chore
 	if h.choreStore != nil {
-		chore, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+		c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
 		if err != nil {
 			writeError(w, http.StatusNotFound, "chore not found")
 			return
 		}
-		if chore.HouseholdID != *user.HouseholdID {
+		if c.HouseholdID != *user.HouseholdID {
 			writeError(w, http.StatusForbidden, "chore does not belong to your household")
 			return
 		}
+		// Visibility check: member cannot see Admins-only task.
+		if c.Visibility == chore.VisibilityAdmins {
+			if !h.isAdmin(r.Context(), user.ID, *user.HouseholdID) {
+				writeError(w, http.StatusNotFound, "chore not found")
+				return
+			}
+			// Private task may only be attributed to an admin/owner.
+			if !h.isAdmin(r.Context(), logUserID, *user.HouseholdID) {
+				writeError(w, http.StatusBadRequest, "private task log may only be attributed to an admin")
+				return
+			}
+		}
+		choreForVis = c
+		_ = choreForVis
 	}
 
 	var logDate *time.Time
@@ -301,7 +419,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If changing userId, verify the target user is a household member.
+	// If changing userId, verify the target user is a household member and for private tasks, admin.
 	var userID *int64
 	if req.UserID != nil {
 		if h.householdStore != nil && user.HouseholdID != nil {
@@ -323,6 +441,28 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		userID = req.UserID
+	}
+
+	// Visibility check: resolve the log and its chore before mutation.
+	if h.choreStore != nil {
+		existingLog, err := h.service.GetLogForHousehold(r.Context(), id, *user.HouseholdID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "log not found")
+			return
+		}
+		if _, ok := h.canViewChore(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID); !ok {
+			writeError(w, http.StatusNotFound, "log not found")
+			return
+		}
+		// If re-assigning to a different user, private chore may only be attributed to admin.
+		if userID != nil {
+			if c, ok := h.canViewChore(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID); ok && c.Visibility == chore.VisibilityAdmins {
+				if !h.isAdmin(r.Context(), *userID, *user.HouseholdID) {
+					writeError(w, http.StatusBadRequest, "private task log may only be attributed to an admin")
+					return
+				}
+			}
+		}
 	}
 
 	var logDate *time.Time
@@ -375,6 +515,18 @@ func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.choreStore != nil {
+		existingLog, err := h.service.GetLogForHousehold(r.Context(), id, *user.HouseholdID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "log not found")
+			return
+		}
+		if _, ok := h.canViewChore(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID); !ok {
+			writeError(w, http.StatusNotFound, "log not found")
+			return
+		}
+	}
+
 	if err := h.service.UndoLog(r.Context(), *user.HouseholdID, id); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
@@ -407,6 +559,10 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 	if logs == nil {
 		logs = []log.ChoreLog{}
 	}
+	// Filter by visible chores before summary.
+	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
+		logs = filterLogsByVisible(logs, visible)
+	}
 
 	summary := h.service.DailySummaryFromLogs(date, logs)
 
@@ -438,6 +594,9 @@ func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, "failed to load week logs", err)
 		return
 	}
+	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
+		logs = filterLogsByVisible(logs, visible)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
 }
@@ -466,6 +625,9 @@ func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, "failed to load month logs", err)
 		return
 	}
+	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
+		logs = filterLogsByVisible(logs, visible)
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
 }
@@ -488,6 +650,9 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeServerError(w, "failed to search history", err)
 			return
+		}
+		if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
+			logs = filterLogsByVisible(logs, visible)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"logs":    logs,
@@ -518,6 +683,15 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeServerError(w, "failed to load history", err)
 		return
+	}
+	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
+		logs = filterLogsByVisible(logs, visible)
+		// Do not leak hidden existence via hasMore. If the window contained only hidden logs,
+		// hasMore must not reveal them. Suppress hasMore when no visible logs remain, truncating
+		// pagination safely (next fetch will continue backwards).
+		if len(logs) == 0 && hasMore {
+			hasMore = false
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -596,11 +770,10 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid choreId")
 			return
 		}
-		// Ownership check: the chore must belong to the caller's household.
+		// Visibility check: the chore must be visible to the caller.
 		if h.choreStore != nil {
-			c, err := h.choreStore.GetChore(r.Context(), id)
-			if err != nil || c.HouseholdID != hid {
-				writeError(w, http.StatusForbidden, "chore does not belong to your household")
+			if _, ok := h.canViewChore(r.Context(), user.ID, hid, id); !ok {
+				writeError(w, http.StatusNotFound, "chore not found")
 				return
 			}
 		}
@@ -612,12 +785,21 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, "failed to export logs", err)
 		return
 	}
+	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, hid); err == nil {
+		logs = filterLogsByVisible(logs, visible)
+	}
 
-	// Build id→name lookups for chores and members.
+	// Build id→name lookups for chores and members (only visible chores).
 	choreNames := map[int64]string{}
 	if h.choreStore != nil {
 		if chores, err := h.choreStore.ListChores(r.Context(), hid); err == nil {
+			visible, _ := h.visibleChoreIDs(r.Context(), user.ID, hid)
 			for _, c := range chores {
+				if visible != nil {
+					if _, ok := visible[c.ID]; !ok {
+						continue
+					}
+				}
 				choreNames[c.ID] = c.Name
 			}
 		}
@@ -701,6 +883,13 @@ func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeServerError(w, "failed to load latest logs", err)
 		return
+	}
+	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil && visible != nil {
+		for cid := range result {
+			if _, ok := visible[cid]; !ok {
+				delete(result, cid)
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"latestLogs": result})
 }
