@@ -1,7 +1,7 @@
 GO ?= go
 COMPOSE ?= podman compose
 
-.PHONY: test test-go test-js fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity
+.PHONY: test test-go test-js fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy
 
 test: test-go test-js
 
@@ -69,3 +69,6 @@ hooks:
 
 check-parity:
 	bash scripts/check-parity.sh
+
+deploy:
+	bash scripts/deploy.sh

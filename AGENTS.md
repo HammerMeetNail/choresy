@@ -78,6 +78,7 @@ The main checkout at the workspace root stays clean and is only used for referen
 | Lint Go | `make lint` |
 | Install git hooks | `make hooks` |
 | Check client parity | `make check-parity` |
+| Deploy (tag & push) | `make deploy` |
 
 After changing files in `web/templates/` or `web/static/`, run `make local-fresh` — these assets are embedded into the Go binary via `web/assets.go` (`//go:embed`).
 
