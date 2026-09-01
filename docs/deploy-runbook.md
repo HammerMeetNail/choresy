@@ -59,10 +59,11 @@ curl -s https://nabu-app.com/login | grep 'app.js'
 curl -s https://nabu-app.com/ | grep 'rel="canonical"'
 # Expected: <link rel="canonical" href="https://nabu-app.com/">
 
-# HTML cache headers must also be no-store / BYPASS (like the JS files)
+# HTML cache headers must also be no-store (Cloudflare reports DYNAMIC —
+# its passthrough marker for uncacheable responses — rather than BYPASS)
 curl -sI https://nabu-app.com/ | grep -i cache
 # Expected: cache-control: no-store
-#           cf-cache-status: BYPASS
+#           cf-cache-status: DYNAMIC
 ```
 
 ### Verify per-IP rate limiting (after the trusted-proxy deploy, once only)
@@ -88,7 +89,7 @@ Also spot-check request logs: the hashed `client` attribute should now vary betw
 
 ### Troubleshooting
 
-- If `cf-cache-status` is `HIT` or `MISS` (not `BYPASS`), the `no-store` header is not reaching Cloudflare — investigate `internal/app/server.go` and the CI build logs.
+- If `cf-cache-status` is `HIT` or `MISS` (not `BYPASS` for JS / `DYNAMIC` for HTML), the `no-store` header is not reaching Cloudflare — investigate `internal/app/server.go` and the CI build logs.
 - If imports still show the old version number, the binary was not rebuilt with the new tag — check that `internal/version/version.go` is populated at build time via `-ldflags`.
 
 ## Known limitations (candidates for a future fix)
